@@ -1,0 +1,175 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* 
+  Apple-inspired Design System 
+  "Industrial Precision" - Refined
+  Matching Replit SV2 UI style
+*/
+
+:root {
+  /* Light Mode: Clean, High Contrast, Neutral */
+  --background: 0 0% 98%;    /* #FAFAFA */
+  --foreground: 240 5% 10%;  /* #18181B */
+  
+  --card: 0 0% 100%;
+  --card-foreground: 240 5% 10%;
+  
+  --popover: 0 0% 100%;
+  --popover-foreground: 240 5% 10%;
+  
+  --primary: 240 5% 10%;     /* #18181B */
+  --primary-foreground: 0 0% 100%;
+  
+  --secondary: 240 5% 96%;   /* #F4F4F5 */
+  --secondary-foreground: 240 5% 10%;
+  
+  --muted: 240 5% 96%;
+  --muted-foreground: 240 4% 46%;
+  
+  --accent: 240 5% 96%;
+  --accent-foreground: 240 5% 10%;
+  
+  --destructive: 0 84% 60%;
+  --destructive-foreground: 0 0% 100%;
+
+  --border: 240 6% 90%;      /* #E4E4E7 */
+  --input: 240 6% 90%;
+  --ring: 240 5% 10%;
+
+  --radius: 0.5rem;          /* 8px - Precision feel for pro dashboard */
+
+  --sidebar: 0 0% 98%;
+  --sidebar-foreground: 240 5% 40%;
+  --sidebar-primary: 240 5% 10%;
+  --sidebar-primary-foreground: 0 0% 100%;
+  --sidebar-accent: 240 5% 96%;
+  --sidebar-accent-foreground: 240 5% 10%;
+  --sidebar-border: 240 6% 90%;
+  --sidebar-ring: 240 5% 65%;
+  
+  /* System Colors - Standardized */
+  --chart-1: 142 70% 45%; /* Green */
+  --chart-2: 0 84% 60%;   /* Red */
+  --chart-3: 35 90% 50%;  /* Amber */
+  --chart-4: 210 90% 50%; /* Blue */
+  --chart-5: 260 50% 55%; /* Purple */
+}
+
+.dark {
+  /* Dark Mode: "Pro" - Neutral Grays, No tints */
+  --background: 240 5% 8%;   /* #121214 - Matte Dark */
+  --foreground: 0 0% 95%;
+  
+  --card: 240 5% 10%;        /* #18181B */
+  --card-foreground: 0 0% 95%;
+  
+  --popover: 240 5% 10%;
+  --popover-foreground: 0 0% 95%;
+  
+  --primary: 0 0% 95%;
+  --primary-foreground: 240 5% 10%;
+  
+  --secondary: 240 4% 16%;   /* #27272A */
+  --secondary-foreground: 0 0% 95%;
+  
+  --muted: 240 4% 16%;
+  --muted-foreground: 240 5% 60%;
+  
+  --accent: 240 4% 16%;
+  --accent-foreground: 0 0% 95%;
+  
+  --destructive: 0 60% 50%;
+  --destructive-foreground: 0 0% 100%;
+  
+  --border: 240 4% 16%;
+  --input: 240 4% 16%;
+  --ring: 240 4% 50%;
+
+  --sidebar: 240 5% 8%;
+  --sidebar-foreground: 240 5% 60%;
+  --sidebar-primary: 0 0% 95%;
+  --sidebar-primary-foreground: 240 5% 10%;
+  --sidebar-accent: 240 4% 16%;
+  --sidebar-accent-foreground: 0 0% 95%;
+  --sidebar-border: 240 4% 16%;
+  --sidebar-ring: 240 4% 50%;
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply font-sans antialiased bg-background text-foreground selection:bg-primary/20;
+  }
+  
+  /* Clean Scrollbar */
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    @apply bg-muted-foreground/20 rounded-full border-[3px] border-background bg-clip-content;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-muted-foreground/40;
+  }
+}
+
+@layer utilities {
+  /* Simplified Glass - Less Blur, Less Color */
+  .glass {
+    @apply bg-background/80 backdrop-blur-md border-b border-border;
+  }
+  
+  .glass-card {
+    @apply bg-card/60 backdrop-blur-sm border border-border/50 shadow-sm transition-all duration-200;
+  }
+  
+  .glass-card:hover {
+    @apply bg-card/80 shadow-md border-border/80;
+  }
+  
+  .text-balance {
+    text-wrap: balance;
+  }
+  
+  /* Sidebar Glass */
+  .sidebar-glass {
+    @apply bg-sidebar/80 backdrop-blur-xl border-r border-sidebar-border;
+  }
+}
+
+/* Animations */
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes slide-up {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-in {
+  animation: fade-in 0.3s ease-out;
+}
+
+.animate-slide-up {
+  animation: slide-up 0.3s ease-out;
+}

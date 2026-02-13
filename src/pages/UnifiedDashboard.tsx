@@ -4,16 +4,16 @@ import { Shell } from '@/components/layout/Shell';
 import { StatCard } from '@/components/data/StatCard';
 import { HashrateChart } from '@/components/data/HashrateChart';
 import { Sv1ClientTable } from '@/components/data/Sv1ClientTable';
+import { NoServicesPage } from '@/pages/NoServicesPage';
 import { 
   usePoolData, 
   useSv1ClientsData, 
   useTranslatorHealth,
   useJdcHealth,
 } from '@/hooks/usePoolData';
-import { useHashrateHistory } from '@/hooks/useHashrateHistory';
+import { useHashrateHistory, useRecordHashrate } from '@/context/HashrateHistoryContext';
 import { formatHashrate, formatUptime, formatDifficulty } from '@/lib/utils';
 import type { Sv1ClientInfo } from '@/types/api';
-import { useUiConfig } from '@/hooks/useUiConfig';
 
 /**
  * Unified Dashboard for the SV2 Mining Stack.
@@ -32,15 +32,23 @@ export function UnifiedDashboard() {
   const [searchTerm, setSearchTerm] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 15;
-  const { config } = useUiConfig();
+
+  // ============================================
+  // ALL HOOKS MUST BE CALLED BEFORE ANY RETURNS
+  // (React rules of hooks)
+  // ============================================
+
+  // Health checks for status indicators
+  const { data: translatorOk, isLoading: translatorLoading, refetch: refetchTranslator } = useTranslatorHealth();
+  const { data: jdcOk, isLoading: jdcLoading, refetch: refetchJdc } = useJdcHealth();
 
   // Data from JDC or Translator depending on mode
   const { 
     modeLabel, 
     isJdMode, 
     global: poolGlobal, 
-    clientChannels,  // Downstream client channels (for hashrate, best diff)
-    serverChannels,  // Upstream server channels (for shares to Pool)
+    clientChannels,
+    serverChannels,
     isLoading: poolLoading, 
     isError: poolError 
   } = usePoolData();
@@ -50,11 +58,10 @@ export function UnifiedDashboard() {
     data: sv1Data, 
     isLoading: sv1Loading,
     refetch: refetchSv1,
-  } = useSv1ClientsData(0, 1000); // Fetch all for client-side filtering
+  } = useSv1ClientsData(0, 1000);
 
-  // Health checks for status indicators
-  const { data: translatorOk } = useTranslatorHealth();
-  const { data: jdcOk } = useJdcHealth();
+  // Get hashrate history from context
+  const hashrateHistory = useHashrateHistory();
 
   // SV1 client stats (from Translator)
   const allClients = sv1Data?.items || [];
@@ -74,14 +81,10 @@ export function UnifiedDashboard() {
     ? (poolGlobal?.clients.total_hashrate || 0)
     : sv1TotalHashrate;
 
-  const totalClientChannels = isJdMode 
-    ? (poolGlobal?.clients.total_channels || 0)
-    : activeCount;
-
   const uptime = poolGlobal?.uptime_secs || 0;
 
-  // Build hashrate history from real-time data
-  const hashrateHistory = useHashrateHistory(totalHashrate);
+  // Record hashrate to global history (persists across tab switches)
+  useRecordHashrate(totalHashrate);
 
   // Shares data from upstream SERVER channels (shares sent TO the Pool)
   const shareStats = useMemo(() => {
@@ -89,28 +92,20 @@ export function UnifiedDashboard() {
       return { accepted: 0, submitted: 0 };
     }
     
-    // Shares accepted by the Pool
     const extAccepted = serverChannels.extended_channels.reduce((sum, ch) => sum + ch.shares_accepted, 0);
     const stdAccepted = serverChannels.standard_channels.reduce((sum, ch) => sum + ch.shares_accepted, 0);
-    
-    // Submitted = sum of shares_submitted across all upstream channels
     const extSubmitted = serverChannels.extended_channels.reduce((sum, ch) => sum + ch.shares_submitted, 0);
     const stdSubmitted = serverChannels.standard_channels.reduce((sum, ch) => sum + ch.shares_submitted, 0);
-    const submitted = extSubmitted + stdSubmitted;
     
     return {
       accepted: extAccepted + stdAccepted,
-      submitted,
+      submitted: extSubmitted + stdSubmitted,
     };
   }, [serverChannels]);
 
-  // Best difficulty:
-  // - JD mode: from SV2 client channels
-  // - Translator-only mode: not available from SV1 clients API (no best_diff field)
+  // Best difficulty
   const bestDiff = useMemo(() => {
     if (!isJdMode) {
-      // Translator doesn't expose best_diff for SV1 clients
-      // We could potentially get it from server channels instead
       if (!serverChannels) return 0;
       const extBest = Math.max(...serverChannels.extended_channels.map(ch => ch.best_diff), 0);
       const stdBest = Math.max(...serverChannels.standard_channels.map(ch => ch.best_diff), 0);
@@ -125,18 +120,10 @@ export function UnifiedDashboard() {
     return Math.max(extBest, stdBest);
   }, [isJdMode, clientChannels, serverChannels]);
 
-  // Number of upstream pool channels (for shares subtitle)
-  const poolChannelCount = (serverChannels?.total_extended || 0) + (serverChannels?.total_standard || 0);
-  
-  // Number of client channels (for best diff subtitle)
-  const clientChannelCount = isJdMode 
-    ? (clientChannels?.total_extended || 0) + (clientChannels?.total_standard || 0)
-    : activeCount;
-  
   // Calculate acceptance rate
   const acceptanceRate = shareStats.submitted > 0 
     ? ((shareStats.accepted / shareStats.submitted) * 100).toFixed(2) 
-    : '0.00';
+    : null;
 
   // Filter clients by search
   const filteredClients = useMemo(() => {
@@ -155,18 +142,41 @@ export function UnifiedDashboard() {
     return filteredClients.slice(start, start + itemsPerPage);
   }, [filteredClients, currentPage, itemsPerPage]);
 
+  // ============================================
+  // CONDITIONAL RENDERING (after all hooks)
+  // ============================================
+
+  // Check if no services are connected
+  const noServicesConnected = !translatorOk && !jdcOk && !translatorLoading && !jdcLoading;
+  const healthCheckLoading = translatorLoading || jdcLoading;
+  
+  const handleRefreshConnections = () => {
+    refetchTranslator();
+    refetchJdc();
+  };
+
+  // If no services are connected, show the NoServicesPage (without Shell/sidebar)
+  if (noServicesConnected) {
+    return (
+      <NoServicesPage 
+        isLoading={healthCheckLoading}
+        onRefresh={handleRefreshConnections}
+      />
+    );
+  }
+
   return (
-    <Shell appMode="translator" appName={config.appName}>
+    <Shell appMode="translator">
       {/* Connection Status Banner */}
       <div className="flex items-center gap-4 text-sm mb-2">
         <div className="flex items-center gap-2">
-          <div className={`h-2 w-2 rounded-full ${translatorOk ? 'bg-green-500' : 'bg-red-500'}`} />
+          <div className={`h-2 w-2 rounded-full ${translatorOk ? 'bg-sv2-green' : 'bg-sv2-red'}`} />
           <span className="text-muted-foreground">Translator</span>
         </div>
         {isJdMode && (
           <div className="flex items-center gap-2">
-            <div className={`h-2 w-2 rounded-full ${jdcOk ? 'bg-green-500' : 'bg-red-500'}`} />
-            <span className="text-muted-foreground">JD Client</span>
+            <div className={`h-2 w-2 rounded-full ${jdcOk ? 'bg-sv2-green' : 'bg-sv2-red'}`} />
+            <span className="text-muted-foreground">JDC</span>
           </div>
         )}
         <span className="text-xs text-muted-foreground ml-auto">
@@ -174,134 +184,135 @@ export function UnifiedDashboard() {
         </span>
       </div>
 
-      {/* Hero Stats Section - Matches Replit */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <StatCard
-          title="Total Hashrate"
-          value={formatHashrate(totalHashrate)}
-          icon={<Activity className="h-4 w-4 text-green-500" />}
-          subtitle={`${totalClientChannels} client channel(s)`}
-          trend={totalHashrate > 0 ? { value: 2.5, isPositive: true } : undefined}
-        />
+      {/* Main Dashboard Content */}
+      <>
+          {/* Hero Stats Section */}
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+            <StatCard
+              title="Total Hashrate"
+              value={formatHashrate(totalHashrate)}
+              icon={<Activity className="h-4 w-4 text-primary" />}
+            />
 
-        <StatCard
-          title="Active Workers"
-          value={
-            <span>
-              {activeCount} <span className="text-muted-foreground text-lg">/ {totalClients}</span>
-            </span>
-          }
-          icon={<Server className="h-4 w-4 text-primary" />}
-          subtitle={`${totalClients - activeCount} offline workers`}
-        />
+            <StatCard
+              title="Active Workers"
+              value={
+                <span>
+                  {activeCount} <span className="text-muted-foreground text-lg">/ {totalClients}</span>
+                </span>
+              }
+              icon={<Server className="h-4 w-4 text-primary" />}
+              subtitle={undefined}
+            />
 
-        <StatCard
-          title="Shares to Pool"
-          value={
-            <span>
-              {shareStats.accepted.toLocaleString()} 
-              <span className="text-muted-foreground text-lg"> / {shareStats.submitted.toLocaleString()}</span>
-            </span>
-          }
-          icon={<ArrowUpRight className="h-4 w-4 text-green-500" />}
-          subtitle={`${acceptanceRate}% accepted via ${poolChannelCount} channel(s)`}
-        />
+            <StatCard
+              title="Shares to Pool"
+              value={
+                <span>
+                  {shareStats.accepted.toLocaleString()} 
+                  <span className="text-muted-foreground text-lg"> / {shareStats.submitted.toLocaleString()}</span>
+                </span>
+              }
+              icon={<ArrowUpRight className="h-4 w-4 text-sv2-green" />}
+              subtitle={acceptanceRate ? `${acceptanceRate}% accepted` : undefined}
+            />
 
-        <StatCard
-          title="Best Difficulty"
-          value={bestDiff > 0 ? formatDifficulty(bestDiff) : '-'}
-          icon={<Activity className="h-4 w-4 text-primary" />}
-          subtitle={`from ${clientChannelCount} client channel(s)`}
-        />
-      </div>
-
-      {/* Main Chart - Real data accumulated over time */}
-      <HashrateChart 
-        data={hashrateHistory}
-        title="Hashrate History"
-        description="Real-time data collected since page load"
-      />
-
-      {/* Loading / Error States */}
-      {poolLoading && (
-        <div className="rounded-xl border border-border/40 bg-card/40 backdrop-blur-sm p-8 text-center text-muted-foreground">
-          Connecting to monitoring API...
-        </div>
-      )}
-
-      {poolError && (
-        <div className="rounded-xl border border-red-500/40 bg-red-500/10 backdrop-blur-sm p-8 text-center text-red-500">
-          Failed to connect. Make sure Translator (and optionally JDC) are running with monitoring enabled.
-        </div>
-      )}
-
-      {/* Actions Bar - Sticky Header (Matches Replit) */}
-      {!poolLoading && !poolError && (
-        <div className="sticky top-0 z-30 bg-background/60 backdrop-blur-xl py-3 -mx-6 px-6 md:-mx-8 md:px-8 border-y border-border/40 transition-all duration-200 shadow-sm supports-[backdrop-filter]:bg-background/60 mt-8 mb-0">
-          <div className="flex flex-col sm:flex-row items-center justify-between gap-4 max-w-7xl mx-auto">
-            <div className="flex items-center gap-2 w-full sm:w-auto">
-              <div className="relative w-full sm:w-72">
-                <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-                <input
-                  type="text"
-                  placeholder="Search workers..."
-                  className="w-full pl-9 h-9 bg-muted/30 border border-border/50 focus:bg-background transition-all rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary/20"
-                  value={searchTerm}
-                  onChange={(e) => {
-                    setSearchTerm(e.target.value);
-                    setCurrentPage(1);
-                  }}
-                />
-              </div>
-            </div>
-
-            <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
-              <button
-                onClick={() => refetchSv1()}
-                className="h-9 px-3 rounded-lg border border-border/50 bg-muted/30 hover:bg-background transition-colors flex items-center gap-2 text-sm"
-              >
-                <RefreshCw className="h-4 w-4" />
-                Refresh
-              </button>
-            </div>
+            <StatCard
+              title="Best Difficulty"
+              value={bestDiff > 0 ? formatDifficulty(bestDiff) : '-'}
+              icon={<Activity className="h-4 w-4 text-primary" />}
+              subtitle={undefined}
+            />
           </div>
-        </div>
-      )}
 
-      {/* Workers Table */}
-      {!poolLoading && !poolError && (
-        <>
-          <Sv1ClientTable
-            clients={paginatedClients}
-            isLoading={sv1Loading}
+          {/* Main Chart */}
+          <HashrateChart 
+            data={hashrateHistory}
+            title="Hashrate History"
+            description="Real-time data collected since page load"
           />
 
-          {/* Pagination Footer */}
-          {filteredClients.length > itemsPerPage && (
-            <div className="flex items-center justify-between mt-4">
-              <div className="text-sm text-muted-foreground">
-                Showing {paginatedClients.length} of {filteredClients.length} workers
-              </div>
-              <div className="flex gap-2">
-                <button
-                  onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-                  disabled={currentPage === 1}
-                  className="px-3 py-1.5 text-sm border border-border/50 rounded-lg hover:bg-muted/50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                >
-                  Previous
-                </button>
-                <button
-                  onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-                  disabled={currentPage === totalPages}
-                  className="px-3 py-1.5 text-sm border border-border/50 rounded-lg hover:bg-muted/50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                >
-                  Next
-                </button>
+          {/* Loading / Error States */}
+          {poolLoading && (
+            <div className="rounded-xl border border-border/40 bg-card/40 backdrop-blur-sm p-8 text-center text-muted-foreground">
+              Connecting to monitoring API...
+            </div>
+          )}
+
+          {poolError && (
+            <div className="rounded-xl border border-sv2-red/40 bg-sv2-red/10 backdrop-blur-sm p-8 text-center text-sv2-red">
+              Failed to connect. Make sure Translator (and optionally JDC) are running with monitoring enabled.
+            </div>
+          )}
+
+          {/* Actions Bar */}
+          {!poolLoading && !poolError && (
+            <div className="sticky top-0 z-30 bg-background/60 backdrop-blur-xl py-3 -mx-6 px-6 md:-mx-8 md:px-8 border-y border-border/40 transition-all duration-200 shadow-sm supports-[backdrop-filter]:bg-background/60 mt-8 mb-0">
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-4 max-w-7xl mx-auto">
+                <div className="flex items-center gap-2 w-full sm:w-auto">
+                  <div className="relative w-full sm:w-72">
+                    <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+                    <input
+                      type="text"
+                      placeholder="Search workers..."
+                      className="w-full pl-9 h-9 bg-muted/30 border border-border/50 focus:bg-background transition-all rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary/20"
+                      value={searchTerm}
+                      onChange={(e) => {
+                        setSearchTerm(e.target.value);
+                        setCurrentPage(1);
+                      }}
+                    />
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+                  <button
+                    onClick={() => refetchSv1()}
+                    className="h-9 px-3 rounded-lg border border-border/50 bg-muted/30 hover:bg-background transition-colors flex items-center gap-2 text-sm"
+                  >
+                    <RefreshCw className="h-4 w-4" />
+                    Refresh
+                  </button>
+                </div>
               </div>
             </div>
           )}
+
+          {/* Workers Table */}
+          {!poolLoading && !poolError && (
+            <>
+              <Sv1ClientTable
+                clients={paginatedClients}
+                isLoading={sv1Loading}
+              />
+
+              {/* Pagination Footer */}
+              {filteredClients.length > itemsPerPage && (
+                <div className="flex items-center justify-between mt-4">
+                  <div className="text-sm text-muted-foreground">
+                    Showing {paginatedClients.length} of {filteredClients.length} workers
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                      disabled={currentPage === 1}
+                      className="px-3 py-1.5 text-sm border border-border/50 rounded-lg hover:bg-muted/50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                    >
+                      Previous
+                    </button>
+                    <button
+                      onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                      disabled={currentPage === totalPages}
+                      className="px-3 py-1.5 text-sm border border-border/50 rounded-lg hover:bg-muted/50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                    >
+                      Next
+                    </button>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
         </>
-      )}
     </Shell>
   );
 }

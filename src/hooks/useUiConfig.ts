@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 
 type UiConfig = {
-  appName: string;
+  // Custom logo URL (empty string means use default SV2 logo)
+  customLogoUrl: string;
   // Stored as HSL triplet string, e.g. '240 5% 96%'
   secondary: string;
 };
@@ -9,7 +10,7 @@ type UiConfig = {
 const STORAGE_KEY = 'sv2-ui-config';
 
 const DEFAULT_CONFIG: UiConfig = {
-  appName: 'SV2 Mining Stack',
+  customLogoUrl: '',
   // Match current light secondary from index.css
   secondary: '240 5% 96%',
 };
@@ -21,7 +22,7 @@ function loadConfig(): UiConfig {
     if (!raw) return DEFAULT_CONFIG;
     const parsed = JSON.parse(raw) as Partial<UiConfig>;
     return {
-      appName: parsed.appName || DEFAULT_CONFIG.appName,
+      customLogoUrl: parsed.customLogoUrl ?? DEFAULT_CONFIG.customLogoUrl,
       secondary: parsed.secondary || DEFAULT_CONFIG.secondary,
     };
   } catch {

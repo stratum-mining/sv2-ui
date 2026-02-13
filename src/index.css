@@ -3,98 +3,133 @@
 @tailwind utilities;
 
 /* 
-  Apple-inspired Design System 
-  "Industrial Precision" - Refined
-  Matching Replit SV2 UI style
+  SV2 UI Design System
+  Aligned with stratumprotocol.org styling
+  Cyan primary, pure black dark mode
 */
 
 :root {
-  /* Light Mode: Clean, High Contrast, Neutral */
-  --background: 0 0% 98%;    /* #FAFAFA */
-  --foreground: 240 5% 10%;  /* #18181B */
+  /* Light Mode - Swiss Style (from stratumprotocol.org) */
+  --background: 0 0% 100%;       /* Pure white */
+  --foreground: 0 0% 9%;         /* Near black text */
   
   --card: 0 0% 100%;
-  --card-foreground: 240 5% 10%;
+  --card-foreground: 0 0% 9%;
   
   --popover: 0 0% 100%;
-  --popover-foreground: 240 5% 10%;
+  --popover-foreground: 0 0% 9%;
   
-  --primary: 240 5% 10%;     /* #18181B */
+  --primary: 190 100% 45%;       /* Cyan - SV2 brand color */
   --primary-foreground: 0 0% 100%;
   
-  --secondary: 240 5% 96%;   /* #F4F4F5 */
-  --secondary-foreground: 240 5% 10%;
+  --secondary: 240 5% 96%;
+  --secondary-foreground: 0 0% 9%;
   
   --muted: 240 5% 96%;
   --muted-foreground: 240 4% 46%;
   
   --accent: 240 5% 96%;
-  --accent-foreground: 240 5% 10%;
+  --accent-foreground: 0 0% 9%;
   
   --destructive: 0 84% 60%;
   --destructive-foreground: 0 0% 100%;
 
-  --border: 240 6% 90%;      /* #E4E4E7 */
+  --border: 240 6% 90%;
   --input: 240 6% 90%;
-  --ring: 240 5% 10%;
+  --ring: 190 100% 45%;          /* Cyan ring */
 
-  --radius: 0.5rem;          /* 8px - Precision feel for pro dashboard */
+  --radius: 0.5rem;
 
   --sidebar: 0 0% 98%;
   --sidebar-foreground: 240 5% 40%;
-  --sidebar-primary: 240 5% 10%;
+  --sidebar-primary: 190 100% 45%;
   --sidebar-primary-foreground: 0 0% 100%;
   --sidebar-accent: 240 5% 96%;
-  --sidebar-accent-foreground: 240 5% 10%;
+  --sidebar-accent-foreground: 0 0% 9%;
   --sidebar-border: 240 6% 90%;
-  --sidebar-ring: 240 5% 65%;
+  --sidebar-ring: 190 100% 45%;
   
-  /* System Colors - Standardized */
-  --chart-1: 142 70% 45%; /* Green */
-  --chart-2: 0 84% 60%;   /* Red */
-  --chart-3: 35 90% 50%;  /* Amber */
-  --chart-4: 210 90% 50%; /* Blue */
-  --chart-5: 260 50% 55%; /* Purple */
+  /* Chart Colors */
+  --chart-1: 190 100% 45%;   /* Cyan */
+  --chart-2: 0 84% 60%;      /* Red */
+  --chart-3: 45 93% 47%;     /* Amber */
+  --chart-4: 217 91% 60%;    /* Blue */
+  --chart-5: 262 83% 58%;    /* Purple */
+  
+  /* SV2 Brand Colors */
+  --sv2-cyan: 190 100% 45%;      /* Primary brand */
+  --sv2-green: 142 76% 36%;      /* Success/Online */
+  --sv2-yellow: 45 93% 47%;      /* Warning */
+  --sv2-red: 0 84% 60%;          /* Error/Offline */
+  
+  /* Semantic Colors */
+  --success: 142 76% 36%;
+  --success-foreground: 0 0% 100%;
+  --warning: 45 93% 47%;
+  --warning-foreground: 0 0% 100%;
+  --info: 217 91% 60%;
+  --info-foreground: 0 0% 100%;
 }
 
 .dark {
-  /* Dark Mode: "Pro" - Neutral Grays, No tints */
-  --background: 240 5% 8%;   /* #121214 - Matte Dark */
-  --foreground: 0 0% 95%;
+  /* Dark Mode - Stratum Aesthetic (from stratumprotocol.org) */
+  --background: 0 0% 0%;         /* Pure black */
+  --foreground: 0 0% 98%;
   
-  --card: 240 5% 10%;        /* #18181B */
-  --card-foreground: 0 0% 95%;
+  --card: 0 0% 4%;               /* Near black cards */
+  --card-foreground: 0 0% 98%;
   
-  --popover: 240 5% 10%;
-  --popover-foreground: 0 0% 95%;
+  --popover: 0 0% 4%;
+  --popover-foreground: 0 0% 98%;
   
-  --primary: 0 0% 95%;
-  --primary-foreground: 240 5% 10%;
+  --primary: 190 100% 50%;       /* Electric Cyan */
+  --primary-foreground: 0 0% 0%;
   
-  --secondary: 240 4% 16%;   /* #27272A */
-  --secondary-foreground: 0 0% 95%;
+  --secondary: 0 0% 10%;
+  --secondary-foreground: 0 0% 98%;
   
-  --muted: 240 4% 16%;
-  --muted-foreground: 240 5% 60%;
+  --muted: 0 0% 10%;
+  --muted-foreground: 0 0% 60%;
   
-  --accent: 240 4% 16%;
-  --accent-foreground: 0 0% 95%;
+  --accent: 0 0% 15%;
+  --accent-foreground: 0 0% 98%;
   
-  --destructive: 0 60% 50%;
+  --destructive: 0 62% 55%;
   --destructive-foreground: 0 0% 100%;
   
-  --border: 240 4% 16%;
-  --input: 240 4% 16%;
-  --ring: 240 4% 50%;
+  --border: 0 0% 15%;
+  --input: 0 0% 15%;
+  --ring: 190 100% 50%;
 
-  --sidebar: 240 5% 8%;
-  --sidebar-foreground: 240 5% 60%;
-  --sidebar-primary: 0 0% 95%;
-  --sidebar-primary-foreground: 240 5% 10%;
-  --sidebar-accent: 240 4% 16%;
-  --sidebar-accent-foreground: 0 0% 95%;
-  --sidebar-border: 240 4% 16%;
-  --sidebar-ring: 240 4% 50%;
+  --sidebar: 0 0% 0%;
+  --sidebar-foreground: 0 0% 60%;
+  --sidebar-primary: 190 100% 50%;
+  --sidebar-primary-foreground: 0 0% 0%;
+  --sidebar-accent: 0 0% 15%;
+  --sidebar-accent-foreground: 0 0% 98%;
+  --sidebar-border: 0 0% 15%;
+  --sidebar-ring: 190 100% 50%;
+  
+  /* Chart Colors - Dark Mode */
+  --chart-1: 190 100% 50%;   /* Cyan */
+  --chart-2: 0 70% 55%;      /* Red */
+  --chart-3: 45 93% 52%;     /* Amber */
+  --chart-4: 217 91% 65%;    /* Blue */
+  --chart-5: 262 83% 63%;    /* Purple */
+  
+  /* SV2 Brand Colors - Dark Mode */
+  --sv2-cyan: 190 100% 50%;
+  --sv2-green: 142 70% 45%;
+  --sv2-yellow: 45 93% 52%;
+  --sv2-red: 0 70% 55%;
+  
+  /* Semantic Colors - Dark Mode */
+  --success: 142 70% 45%;
+  --success-foreground: 0 0% 100%;
+  --warning: 45 93% 52%;
+  --warning-foreground: 0 0% 100%;
+  --info: 217 91% 65%;
+  --info-foreground: 0 0% 100%;
 }
 
 @layer base {

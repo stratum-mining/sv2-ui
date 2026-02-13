@@ -13,7 +13,6 @@ import {
   Server,
   ArrowUpRight,
 } from 'lucide-react';
-import { useUiConfig } from '@/hooks/useUiConfig';
 
 /**
  * Pool Statistics page.
@@ -30,7 +29,6 @@ export function PoolStats() {
     isLoading, 
     isError 
   } = usePoolData();
-  const { config } = useUiConfig();
 
   // Calculate stats from channels
   const stats = useMemo(() => {
@@ -75,10 +73,10 @@ export function PoolStats() {
   // Calculate acceptance rate
   const acceptanceRate = stats.sharesSubmitted > 0 
     ? ((stats.sharesAccepted / stats.sharesSubmitted) * 100).toFixed(2) 
-    : '100.00';
+    : null;
 
   return (
-    <Shell appMode="translator" appName={config.appName}>
+    <Shell appMode="translator">
       <div className="space-y-8">
         <div>
           <h2 className="text-2xl font-bold tracking-tight">Pool Statistics</h2>
@@ -96,7 +94,7 @@ export function PoolStats() {
         )}
 
         {isError && (
-          <div className="rounded-xl border border-red-500/40 bg-red-500/10 backdrop-blur-sm p-8 text-center text-red-500">
+          <div className="rounded-xl border border-sv2-red/40 bg-sv2-red/10 backdrop-blur-sm p-8 text-center text-sv2-red">
             Failed to connect to monitoring API. Make sure {modeLabel} is running.
           </div>
         )}
@@ -113,8 +111,8 @@ export function PoolStats() {
                     <span className="text-muted-foreground text-lg"> / {stats.sharesSubmitted.toLocaleString()}</span>
                   </span>
                 }
-                icon={<CheckCircle2 className="h-4 w-4 text-green-500" />}
-                subtitle={`${acceptanceRate}% acceptance rate`}
+                icon={<CheckCircle2 className="h-4 w-4 text-sv2-green" />}
+                subtitle={acceptanceRate ? `${acceptanceRate}% acceptance rate` : 'No shares submitted yet'}
               />
 
               <StatCard
@@ -127,7 +125,7 @@ export function PoolStats() {
               <StatCard
                 title="Share Work Sum"
                 value={stats.shareWorkSum.toLocaleString()}
-                icon={<Activity className="h-4 w-4 text-green-500" />}
+                icon={<Activity className="h-4 w-4 text-primary" />}
                 subtitle="Cumulative work submitted"
               />
 
@@ -150,7 +148,7 @@ export function PoolStats() {
               <StatCard
                 title="Upstream Hashrate"
                 value={formatHashrate(poolGlobal?.server.total_hashrate || 0)}
-                icon={<Activity className="h-4 w-4 text-green-500" />}
+                icon={<Activity className="h-4 w-4 text-primary" />}
                 subtitle="Reported to pool"
               />
 
@@ -199,7 +197,9 @@ export function PoolStats() {
                   </div>
                   <div className="space-y-1">
                     <p className="text-sm text-muted-foreground">Status</p>
-                    <p className="font-medium text-green-500">Connected</p>
+                    <p className={`font-medium ${isError ? 'text-sv2-red' : 'text-sv2-green'}`}>
+                      {isError ? 'Disconnected' : 'Connected'}
+                    </p>
                   </div>
                 </div>
               </CardContent>

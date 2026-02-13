@@ -1,0 +1,36 @@
+[package]
+name = "sv2-ui"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.85"
+description = "Stratum V2 UI Server - serves the monitoring dashboard"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/stratum-mining/sv2-ui"
+
+[[bin]]
+name = "sv2-ui"
+path = "src/main.rs"
+
+[dependencies]
+# Web server
+axum = "0.7"
+tokio = { version = "1", features = ["full"] }
+tower-http = { version = "0.5", features = ["fs", "cors"] }
+hyper = { version = "1", features = ["full"] }
+hyper-util = { version = "0.1", features = ["client-legacy", "http1", "tokio"] }
+http-body-util = "0.1"
+
+# Embed static files
+rust-embed = { version = "8", features = ["compression"] }
+mime_guess = "2"
+
+# CLI and utilities
+clap = { version = "4", features = ["derive"] }
+open = "5"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true

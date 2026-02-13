@@ -1,0 +1,51 @@
+# Docker Compose for SV2 UI
+#
+# This provides the UI service that proxies to JDC and Translator.
+# 
+# Usage with sv2-apps:
+#   1. Start sv2-apps stack (JDC, Translator, etc.)
+#   2. Run: docker compose up
+#   3. Open http://localhost:3000
+#
+# Standalone (connects to external backends):
+#   1. Update deploy/nginx.conf with your backend addresses
+#   2. Run: docker compose up --build
+
+version: '3.8'
+
+services:
+  ui:
+    build: .
+    ports:
+      - "3000:80"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost/health"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+    # Uncomment to use custom nginx config without rebuilding
+    # volumes:
+    #   - ./deploy/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+
+# To connect to sv2-apps network (if they're in a separate compose):
+# networks:
+#   default:
+#     name: sv2-apps_default
+#     external: true
+
+# Example: Run alongside sv2-apps in same compose
+# Uncomment and adjust if you want to include JDC/Translator here
+#
+# services:
+#   jdc:
+#     image: ghcr.io/stratum-mining/jd-client:latest
+#     ports:
+#       - "9091:9091"
+#     # ... JDC config ...
+#
+#   translator:
+#     image: ghcr.io/stratum-mining/translator-sv2:latest
+#     ports:
+#       - "9092:9092"
+#     # ... Translator config ...

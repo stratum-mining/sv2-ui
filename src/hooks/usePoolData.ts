@@ -43,7 +43,7 @@ function getEndpoints() {
     return {
       jdc: {
         base: '/jdc-api/v1',
-        label: 'JD Client',
+        label: 'Job Declarator Client',
       },
       translator: {
         base: '/translator-api/v1',
@@ -52,24 +52,21 @@ function getEndpoints() {
     };
   }
   
-  // Production: use absolute URLs
+  // Production: check URL params, then env vars, then fall back to proxy paths
   const urlParams = new URLSearchParams(window.location.search);
   
-  const jdcUrl = urlParams.get('jdc_url') 
-    || import.meta.env.VITE_JDC_URL 
-    || 'http://localhost:9091';
+  const jdcUrl = urlParams.get('jdc_url') || import.meta.env.VITE_JDC_URL;
+  const translatorUrl = urlParams.get('translator_url') || import.meta.env.VITE_TRANSLATOR_URL;
   
-  const translatorUrl = urlParams.get('translator_url') 
-    || import.meta.env.VITE_TRANSLATOR_URL 
-    || 'http://localhost:9092';
-  
+  // If explicit URLs provided, use them (for CORS-enabled or direct access)
+  // Otherwise, use proxy paths (for Nginx/reverse proxy deployments)
   return {
     jdc: {
-      base: `${jdcUrl}/api/v1`,
-      label: 'JD Client',
+      base: jdcUrl ? `${jdcUrl}/api/v1` : '/jdc-api/v1',
+      label: 'Job Declarator Client',
     },
     translator: {
-      base: `${translatorUrl}/api/v1`,
+      base: translatorUrl ? `${translatorUrl}/api/v1` : '/translator-api/v1',
       label: 'Translator',
     },
   };
@@ -264,10 +261,15 @@ export function useTranslatorHealth() {
   return useQuery({
     queryKey: ['translator-health'],
     queryFn: async () => {
-      const response = await fetch(`${endpoints.translator.base}/health`, {
-        signal: AbortSignal.timeout(2000),
-      });
-      return response.ok;
+      try {
+        const response = await fetch(`${endpoints.translator.base}/health`, {
+          signal: AbortSignal.timeout(2000),
+        });
+        return response.ok;
+      } catch {
+        // Network error, timeout, etc.
+        return false;
+      }
     },
     refetchInterval: 5000,
     retry: false,
@@ -283,10 +285,15 @@ export function useJdcHealth() {
   return useQuery({
     queryKey: ['jdc-health'],
     queryFn: async () => {
-      const response = await fetch(`${endpoints.jdc.base}/health`, {
-        signal: AbortSignal.timeout(2000),
-      });
-      return response.ok;
+      try {
+        const response = await fetch(`${endpoints.jdc.base}/health`, {
+          signal: AbortSignal.timeout(2000),
+        });
+        return response.ok;
+      } catch {
+        // Network error, timeout, etc.
+        return false;
+      }
     },
     refetchInterval: 5000,
     retry: false,

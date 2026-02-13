@@ -39,7 +39,7 @@ export function Settings({ appMode = 'translator' }: SettingsProps) {
   };
 
   return (
-    <Shell appMode={appMode} appName={config.appName}>
+    <Shell appMode={appMode}>
       <div className="max-w-5xl mx-auto space-y-8">
         <div className="flex items-center justify-between">
           <div>
@@ -67,7 +67,7 @@ export function Settings({ appMode = 'translator' }: SettingsProps) {
           <TabsContent value="status">
             <div className="space-y-6 animate-in slide-in-from-left-2 duration-300">
               {/* Connection Status Card */}
-              <Card className="glass-card border-none shadow-md bg-card/40">
+              <Card className="border border-border/50 shadow-md bg-card">
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
                     <Network className="h-5 w-5 text-primary" /> Connection Status
@@ -77,11 +77,11 @@ export function Settings({ appMode = 'translator' }: SettingsProps) {
                 <CardContent className="space-y-4">
                   <div className="grid gap-4">
                     {/* Translator Status */}
-                    <div className="flex items-center justify-between p-4 rounded-lg border border-border/50 bg-muted/20">
+                    <div className="flex items-center justify-between p-4 rounded-lg border border-border bg-muted/50">
                       <div className="flex items-center gap-3">
                         <div className={`h-3 w-3 rounded-full ${
-                          translatorLoading ? 'bg-yellow-500 animate-pulse' :
-                          translatorOk ? 'bg-green-500' : 'bg-red-500'
+                          translatorLoading ? 'bg-sv2-yellow animate-pulse' :
+                          translatorOk ? 'bg-sv2-green' : 'bg-sv2-red'
                         }`} />
                         <div>
                           <p className="font-medium">Translator Proxy</p>
@@ -94,22 +94,22 @@ export function Settings({ appMode = 'translator' }: SettingsProps) {
                         {translatorLoading ? (
                           <span className="text-xs text-muted-foreground">Checking...</span>
                         ) : translatorOk ? (
-                          <CheckCircle2 className="h-5 w-5 text-green-500" />
+                          <CheckCircle2 className="h-5 w-5 text-sv2-green" />
                         ) : (
-                          <XCircle className="h-5 w-5 text-red-500" />
+                          <XCircle className="h-5 w-5 text-sv2-red" />
                         )}
                       </div>
                     </div>
 
                     {/* JDC Status */}
-                    <div className="flex items-center justify-between p-4 rounded-lg border border-border/50 bg-muted/20">
+                    <div className="flex items-center justify-between p-4 rounded-lg border border-border bg-muted/50">
                       <div className="flex items-center gap-3">
                         <div className={`h-3 w-3 rounded-full ${
-                          jdcLoading ? 'bg-yellow-500 animate-pulse' :
-                          jdcOk ? 'bg-green-500' : 'bg-neutral-400'
+                          jdcLoading ? 'bg-sv2-yellow animate-pulse' :
+                          jdcOk ? 'bg-sv2-green' : 'bg-neutral-400'
                         }`} />
                         <div>
-                          <p className="font-medium">JD Client</p>
+                          <p className="font-medium">Job Declarator Client</p>
                           <p className="text-xs text-muted-foreground font-mono">
                             {endpoints.jdc.base}
                           </p>
@@ -119,7 +119,7 @@ export function Settings({ appMode = 'translator' }: SettingsProps) {
                         {jdcLoading ? (
                           <span className="text-xs text-muted-foreground">Checking...</span>
                         ) : jdcOk ? (
-                          <CheckCircle2 className="h-5 w-5 text-green-500" />
+                          <CheckCircle2 className="h-5 w-5 text-sv2-green" />
                         ) : (
                           <span className="text-xs text-muted-foreground">Not running</span>
                         )}
@@ -147,7 +147,7 @@ export function Settings({ appMode = 'translator' }: SettingsProps) {
               </Card>
 
               {/* System Info Card */}
-              <Card className="glass-card border-none shadow-md bg-card/40">
+              <Card className="border border-border/50 shadow-md bg-card">
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
                     <Info className="h-5 w-5 text-primary" /> System Information
@@ -177,7 +177,7 @@ export function Settings({ appMode = 'translator' }: SettingsProps) {
           {/* Endpoints Tab */}
           <TabsContent value="endpoints">
             <div className="space-y-6 animate-in slide-in-from-right-2 duration-300">
-              <Card className="glass-card border-none shadow-md bg-card/40">
+              <Card className="border border-border/50 shadow-md bg-card">
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
                     <Server className="h-5 w-5 text-primary" /> Endpoint Configuration
@@ -189,12 +189,12 @@ export function Settings({ appMode = 'translator' }: SettingsProps) {
                 <CardContent className="space-y-6">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div className="space-y-2">
-                      <Label>JD Client URL</Label>
+                      <Label>JDC URL</Label>
                       <div className="flex gap-2">
                         <Input 
                           value={endpoints.jdc.base} 
                           readOnly 
-                          className="font-mono text-sm bg-background/50 border-border/50"
+                          className="font-mono text-sm bg-background border-border"
                         />
                         <Button 
                           variant="outline" 
@@ -214,7 +214,7 @@ export function Settings({ appMode = 'translator' }: SettingsProps) {
                         <Input 
                           value={endpoints.translator.base} 
                           readOnly 
-                          className="font-mono text-sm bg-background/50 border-border/50"
+                          className="font-mono text-sm bg-background border-border"
                         />
                         <Button 
                           variant="outline" 
@@ -241,7 +241,7 @@ export function Settings({ appMode = 'translator' }: SettingsProps) {
                 </CardContent>
               </Card>
 
-              <Card className="glass-card border-none shadow-md bg-card/40">
+              <Card className="border border-border/50 shadow-md bg-card">
                 <CardHeader>
                   <CardTitle>Example URLs</CardTitle>
                   <CardDescription>How to configure endpoints via URL parameters.</CardDescription>
@@ -249,13 +249,13 @@ export function Settings({ appMode = 'translator' }: SettingsProps) {
                 <CardContent className="space-y-4">
                   <div className="space-y-2">
                     <Label>Local Development (JD mode)</Label>
-                    <code className="block p-3 rounded-md bg-muted/50 text-xs font-mono break-all">
+                    <code className="block p-3 rounded-md bg-muted text-xs font-mono break-all text-foreground">
                       http://localhost:5173/?jdc_url=http://localhost:9091&translator_url=http://localhost:9092
                     </code>
                   </div>
                   <div className="space-y-2">
                     <Label>Remote Server</Label>
-                    <code className="block p-3 rounded-md bg-muted/50 text-xs font-mono break-all">
+                    <code className="block p-3 rounded-md bg-muted text-xs font-mono break-all text-foreground">
                       https://ui.example.com/?jdc_url=http://192.168.1.100:9091&translator_url=http://192.168.1.100:9092
                     </code>
                   </div>
@@ -267,7 +267,7 @@ export function Settings({ appMode = 'translator' }: SettingsProps) {
           {/* API Docs Tab */}
           <TabsContent value="api">
             <div className="space-y-6 animate-in slide-in-from-bottom-2 duration-300">
-              <Card className="glass-card border-none shadow-md bg-card/40">
+              <Card className="border border-border/50 shadow-md bg-card">
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
                     <Activity className="h-5 w-5 text-primary" /> Monitoring API
@@ -305,7 +305,7 @@ export function Settings({ appMode = 'translator' }: SettingsProps) {
                 </CardContent>
               </Card>
 
-              <Card className="glass-card border-none shadow-md bg-card/40">
+              <Card className="border border-border/50 shadow-md bg-card">
                 <CardHeader>
                   <CardTitle>Interactive Documentation</CardTitle>
                   <CardDescription>Access Swagger UI for full API exploration.</CardDescription>
@@ -345,7 +345,7 @@ export function Settings({ appMode = 'translator' }: SettingsProps) {
                 </CardContent>
               </Card>
 
-              <Card className="glass-card border-none shadow-md bg-card/40">
+              <Card className="border border-border/50 shadow-md bg-card">
                 <CardHeader>
                   <CardTitle>Prometheus Metrics</CardTitle>
                   <CardDescription>Metrics endpoint for monitoring integration.</CardDescription>
@@ -390,26 +390,39 @@ export function Settings({ appMode = 'translator' }: SettingsProps) {
           {/* Appearance Tab */}
           <TabsContent value="appearance">
             <div className="space-y-6 animate-in slide-in-from-bottom-2 duration-300">
-              <Card className="glass-card border-none shadow-md bg-card/40">
+              <Card className="border border-border/50 shadow-md bg-card">
                 <CardHeader>
                   <CardTitle>Branding</CardTitle>
                   <CardDescription>
-                    Customize the name shown in the sidebar and the secondary surface color.
+                    Customize the logo shown in the sidebar and the secondary surface color.
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-6">
                   <div className="space-y-2">
-                    <Label htmlFor="app-name">App name</Label>
+                    <Label htmlFor="custom-logo">Custom Logo URL</Label>
                     <Input
-                      id="app-name"
-                      value={config.appName}
-                      onChange={(e) => updateConfig({ appName: e.target.value })}
-                      placeholder="SV2 Mining Stack"
+                      id="custom-logo"
+                      value={config.customLogoUrl}
+                      onChange={(e) => updateConfig({ customLogoUrl: e.target.value })}
+                      placeholder="https://example.com/logo.png"
                       className="max-w-md"
                     />
                     <p className="text-xs text-muted-foreground">
-                      This text appears in the sidebar header instead of the default name.
+                      Enter a URL to your custom logo image. Leave empty to use the default Stratum V2 logo.
                     </p>
+                    {config.customLogoUrl && (
+                      <div className="mt-3 p-3 rounded-lg bg-muted/50 border border-border/50">
+                        <p className="text-xs text-muted-foreground mb-2">Preview:</p>
+                        <img 
+                          src={config.customLogoUrl} 
+                          alt="Custom logo preview" 
+                          className="h-8 w-auto max-w-[200px] object-contain"
+                          onError={(e) => {
+                            (e.target as HTMLImageElement).style.display = 'none';
+                          }}
+                        />
+                      </div>
+                    )}
                   </div>
 
                   <div className="space-y-2">
@@ -522,7 +535,7 @@ function EndpointRow({ method, path, description }: { method: string; path: stri
   return (
     <div className="flex items-center justify-between py-2 border-b border-border/30 last:border-0">
       <div className="flex items-center gap-3">
-        <span className="text-xs font-bold text-green-500 w-10">{method}</span>
+        <span className="text-xs font-bold text-sv2-green w-10">{method}</span>
         <code className="text-primary">{path}</code>
       </div>
       <span className="text-muted-foreground text-xs">{description}</span>

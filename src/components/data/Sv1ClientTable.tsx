@@ -65,7 +65,7 @@ export function Sv1ClientTable({ clients, isLoading }: Sv1ClientTableProps) {
                 <div className="flex items-center space-x-2">
                   <div className={cn(
                     "h-2.5 w-2.5 rounded-full shadow-sm",
-                    client.hashrate !== null ? "bg-green-500" : "bg-muted-foreground"
+                    client.hashrate !== null ? "bg-sv2-green" : "bg-muted-foreground"
                   )} />
                   <span>{client.authorized_worker_name || '-'}</span>
                 </div>
@@ -84,7 +84,7 @@ export function Sv1ClientTable({ clients, isLoading }: Sv1ClientTableProps) {
               </TableCell>
               <TableCell className="hidden xl:table-cell">
                 {client.version_rolling_mask ? (
-                  <span className="inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold bg-green-500/10 text-green-500 border-green-500/20">
+                  <span className="inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold bg-sv2-green/10 text-sv2-green border-sv2-green/20">
                     {truncateHex(client.version_rolling_mask, 4)}
                   </span>
                 ) : (

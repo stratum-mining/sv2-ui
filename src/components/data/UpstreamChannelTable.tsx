@@ -99,7 +99,7 @@ export function UpstreamChannelTable({
                 {channel.type === 'extended' && 'version_rolling' in channel ? (
                   <span className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold ${
                     (channel as ServerExtendedChannelInfo).version_rolling 
-                      ? 'bg-green-500/10 text-green-500 border-green-500/20' 
+                      ? 'bg-sv2-green/10 text-sv2-green border-sv2-green/20' 
                       : 'bg-muted text-muted-foreground border-border'
                   }`}>
                     {(channel as ServerExtendedChannelInfo).version_rolling ? 'Yes' : 'No'}

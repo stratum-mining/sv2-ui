@@ -75,7 +75,7 @@ export function Sv2ClientTable({ clients, isLoading, onClientClick }: Sv2ClientT
                   <div className="flex items-center space-x-2">
                     <div className={cn(
                       "h-2.5 w-2.5 rounded-full shadow-sm",
-                      hasChannels ? "bg-green-500" : "bg-yellow-500"
+                      hasChannels ? "bg-sv2-green" : "bg-sv2-yellow"
                     )} />
                     <span className="text-sm text-muted-foreground">
                       {hasChannels ? 'Active' : 'Connecting'}

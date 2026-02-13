@@ -20,6 +20,8 @@ const badgeVariants = cva(
           'border-transparent bg-sv2-yellow/20 text-sv2-yellow',
         error:
           'border-transparent bg-sv2-red/20 text-sv2-red',
+        active:
+          'border-transparent bg-sv2-cyan/20 text-sv2-cyan',
       },
     },
     defaultVariants: {

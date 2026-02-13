@@ -7,12 +7,12 @@ import {
   Moon,
   Menu,
   X,
-  Pickaxe,
   BarChart3,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { ConnectionStatus, getConnectionState } from '@/components/data/ConnectionStatus';
 import { useTranslatorHealth, useJdcHealth } from '@/hooks/usePoolData';
+import { useUiConfig } from '@/hooks/useUiConfig';
 import type { AppMode, AppFeatures } from '@/types/api';
 import { getAppFeatures } from '@/types/api';
 
@@ -42,7 +42,6 @@ function useTheme() {
 interface ShellProps {
   children: React.ReactNode;
   appMode?: AppMode;
-  appName?: string;
 }
 
 /**
@@ -52,11 +51,11 @@ interface ShellProps {
 export function Shell({
   children,
   appMode = 'translator',
-  appName = 'SV2 Monitor',
 }: ShellProps) {
   const [location] = useLocation();
   const { isDark, toggle } = useTheme();
   const [isMobileOpen, setIsMobileOpen] = useState(false);
+  const { config } = useUiConfig();
   
   // Check health of both services
   const { data: translatorOk, isLoading: translatorLoading } = useTranslatorHealth();
@@ -70,6 +69,12 @@ export function Shell({
   const features = getAppFeatures(appMode);
 
   const navItems = getNavItems(features, appMode);
+  
+  // Use custom logo if configured, otherwise default SV2 logo
+  const logoUrl = config.customLogoUrl || '/sv2-logo-240x40.png';
+  const logoSrcSet = config.customLogoUrl 
+    ? undefined 
+    : '/sv2-logo-240x40.png 1x, /sv2-logo.png 2x';
 
   return (
     <div className="flex h-screen w-full bg-background text-foreground overflow-hidden font-sans transition-colors duration-300">
@@ -92,12 +97,13 @@ export function Shell({
         <div className="flex h-full flex-col">
           {/* Logo Area */}
           <div className="flex h-16 items-center px-6 border-b border-sidebar-border/50">
-            <div className="bg-foreground/5 p-1.5 rounded-lg mr-3">
-              <Pickaxe className="h-4 w-4 text-foreground" />
-            </div>
-            <span className="text-sm font-semibold tracking-wide text-foreground uppercase">
-              {appName}
-            </span>
+            <img
+              src={logoUrl}
+              srcSet={logoSrcSet}
+              alt="Stratum V2"
+              className="h-7 w-auto max-w-[180px] object-contain"
+              decoding="async"
+            />
             <button
               className="md:hidden ml-auto p-1 hover:bg-muted/50 rounded"
               onClick={() => setIsMobileOpen(false)}

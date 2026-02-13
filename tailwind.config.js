@@ -59,6 +59,30 @@ export default {
           4: 'hsl(var(--chart-4))',
           5: 'hsl(var(--chart-5))',
         },
+        // SV2 Brand colors (from stratumprotocol.org)
+        'sv2-cyan': 'hsl(var(--sv2-cyan))',
+        'sv2-green': 'hsl(var(--sv2-green))',
+        'sv2-yellow': 'hsl(var(--sv2-yellow))',
+        'sv2-red': 'hsl(var(--sv2-red))',
+        // Direct color values for utility classes
+        cyan: {
+          400: '#22d3ee',
+          500: '#06b6d4',
+          600: '#0891b2',
+        },
+        // Semantic colors
+        success: {
+          DEFAULT: 'hsl(var(--success))',
+          foreground: 'hsl(var(--success-foreground))',
+        },
+        warning: {
+          DEFAULT: 'hsl(var(--warning))',
+          foreground: 'hsl(var(--warning-foreground))',
+        },
+        info: {
+          DEFAULT: 'hsl(var(--info))',
+          foreground: 'hsl(var(--info-foreground))',
+        },
       },
       borderRadius: {
         lg: 'var(--radius)',
@@ -67,8 +91,8 @@ export default {
         xl: '1rem',
       },
       fontFamily: {
-        sans: ['Inter', '-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'Roboto', 'Helvetica Neue', 'Arial', 'sans-serif'],
-        mono: ['JetBrains Mono', 'ui-monospace', 'SFMono-Regular', 'Menlo', 'Monaco', 'Consolas', 'monospace'],
+        sans: ["'Inter'", 'system-ui', '-apple-system', 'BlinkMacSystemFont', 'sans-serif'],
+        mono: ["'JetBrains Mono'", 'ui-monospace', 'SFMono-Regular', 'monospace'],
       },
     },
   },

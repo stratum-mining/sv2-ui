@@ -1,9 +1,11 @@
 import { Switch, Route } from 'wouter';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { queryClient } from '@/lib/queryClient';
+import { HashrateHistoryProvider } from '@/context/HashrateHistoryContext';
 import { UnifiedDashboard } from '@/pages/UnifiedDashboard';
 import { PoolStats } from '@/pages/PoolStats';
 import { Settings } from '@/pages/Settings';
+import { SetupWizard } from '@/pages/SetupWizard';
 
 /**
  * SV2 Mining Stack UI
@@ -32,6 +34,9 @@ function Router() {
       <Route path="/settings">
         <Settings appMode="translator" />
       </Route>
+      <Route path="/setup">
+        <SetupWizard />
+      </Route>
       {/* Fallback to dashboard */}
       <Route>
         <UnifiedDashboard />
@@ -43,7 +48,9 @@ function Router() {
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <Router />
+      <HashrateHistoryProvider>
+        <Router />
+      </HashrateHistoryProvider>
     </QueryClientProvider>
   );
 }

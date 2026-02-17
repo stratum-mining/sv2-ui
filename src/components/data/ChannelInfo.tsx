@@ -22,7 +22,7 @@ export function ChannelInfo({ channel, type: _type }: ChannelInfoProps) {
   const hasSharesPerMinute = 'shares_per_minute' in channel;
   
   return (
-    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 p-4 bg-muted/30 rounded-lg">
+    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 p-4 bg-foreground/[0.02] rounded-xl border border-border/20">
       <InfoItem label="Channel ID" value={channel.channel_id} mono />
       <InfoItem label="User Identity" value={channel.user_identity || '-'} />
       <InfoItem 

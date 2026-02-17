@@ -18,7 +18,7 @@ export function ConnectionStatus({
   className,
 }: ConnectionStatusProps) {
   const stateConfig: Record<ConnectionState, { color: string; text: string }> = {
-    connected: { color: 'bg-green-500', text: 'Connected' },
+    connected: { color: 'bg-cyan-400 shadow-[0_0_8px_hsl(187,92%,60%,0.4)]', text: 'Connected' },
     connecting: { color: 'bg-yellow-500 animate-pulse', text: 'Connecting' },
     disconnected: { color: 'bg-muted-foreground', text: 'Disconnected' },
     error: { color: 'bg-red-500', text: 'Error' },

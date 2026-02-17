@@ -1,14 +1,12 @@
 import { useState, useMemo } from 'react';
-import { Activity, Server, Search, RefreshCw, ArrowUpRight } from 'lucide-react';
+import { Search, RefreshCw } from 'lucide-react';
 import { Shell } from '@/components/layout/Shell';
 import { StatCard } from '@/components/data/StatCard';
 import { HashrateChart } from '@/components/data/HashrateChart';
 import { Sv1ClientTable } from '@/components/data/Sv1ClientTable';
-import { 
-  usePoolData, 
-  useSv1ClientsData, 
-  useTranslatorHealth,
-  useJdcHealth,
+import {
+  usePoolData,
+  useSv1ClientsData,
 } from '@/hooks/usePoolData';
 import { useHashrateHistory } from '@/hooks/useHashrateHistory';
 import { formatHashrate, formatUptime, formatDifficulty } from '@/lib/utils';
@@ -35,14 +33,13 @@ export function UnifiedDashboard() {
   const { config } = useUiConfig();
 
   // Data from JDC or Translator depending on mode
-  const { 
-    modeLabel, 
-    isJdMode, 
-    global: poolGlobal, 
-    clientChannels,  // Downstream client channels (for hashrate, best diff)
-    serverChannels,  // Upstream server channels (for shares to Pool)
-    isLoading: poolLoading, 
-    isError: poolError 
+  const {
+    isJdMode,
+    global: poolGlobal,
+    clientChannels,
+    serverChannels,
+    isLoading: poolLoading,
+    isError: poolError
   } = usePoolData();
 
   // SV1 clients (always from Translator)
@@ -51,10 +48,6 @@ export function UnifiedDashboard() {
     isLoading: sv1Loading,
     refetch: refetchSv1,
   } = useSv1ClientsData(0, 1000); // Fetch all for client-side filtering
-
-  // Health checks for status indicators
-  const { data: translatorOk } = useTranslatorHealth();
-  const { data: jdcOk } = useJdcHealth();
 
   // SV1 client stats (from Translator)
   const allClients = sv1Data?.items || [];
@@ -125,14 +118,6 @@ export function UnifiedDashboard() {
     return Math.max(extBest, stdBest);
   }, [isJdMode, clientChannels, serverChannels]);
 
-  // Number of upstream pool channels (for shares subtitle)
-  const poolChannelCount = (serverChannels?.total_extended || 0) + (serverChannels?.total_standard || 0);
-  
-  // Number of client channels (for best diff subtitle)
-  const clientChannelCount = isJdMode 
-    ? (clientChannels?.total_extended || 0) + (clientChannels?.total_standard || 0)
-    : activeCount;
-  
   // Calculate acceptance rate
   const acceptanceRate = shareStats.submitted > 0 
     ? ((shareStats.accepted / shareStats.submitted) * 100).toFixed(2) 
@@ -157,143 +142,96 @@ export function UnifiedDashboard() {
 
   return (
     <Shell appMode="translator" appName={config.appName}>
-      {/* Connection Status Banner */}
-      <div className="flex items-center gap-4 text-sm mb-2">
-        <div className="flex items-center gap-2">
-          <div className={`h-2 w-2 rounded-full ${translatorOk ? 'bg-green-500' : 'bg-red-500'}`} />
-          <span className="text-muted-foreground">Translator</span>
-        </div>
-        {isJdMode && (
-          <div className="flex items-center gap-2">
-            <div className={`h-2 w-2 rounded-full ${jdcOk ? 'bg-green-500' : 'bg-red-500'}`} />
-            <span className="text-muted-foreground">JD Client</span>
-          </div>
-        )}
-        <span className="text-xs text-muted-foreground ml-auto">
-          Pool data via {modeLabel} • Uptime: {formatUptime(uptime)}
-        </span>
-      </div>
-
-      {/* Hero Stats Section - Matches Replit */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+      {/* Stats */}
+      <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4">
         <StatCard
-          title="Total Hashrate"
+          title="Hashrate"
           value={formatHashrate(totalHashrate)}
-          icon={<Activity className="h-4 w-4 text-green-500" />}
-          subtitle={`${totalClientChannels} client channel(s)`}
-          trend={totalHashrate > 0 ? { value: 2.5, isPositive: true } : undefined}
+          subtitle={`${totalClientChannels} channel(s)`}
         />
-
         <StatCard
-          title="Active Workers"
-          value={
-            <span>
-              {activeCount} <span className="text-muted-foreground text-lg">/ {totalClients}</span>
-            </span>
-          }
-          icon={<Server className="h-4 w-4 text-primary" />}
-          subtitle={`${totalClients - activeCount} offline workers`}
+          title="Workers"
+          value={`${activeCount} / ${totalClients}`}
         />
-
         <StatCard
-          title="Shares to Pool"
-          value={
-            <span>
-              {shareStats.accepted.toLocaleString()} 
-              <span className="text-muted-foreground text-lg"> / {shareStats.submitted.toLocaleString()}</span>
-            </span>
-          }
-          icon={<ArrowUpRight className="h-4 w-4 text-green-500" />}
-          subtitle={`${acceptanceRate}% accepted via ${poolChannelCount} channel(s)`}
+          title="Shares"
+          value={`${shareStats.accepted.toLocaleString()} / ${shareStats.submitted.toLocaleString()}`}
+          subtitle={`${acceptanceRate}% accepted`}
         />
-
         <StatCard
-          title="Best Difficulty"
+          title="Best Diff"
           value={bestDiff > 0 ? formatDifficulty(bestDiff) : '-'}
-          icon={<Activity className="h-4 w-4 text-primary" />}
-          subtitle={`from ${clientChannelCount} client channel(s)`}
         />
       </div>
 
-      {/* Main Chart - Real data accumulated over time */}
-      <HashrateChart 
+      {/* Chart */}
+      <HashrateChart
         data={hashrateHistory}
-        title="Hashrate History"
-        description="Real-time data collected since page load"
+        title="Hashrate"
+        description={`Uptime: ${formatUptime(uptime)}`}
       />
 
-      {/* Loading / Error States */}
+      {/* Loading / Error */}
       {poolLoading && (
-        <div className="rounded-xl border border-border/40 bg-card/40 backdrop-blur-sm p-8 text-center text-muted-foreground">
+        <div className="rounded-xl border border-border p-6 text-center text-sm text-muted-foreground">
           Connecting to monitoring API...
         </div>
       )}
 
       {poolError && (
-        <div className="rounded-xl border border-red-500/40 bg-red-500/10 backdrop-blur-sm p-8 text-center text-red-500">
-          Failed to connect. Make sure Translator (and optionally JDC) are running with monitoring enabled.
+        <div className="rounded-xl border border-red-500/30 bg-red-500/5 p-6 text-center text-sm text-red-400">
+          Failed to connect. Make sure Translator (and optionally JDC) are running.
         </div>
       )}
 
-      {/* Actions Bar - Sticky Header (Matches Replit) */}
-      {!poolLoading && !poolError && (
-        <div className="sticky top-0 z-30 bg-background/60 backdrop-blur-xl py-3 -mx-6 px-6 md:-mx-8 md:px-8 border-y border-border/40 transition-all duration-200 shadow-sm supports-[backdrop-filter]:bg-background/60 mt-8 mb-0">
-          <div className="flex flex-col sm:flex-row items-center justify-between gap-4 max-w-7xl mx-auto">
-            <div className="flex items-center gap-2 w-full sm:w-auto">
-              <div className="relative w-full sm:w-72">
-                <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-                <input
-                  type="text"
-                  placeholder="Search workers..."
-                  className="w-full pl-9 h-9 bg-muted/30 border border-border/50 focus:bg-background transition-all rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary/20"
-                  value={searchTerm}
-                  onChange={(e) => {
-                    setSearchTerm(e.target.value);
-                    setCurrentPage(1);
-                  }}
-                />
-              </div>
-            </div>
-
-            <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
-              <button
-                onClick={() => refetchSv1()}
-                className="h-9 px-3 rounded-lg border border-border/50 bg-muted/30 hover:bg-background transition-colors flex items-center gap-2 text-sm"
-              >
-                <RefreshCw className="h-4 w-4" />
-                Refresh
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Workers Table */}
+      {/* Workers */}
       {!poolLoading && !poolError && (
         <>
+          <div className="flex items-center gap-3">
+            <div className="relative flex-1 max-w-xs">
+              <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+              <input
+                type="text"
+                placeholder="Search workers..."
+                className="w-full pl-9 h-9 bg-transparent border border-border rounded-lg text-sm outline-none focus:ring-1 focus:ring-primary/30"
+                value={searchTerm}
+                onChange={(e) => {
+                  setSearchTerm(e.target.value);
+                  setCurrentPage(1);
+                }}
+              />
+            </div>
+            <button
+              onClick={() => refetchSv1()}
+              className="h-9 px-3 rounded-lg border border-border hover:bg-foreground/5 transition-colors flex items-center gap-2 text-sm text-muted-foreground"
+            >
+              <RefreshCw className="h-3.5 w-3.5" />
+              Refresh
+            </button>
+          </div>
+
           <Sv1ClientTable
             clients={paginatedClients}
             isLoading={sv1Loading}
           />
 
-          {/* Pagination Footer */}
           {filteredClients.length > itemsPerPage && (
-            <div className="flex items-center justify-between mt-4">
-              <div className="text-sm text-muted-foreground">
-                Showing {paginatedClients.length} of {filteredClients.length} workers
-              </div>
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-muted-foreground">
+                {paginatedClients.length} of {filteredClients.length}
+              </span>
               <div className="flex gap-2">
                 <button
                   onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
                   disabled={currentPage === 1}
-                  className="px-3 py-1.5 text-sm border border-border/50 rounded-lg hover:bg-muted/50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  className="px-3 py-1.5 text-sm border border-border rounded-lg hover:bg-foreground/5 disabled:opacity-40 transition-colors"
                 >
-                  Previous
+                  Prev
                 </button>
                 <button
                   onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
                   disabled={currentPage === totalPages}
-                  className="px-3 py-1.5 text-sm border border-border/50 rounded-lg hover:bg-muted/50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  className="px-3 py-1.5 text-sm border border-border rounded-lg hover:bg-foreground/5 disabled:opacity-40 transition-colors"
                 >
                   Next
                 </button>

@@ -2,99 +2,122 @@
 @tailwind components;
 @tailwind utilities;
 
-/* 
-  Apple-inspired Design System 
-  "Industrial Precision" - Refined
-  Matching Replit SV2 UI style
+/*
+  SV2 Design System
 */
 
 :root {
-  /* Light Mode: Clean, High Contrast, Neutral */
-  --background: 0 0% 98%;    /* #FAFAFA */
-  --foreground: 240 5% 10%;  /* #18181B */
-  
+  /* Light Mode: Pure white, cyan accent */
+  --background: 0 0% 100%;
+  --foreground: 0 0% 9%;
+
   --card: 0 0% 100%;
-  --card-foreground: 240 5% 10%;
-  
+  --card-foreground: 0 0% 9%;
+
   --popover: 0 0% 100%;
-  --popover-foreground: 240 5% 10%;
-  
-  --primary: 240 5% 10%;     /* #18181B */
+  --popover-foreground: 0 0% 9%;
+
+  --primary: 190 100% 45%;
   --primary-foreground: 0 0% 100%;
-  
-  --secondary: 240 5% 96%;   /* #F4F4F5 */
-  --secondary-foreground: 240 5% 10%;
-  
-  --muted: 240 5% 96%;
-  --muted-foreground: 240 4% 46%;
-  
-  --accent: 240 5% 96%;
-  --accent-foreground: 240 5% 10%;
-  
+
+  --secondary: 0 0% 96%;
+  --secondary-foreground: 0 0% 9%;
+
+  --muted: 0 0% 96%;
+  --muted-foreground: 0 0% 45%;
+
+  --accent: 190 100% 96%;
+  --accent-foreground: 190 100% 30%;
+
   --destructive: 0 84% 60%;
   --destructive-foreground: 0 0% 100%;
 
-  --border: 240 6% 90%;      /* #E4E4E7 */
-  --input: 240 6% 90%;
-  --ring: 240 5% 10%;
+  --border: 0 0% 92%;
+  --input: 0 0% 92%;
+  --ring: 190 100% 45%;
 
-  --radius: 0.5rem;          /* 8px - Precision feel for pro dashboard */
+  --radius: 0.75rem;
 
+  /* Sidebar */
   --sidebar: 0 0% 98%;
-  --sidebar-foreground: 240 5% 40%;
-  --sidebar-primary: 240 5% 10%;
+  --sidebar-foreground: 0 0% 40%;
+  --sidebar-primary: 190 100% 45%;
   --sidebar-primary-foreground: 0 0% 100%;
-  --sidebar-accent: 240 5% 96%;
-  --sidebar-accent-foreground: 240 5% 10%;
-  --sidebar-border: 240 6% 90%;
-  --sidebar-ring: 240 5% 65%;
-  
-  /* System Colors - Standardized */
-  --chart-1: 142 70% 45%; /* Green */
-  --chart-2: 0 84% 60%;   /* Red */
-  --chart-3: 35 90% 50%;  /* Amber */
-  --chart-4: 210 90% 50%; /* Blue */
-  --chart-5: 260 50% 55%; /* Purple */
+  --sidebar-accent: 190 100% 96%;
+  --sidebar-accent-foreground: 190 100% 30%;
+  --sidebar-border: 0 0% 92%;
+  --sidebar-ring: 190 100% 45%;
+
+  /* Chart colors */
+  --chart-1: 190 100% 45%;
+  --chart-2: 0 84% 60%;
+  --chart-3: 35 90% 50%;
+  --chart-4: 210 90% 50%;
+  --chart-5: 260 50% 55%;
+
+  /* Cyan accent scale */
+  --cyan-400: 187 92% 60%;
+  --cyan-500: 190 100% 42%;
+  --cyan-600: 192 91% 36%;
+
+  /* Glass system */
+  --glass-bg: 0 0% 100%;
+  --glass-border: 0 0% 0%;
+  --glass-shadow: 0 0% 0%;
 }
 
 .dark {
-  /* Dark Mode: "Pro" - Neutral Grays, No tints */
-  --background: 240 5% 8%;   /* #121214 - Matte Dark */
-  --foreground: 0 0% 95%;
-  
-  --card: 240 5% 10%;        /* #18181B */
-  --card-foreground: 0 0% 95%;
-  
-  --popover: 240 5% 10%;
-  --popover-foreground: 0 0% 95%;
-  
-  --primary: 0 0% 95%;
-  --primary-foreground: 240 5% 10%;
-  
-  --secondary: 240 4% 16%;   /* #27272A */
-  --secondary-foreground: 0 0% 95%;
-  
-  --muted: 240 4% 16%;
-  --muted-foreground: 240 5% 60%;
-  
-  --accent: 240 4% 16%;
-  --accent-foreground: 0 0% 95%;
-  
+  /* Dark Mode: Pure black, cyan accent — matching stratumprotocol.org */
+  --background: 0 0% 0%;
+  --foreground: 0 0% 98%;
+
+  --card: 0 0% 4%;
+  --card-foreground: 0 0% 98%;
+
+  --popover: 0 0% 6%;
+  --popover-foreground: 0 0% 98%;
+
+  --primary: 190 100% 50%;
+  --primary-foreground: 0 0% 0%;
+
+  --secondary: 0 0% 8%;
+  --secondary-foreground: 0 0% 98%;
+
+  --muted: 0 0% 10%;
+  --muted-foreground: 0 0% 60%;
+
+  --accent: 0 0% 15%;
+  --accent-foreground: 0 0% 98%;
+
   --destructive: 0 60% 50%;
   --destructive-foreground: 0 0% 100%;
-  
-  --border: 240 4% 16%;
-  --input: 240 4% 16%;
-  --ring: 240 4% 50%;
 
-  --sidebar: 240 5% 8%;
-  --sidebar-foreground: 240 5% 60%;
-  --sidebar-primary: 0 0% 95%;
-  --sidebar-primary-foreground: 240 5% 10%;
-  --sidebar-accent: 240 4% 16%;
-  --sidebar-accent-foreground: 0 0% 95%;
-  --sidebar-border: 240 4% 16%;
-  --sidebar-ring: 240 4% 50%;
+  --border: 0 0% 15%;
+  --input: 0 0% 15%;
+  --ring: 190 100% 50%;
+
+  /* Sidebar */
+  --sidebar: 0 0% 0%;
+  --sidebar-foreground: 0 0% 60%;
+  --sidebar-primary: 190 100% 50%;
+  --sidebar-primary-foreground: 0 0% 0%;
+  --sidebar-accent: 0 0% 10%;
+  --sidebar-accent-foreground: 0 0% 98%;
+  --sidebar-border: 0 0% 15%;
+  --sidebar-ring: 190 100% 50%;
+
+  /* Chart colors - brighter for dark */
+  --chart-1: 187 92% 60%;
+
+  /* Cyan scale - brighter for dark */
+  --cyan-400: 187 92% 60%;
+  --cyan-500: 190 100% 50%;
+  --cyan-600: 192 91% 36%;
+
+  /* Glass system - dark */
+  --glass-bg: 0 0% 100%;
+  --glass-border: 0 0% 100%;
+  --glass-shadow: 0 0% 0%;
 }
 
 @layer base {
@@ -102,63 +125,104 @@
     @apply border-border;
   }
   body {
-    @apply font-sans antialiased bg-background text-foreground selection:bg-primary/20;
+    @apply font-sans antialiased bg-background text-foreground;
   }
-  
-  /* Clean Scrollbar */
+
+  ::selection {
+    background: hsl(190 100% 50% / 0.2);
+  }
+
   ::-webkit-scrollbar {
-    width: 10px;
-    height: 10px;
+    width: 8px;
+    height: 8px;
   }
   ::-webkit-scrollbar-track {
     background: transparent;
   }
   ::-webkit-scrollbar-thumb {
-    @apply bg-muted-foreground/20 rounded-full border-[3px] border-background bg-clip-content;
+    @apply bg-foreground/10 rounded-full;
+    border: 2px solid transparent;
+    background-clip: content-box;
   }
   ::-webkit-scrollbar-thumb:hover {
-    @apply bg-muted-foreground/40;
+    @apply bg-foreground/20;
+  }
+
+  h1, h2, h3, h4 {
+    letter-spacing: -0.025em;
   }
 }
 
 @layer utilities {
-  /* Simplified Glass - Less Blur, Less Color */
-  .glass {
-    @apply bg-background/80 backdrop-blur-md border-b border-border;
+  /* Glass Tier System */
+
+  .glass-surface {
+    background: hsl(var(--card));
+    border: 1px solid hsl(var(--border));
   }
-  
+
   .glass-card {
-    @apply bg-card/60 backdrop-blur-sm border border-border/50 shadow-sm transition-all duration-200;
+    background: hsl(var(--card));
+    border: 1px solid hsl(var(--border));
+    border-radius: var(--radius);
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   }
-  
-  .glass-card:hover {
-    @apply bg-card/80 shadow-md border-border/80;
+
+  .glass-overlay {
+    background: hsl(var(--card));
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    border: 1px solid hsl(var(--border));
+    box-shadow: 0 4px 12px hsl(var(--glass-shadow) / 0.15);
   }
-  
+
+  .sidebar-glass {
+    background: hsl(var(--background));
+    border-right: 1px solid hsl(var(--border));
+  }
+
+  .glass-nav {
+    background: hsl(var(--background) / 0.5);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid hsl(var(--border) / 0.5);
+  }
+
+  .glass-table {
+    background: hsl(var(--card));
+    border: 1px solid hsl(var(--border));
+    border-radius: var(--radius);
+    overflow: hidden;
+  }
+
+  .dot-active {
+    @apply h-2 w-2 rounded-full;
+    background: hsl(var(--cyan-400));
+    box-shadow: 0 0 8px hsl(var(--cyan-400) / 0.5);
+  }
+
+  .section-label {
+    @apply text-xs font-semibold uppercase;
+    letter-spacing: 0.1em;
+    color: hsl(var(--cyan-400));
+  }
+
   .text-balance {
     text-wrap: balance;
-  }
-  
-  /* Sidebar Glass */
-  .sidebar-glass {
-    @apply bg-sidebar/80 backdrop-blur-xl border-r border-sidebar-border;
   }
 }
 
 /* Animations */
+
 @keyframes fade-in {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 
-@keyframes slide-up {
+@keyframes fade-in-up {
   from {
     opacity: 0;
-    transform: translateY(10px);
+    transform: translateY(16px);
   }
   to {
     opacity: 1;
@@ -166,10 +230,103 @@
   }
 }
 
-.animate-fade-in {
-  animation: fade-in 0.3s ease-out;
+@keyframes fade-in-down {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
-.animate-slide-up {
-  animation: slide-up 0.3s ease-out;
+@keyframes fade-in-scale {
+  from {
+    opacity: 0;
+    transform: scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes slide-in-right {
+  from {
+    opacity: 0;
+    transform: translateX(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes pulse-glow {
+  0%, 100% {
+    box-shadow: 0 0 8px hsl(var(--cyan-400) / 0.3);
+  }
+  50% {
+    box-shadow: 0 0 16px hsl(var(--cyan-400) / 0.5);
+  }
+}
+
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+.animate-fade-in {
+  animation: fade-in 0.3s ease-out both;
+}
+
+.animate-fade-in-up {
+  animation: fade-in-up 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.animate-fade-in-down {
+  animation: fade-in-down 0.3s ease-out both;
+}
+
+.animate-fade-in-scale {
+  animation: fade-in-scale 0.3s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.animate-slide-in-right {
+  animation: slide-in-right 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.animate-pulse-glow {
+  animation: pulse-glow 2s ease-in-out infinite;
+}
+
+.stagger-children > * {
+  animation: fade-in-up 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+.stagger-children > *:nth-child(1) { animation-delay: 0ms; }
+.stagger-children > *:nth-child(2) { animation-delay: 50ms; }
+.stagger-children > *:nth-child(3) { animation-delay: 100ms; }
+.stagger-children > *:nth-child(4) { animation-delay: 150ms; }
+.stagger-children > *:nth-child(5) { animation-delay: 200ms; }
+.stagger-children > *:nth-child(6) { animation-delay: 250ms; }
+
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    hsl(var(--muted)) 25%,
+    hsl(var(--muted-foreground) / 0.08) 50%,
+    hsl(var(--muted)) 75%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.5s ease-in-out infinite;
+  border-radius: var(--radius);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }

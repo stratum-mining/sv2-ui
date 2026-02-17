@@ -7,7 +7,6 @@ import {
   Moon,
   Menu,
   X,
-  Pickaxe,
   BarChart3,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -52,7 +51,6 @@ interface ShellProps {
 export function Shell({
   children,
   appMode = 'translator',
-  appName = 'SV2 Monitor',
 }: ShellProps) {
   const [location] = useLocation();
   const { isDark, toggle } = useTheme();
@@ -91,13 +89,18 @@ export function Shell({
       >
         <div className="flex h-full flex-col">
           {/* Logo Area */}
-          <div className="flex h-16 items-center px-6 border-b border-sidebar-border/50">
-            <div className="bg-foreground/5 p-1.5 rounded-lg mr-3">
-              <Pickaxe className="h-4 w-4 text-foreground" />
-            </div>
-            <span className="text-sm font-semibold tracking-wide text-foreground uppercase">
-              {appName}
-            </span>
+          <div className="flex h-14 items-center px-6 border-b border-border">
+            <Link href="/">
+              <img
+                src="/sv2-logo-240x40.png"
+                srcSet="/sv2-logo-240x40.png 1x, /sv2-logo-480x80.png 2x"
+                alt="Stratum V2"
+                width="140"
+                height="23"
+                className="h-[23px] w-auto cursor-pointer"
+                style={isDark ? undefined : { filter: 'brightness(0.3)' }}
+              />
+            </Link>
             <button
               className="md:hidden ml-auto p-1 hover:bg-muted/50 rounded"
               onClick={() => setIsMobileOpen(false)}
@@ -116,17 +119,17 @@ export function Shell({
                 <Link key={item.href} href={item.href}>
                   <div
                     className={cn(
-                      'group flex items-center rounded-md px-3 py-2 text-sm font-medium transition-all duration-200 mb-1 cursor-pointer',
+                      'group flex items-center rounded-lg px-3 py-2 text-sm font-medium transition-all duration-200 mb-1 cursor-pointer',
                       isActive
-                        ? 'bg-sidebar-accent text-foreground shadow-sm'
-                        : 'text-muted-foreground hover:bg-sidebar-accent hover:text-foreground'
+                        ? 'bg-primary/10 text-primary shadow-sm'
+                        : 'text-muted-foreground hover:bg-foreground/5 hover:text-foreground'
                     )}
                   >
                     <item.icon
                       className={cn(
                         'mr-3 h-4 w-4 transition-colors',
                         isActive
-                          ? 'text-foreground'
+                          ? 'text-primary'
                           : 'text-muted-foreground group-hover:text-foreground'
                       )}
                     />
@@ -138,46 +141,44 @@ export function Shell({
           </nav>
 
           {/* Footer */}
-          <div className="border-t border-sidebar-border/50 p-4 space-y-3">
-            {/* Connection Status */}
+          <div className="border-t border-border p-4">
             <div className="px-2">
               <ConnectionStatus
                 state={getConnectionState(isLoading, isError, isSuccess)}
                 label={isSuccess ? 'API Connected' : undefined}
               />
             </div>
-
-            {/* Theme Toggle */}
-            <button
-              onClick={toggle}
-              className="flex items-center gap-2 w-full px-3 py-2 text-sm text-muted-foreground hover:text-foreground hover:bg-foreground/5 rounded-md transition-colors"
-            >
-              {isDark ? (
-                <Sun className="h-4 w-4" />
-              ) : (
-                <Moon className="h-4 w-4" />
-              )}
-              {isDark ? 'Light Mode' : 'Dark Mode'}
-            </button>
           </div>
         </div>
       </aside>
 
       {/* Main Content */}
       <main className="flex-1 flex flex-col h-full overflow-hidden bg-background relative">
-        {/* Mobile Menu Trigger */}
-        <div className="md:hidden absolute top-4 left-4 z-40">
+        {/* Header Bar */}
+        <div className="flex items-center justify-between h-14 px-6 md:px-8 border-b border-border shrink-0">
           <button
-            className="p-2 bg-background/50 backdrop-blur-sm border border-border/50 rounded-lg shadow-sm hover:bg-muted/50 transition-colors"
+            className="md:hidden p-2 -ml-2 hover:bg-accent rounded-lg transition-colors"
             onClick={() => setIsMobileOpen(true)}
           >
             <Menu className="h-5 w-5" />
           </button>
+          <div className="flex-1" />
+          <button
+            onClick={toggle}
+            className="relative w-10 h-10 flex items-center justify-center rounded-full border border-border bg-background/50 cursor-pointer text-foreground opacity-70 hover:opacity-100 transition-all duration-200"
+            aria-label={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
+          >
+            {isDark ? (
+              <Sun className="h-4 w-4" />
+            ) : (
+              <Moon className="h-4 w-4" />
+            )}
+          </button>
         </div>
 
         {/* Content Area */}
-        <div className="flex-1 overflow-auto p-6 md:p-8">
-          <div className="mx-auto max-w-7xl space-y-8 animate-fade-in">
+        <div className="flex-1 overflow-auto p-5 md:p-6">
+          <div className="mx-auto max-w-7xl space-y-6">
             {children}
           </div>
         </div>

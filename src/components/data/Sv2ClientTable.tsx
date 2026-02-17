@@ -23,7 +23,7 @@ interface Sv2ClientTableProps {
 export function Sv2ClientTable({ clients, isLoading, onClientClick }: Sv2ClientTableProps) {
   if (isLoading) {
     return (
-      <div className="rounded-xl border border-border/40 bg-card/40 backdrop-blur-sm overflow-hidden shadow-sm">
+      <div className="glass-table">
         <div className="p-8 text-center text-muted-foreground">
           Loading clients...
         </div>
@@ -33,7 +33,7 @@ export function Sv2ClientTable({ clients, isLoading, onClientClick }: Sv2ClientT
 
   if (clients.length === 0) {
     return (
-      <div className="rounded-xl border border-border/40 bg-card/40 backdrop-blur-sm overflow-hidden shadow-sm">
+      <div className="glass-table">
         <div className="p-8 text-center text-muted-foreground">
           No SV2 clients connected
         </div>
@@ -42,9 +42,9 @@ export function Sv2ClientTable({ clients, isLoading, onClientClick }: Sv2ClientT
   }
 
   return (
-    <div className="rounded-xl border border-border/40 bg-card/40 backdrop-blur-sm overflow-hidden shadow-sm">
+    <div className="glass-table">
       <Table>
-        <TableHeader className="bg-muted/30">
+        <TableHeader className="bg-foreground/[0.02]">
           <TableRow className="hover:bg-transparent border-border/40">
             <TableHead className="w-[80px]">Client ID</TableHead>
             <TableHead>Status</TableHead>
@@ -63,7 +63,7 @@ export function Sv2ClientTable({ clients, isLoading, onClientClick }: Sv2ClientT
               <TableRow 
                 key={client.client_id} 
                 className={cn(
-                  "hover:bg-muted/20 border-border/40 group",
+                  "hover:bg-foreground/[0.03] border-border/20 group",
                   onClientClick && "cursor-pointer"
                 )}
                 onClick={() => onClientClick?.(client.client_id)}
@@ -75,7 +75,7 @@ export function Sv2ClientTable({ clients, isLoading, onClientClick }: Sv2ClientT
                   <div className="flex items-center space-x-2">
                     <div className={cn(
                       "h-2.5 w-2.5 rounded-full shadow-sm",
-                      hasChannels ? "bg-green-500" : "bg-yellow-500"
+                      hasChannels ? "bg-cyan-400" : "bg-yellow-500"
                     )} />
                     <span className="text-sm text-muted-foreground">
                       {hasChannels ? 'Active' : 'Connecting'}

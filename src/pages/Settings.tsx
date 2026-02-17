@@ -7,14 +7,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { usePoolData, useTranslatorHealth, useJdcHealth, getEndpointConfig } from '@/hooks/usePoolData';
 import { formatUptime } from '@/lib/utils';
 import type { AppMode } from '@/types/api';
-import { 
-  Network, 
-  Server, 
-  Activity,
+import {
   ExternalLink,
-  CheckCircle2,
-  XCircle,
-  Info,
   Copy,
 } from 'lucide-react';
 import { useUiConfig } from '@/hooks/useUiConfig';
@@ -40,19 +34,12 @@ export function Settings({ appMode = 'translator' }: SettingsProps) {
 
   return (
     <Shell appMode={appMode} appName={config.appName}>
-      <div className="max-w-5xl mx-auto space-y-8">
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-2xl font-bold tracking-tight">Configuration</h2>
-            <p className="text-muted-foreground">
-              View connection status, endpoints, and API documentation.
-            </p>
-          </div>
-          <div className="flex items-center space-x-2">
-            <Button variant="outline" onClick={() => window.location.reload()}>
-              Refresh Status
-            </Button>
-          </div>
+      <div className="max-w-4xl mx-auto space-y-6">
+        <div>
+          <h2 className="text-xl font-semibold">Settings</h2>
+          <p className="text-sm text-muted-foreground">
+            Connection status, endpoints, and API docs.
+          </p>
         </div>
 
         <Tabs defaultValue="status" className="space-y-6">
@@ -67,21 +54,19 @@ export function Settings({ appMode = 'translator' }: SettingsProps) {
           <TabsContent value="status">
             <div className="space-y-6 animate-in slide-in-from-left-2 duration-300">
               {/* Connection Status Card */}
-              <Card className="glass-card border-none shadow-md bg-card/40">
+              <Card className="">
                 <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Network className="h-5 w-5 text-primary" /> Connection Status
-                  </CardTitle>
+                  <CardTitle>Connection Status</CardTitle>
                   <CardDescription>Current state of backend services.</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <div className="grid gap-4">
                     {/* Translator Status */}
-                    <div className="flex items-center justify-between p-4 rounded-lg border border-border/50 bg-muted/20">
+                    <div className="flex items-center justify-between p-3 rounded-lg border border-border bg-foreground/[0.02]">
                       <div className="flex items-center gap-3">
                         <div className={`h-3 w-3 rounded-full ${
                           translatorLoading ? 'bg-yellow-500 animate-pulse' :
-                          translatorOk ? 'bg-green-500' : 'bg-red-500'
+                          translatorOk ? 'bg-cyan-400' : 'bg-red-500'
                         }`} />
                         <div>
                           <p className="font-medium">Translator Proxy</p>
@@ -90,23 +75,18 @@ export function Settings({ appMode = 'translator' }: SettingsProps) {
                           </p>
                         </div>
                       </div>
-                      <div className="flex items-center gap-2">
-                        {translatorLoading ? (
-                          <span className="text-xs text-muted-foreground">Checking...</span>
-                        ) : translatorOk ? (
-                          <CheckCircle2 className="h-5 w-5 text-green-500" />
-                        ) : (
-                          <XCircle className="h-5 w-5 text-red-500" />
-                        )}
-                      </div>
+                      <span className="text-xs text-muted-foreground">
+                        {translatorLoading ? 'Checking...' :
+                         translatorOk ? 'Connected' : 'Not running'}
+                      </span>
                     </div>
 
                     {/* JDC Status */}
-                    <div className="flex items-center justify-between p-4 rounded-lg border border-border/50 bg-muted/20">
+                    <div className="flex items-center justify-between p-3 rounded-lg border border-border bg-foreground/[0.02]">
                       <div className="flex items-center gap-3">
                         <div className={`h-3 w-3 rounded-full ${
                           jdcLoading ? 'bg-yellow-500 animate-pulse' :
-                          jdcOk ? 'bg-green-500' : 'bg-neutral-400'
+                          jdcOk ? 'bg-cyan-400' : 'bg-neutral-400'
                         }`} />
                         <div>
                           <p className="font-medium">JD Client</p>
@@ -115,15 +95,10 @@ export function Settings({ appMode = 'translator' }: SettingsProps) {
                           </p>
                         </div>
                       </div>
-                      <div className="flex items-center gap-2">
-                        {jdcLoading ? (
-                          <span className="text-xs text-muted-foreground">Checking...</span>
-                        ) : jdcOk ? (
-                          <CheckCircle2 className="h-5 w-5 text-green-500" />
-                        ) : (
-                          <span className="text-xs text-muted-foreground">Not running</span>
-                        )}
-                      </div>
+                      <span className="text-xs text-muted-foreground">
+                        {jdcLoading ? 'Checking...' :
+                         jdcOk ? 'Connected' : 'Not running'}
+                      </span>
                     </div>
                   </div>
 
@@ -147,11 +122,9 @@ export function Settings({ appMode = 'translator' }: SettingsProps) {
               </Card>
 
               {/* System Info Card */}
-              <Card className="glass-card border-none shadow-md bg-card/40">
+              <Card className="">
                 <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Info className="h-5 w-5 text-primary" /> System Information
-                  </CardTitle>
+                  <CardTitle>System Information</CardTitle>
                   <CardDescription>About this UI instance.</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
@@ -177,11 +150,9 @@ export function Settings({ appMode = 'translator' }: SettingsProps) {
           {/* Endpoints Tab */}
           <TabsContent value="endpoints">
             <div className="space-y-6 animate-in slide-in-from-right-2 duration-300">
-              <Card className="glass-card border-none shadow-md bg-card/40">
+              <Card className="">
                 <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Server className="h-5 w-5 text-primary" /> Endpoint Configuration
-                  </CardTitle>
+                  <CardTitle>Endpoint Configuration</CardTitle>
                   <CardDescription>
                     Configure API endpoints via URL parameters or environment variables.
                   </CardDescription>
@@ -241,7 +212,7 @@ export function Settings({ appMode = 'translator' }: SettingsProps) {
                 </CardContent>
               </Card>
 
-              <Card className="glass-card border-none shadow-md bg-card/40">
+              <Card className="">
                 <CardHeader>
                   <CardTitle>Example URLs</CardTitle>
                   <CardDescription>How to configure endpoints via URL parameters.</CardDescription>
@@ -249,13 +220,13 @@ export function Settings({ appMode = 'translator' }: SettingsProps) {
                 <CardContent className="space-y-4">
                   <div className="space-y-2">
                     <Label>Local Development (JD mode)</Label>
-                    <code className="block p-3 rounded-md bg-muted/50 text-xs font-mono break-all">
+                    <code className="block p-3 rounded-lg bg-foreground/[0.03] border border-border/20 text-xs font-mono break-all">
                       http://localhost:5173/?jdc_url=http://localhost:9091&translator_url=http://localhost:9092
                     </code>
                   </div>
                   <div className="space-y-2">
                     <Label>Remote Server</Label>
-                    <code className="block p-3 rounded-md bg-muted/50 text-xs font-mono break-all">
+                    <code className="block p-3 rounded-lg bg-foreground/[0.03] border border-border/20 text-xs font-mono break-all">
                       https://ui.example.com/?jdc_url=http://192.168.1.100:9091&translator_url=http://192.168.1.100:9092
                     </code>
                   </div>
@@ -267,11 +238,9 @@ export function Settings({ appMode = 'translator' }: SettingsProps) {
           {/* API Docs Tab */}
           <TabsContent value="api">
             <div className="space-y-6 animate-in slide-in-from-bottom-2 duration-300">
-              <Card className="glass-card border-none shadow-md bg-card/40">
+              <Card className="">
                 <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Activity className="h-5 w-5 text-primary" /> Monitoring API
-                  </CardTitle>
+                  <CardTitle>Monitoring API</CardTitle>
                   <CardDescription>
                     Available REST endpoints for monitoring data.
                   </CardDescription>
@@ -305,7 +274,7 @@ export function Settings({ appMode = 'translator' }: SettingsProps) {
                 </CardContent>
               </Card>
 
-              <Card className="glass-card border-none shadow-md bg-card/40">
+              <Card className="">
                 <CardHeader>
                   <CardTitle>Interactive Documentation</CardTitle>
                   <CardDescription>Access Swagger UI for full API exploration.</CardDescription>
@@ -345,7 +314,7 @@ export function Settings({ appMode = 'translator' }: SettingsProps) {
                 </CardContent>
               </Card>
 
-              <Card className="glass-card border-none shadow-md bg-card/40">
+              <Card className="">
                 <CardHeader>
                   <CardTitle>Prometheus Metrics</CardTitle>
                   <CardDescription>Metrics endpoint for monitoring integration.</CardDescription>
@@ -390,7 +359,7 @@ export function Settings({ appMode = 'translator' }: SettingsProps) {
           {/* Appearance Tab */}
           <TabsContent value="appearance">
             <div className="space-y-6 animate-in slide-in-from-bottom-2 duration-300">
-              <Card className="glass-card border-none shadow-md bg-card/40">
+              <Card className="">
                 <CardHeader>
                   <CardTitle>Branding</CardTitle>
                   <CardDescription>
@@ -522,7 +491,7 @@ function EndpointRow({ method, path, description }: { method: string; path: stri
   return (
     <div className="flex items-center justify-between py-2 border-b border-border/30 last:border-0">
       <div className="flex items-center gap-3">
-        <span className="text-xs font-bold text-green-500 w-10">{method}</span>
+        <span className="text-xs font-bold text-cyan-400 w-10">{method}</span>
         <code className="text-primary">{path}</code>
       </div>
       <span className="text-muted-foreground text-xs">{description}</span>

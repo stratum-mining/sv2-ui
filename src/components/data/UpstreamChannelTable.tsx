@@ -27,7 +27,7 @@ export function UpstreamChannelTable({
 }: UpstreamChannelTableProps) {
   if (isLoading) {
     return (
-      <div className="rounded-xl border border-border/40 bg-card/40 backdrop-blur-sm overflow-hidden shadow-sm">
+      <div className="glass-table">
         <div className="p-8 text-center text-muted-foreground">
           Loading channels...
         </div>
@@ -42,7 +42,7 @@ export function UpstreamChannelTable({
 
   if (allChannels.length === 0) {
     return (
-      <div className="rounded-xl border border-border/40 bg-card/40 backdrop-blur-sm overflow-hidden shadow-sm">
+      <div className="glass-table">
         <div className="p-8 text-center text-muted-foreground">
           No upstream channels
         </div>
@@ -51,9 +51,9 @@ export function UpstreamChannelTable({
   }
 
   return (
-    <div className="rounded-xl border border-border/40 bg-card/40 backdrop-blur-sm overflow-hidden shadow-sm">
+    <div className="glass-table">
       <Table>
-        <TableHeader className="bg-muted/30">
+        <TableHeader className="bg-foreground/[0.02]">
           <TableRow className="hover:bg-transparent border-border/40">
             <TableHead className="w-[80px]">Channel</TableHead>
             <TableHead>Type</TableHead>
@@ -67,7 +67,7 @@ export function UpstreamChannelTable({
         </TableHeader>
         <TableBody>
           {allChannels.map((channel) => (
-            <TableRow key={`${channel.type}-${channel.channel_id}`} className="hover:bg-muted/20 border-border/40">
+            <TableRow key={`${channel.type}-${channel.channel_id}`} className="hover:bg-foreground/[0.03] border-border/20">
               <TableCell className="font-mono text-xs">
                 {channel.channel_id}
               </TableCell>
@@ -97,9 +97,9 @@ export function UpstreamChannelTable({
               </TableCell>
               <TableCell className="hidden xl:table-cell">
                 {channel.type === 'extended' && 'version_rolling' in channel ? (
-                  <span className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold ${
-                    (channel as ServerExtendedChannelInfo).version_rolling 
-                      ? 'bg-green-500/10 text-green-500 border-green-500/20' 
+                  <span className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium ${
+                    (channel as ServerExtendedChannelInfo).version_rolling
+                      ? 'bg-cyan-500/10 text-cyan-400 border-cyan-500/20'
                       : 'bg-muted text-muted-foreground border-border'
                   }`}>
                     {(channel as ServerExtendedChannelInfo).version_rolling ? 'Yes' : 'No'}

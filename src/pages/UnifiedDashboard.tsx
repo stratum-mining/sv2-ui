@@ -42,6 +42,7 @@ export function UnifiedDashboard() {
     clientChannels,  // Downstream client channels (for hashrate, best diff)
     serverChannels,  // Upstream server channels (for shares to Pool)
     isLoading: poolLoading,
+    isError: poolError,
   } = usePoolData();
 
   // Health checks for status indicators — also drive the error banner
@@ -55,17 +56,27 @@ export function UnifiedDashboard() {
     refetch: refetchSv1,
   } = useSv1ClientsData(0, 1000); // Fetch all for client-side filtering
 
-  const { data: translatorOk, isLoading: translatorHealthLoading } = useTranslatorHealth();
-  const { data: jdcOk, isLoading: jdcHealthLoading } = useJdcHealth();
+  const {
+    data: translatorOk,
+    isLoading: translatorHealthLoading,
+    isError: translatorHealthError,
+  } = useTranslatorHealth();
+  const {
+    data: jdcOk,
+    isLoading: jdcHealthLoading,
+    isError: jdcHealthError,
+  } = useJdcHealth();
 
   // Derive per-service error state from health checks.
   // A service is considered down when:
   //   - its health query has finished loading (!isLoading), AND
-  //   - data is not true — covers both `false` (responded not-OK) and
-  //     `undefined` (fetch threw: network error, timeout, connection refused)
-  const translatorDown = !translatorHealthLoading && translatorOk !== true;
-  const jdcDown = !jdcHealthLoading && isJdMode && jdcOk !== true;
-  const showError = translatorDown || jdcDown;
+  //   - there is no confirmed healthy response (`data !== true`) OR
+  //   - the query is in error state (covers both initial and refetch failures)
+  const translatorHealthy = translatorOk === true && !translatorHealthError;
+  const jdcHealthy = jdcOk === true && !jdcHealthError;
+  const translatorDown = !translatorHealthLoading && !translatorHealthy;
+  const jdcDown = !jdcHealthLoading && isJdMode && !jdcHealthy;
+  const showError = poolError || translatorDown || jdcDown;
 
   // SV1 client stats (from Translator)
   const allClients = sv1Data?.items || [];
@@ -171,12 +182,12 @@ export function UnifiedDashboard() {
       {/* Connection Status Banner */}
       <div className="flex items-center gap-4 text-sm mb-2">
         <div className="flex items-center gap-2">
-          <div className={`h-2 w-2 rounded-full ${translatorHealthLoading ? 'bg-muted-foreground animate-pulse' : translatorOk ? 'bg-green-500' : 'bg-red-500'}`} />
+          <div className={`h-2 w-2 rounded-full ${translatorHealthLoading ? 'bg-muted-foreground animate-pulse' : translatorHealthy ? 'bg-green-500' : 'bg-red-500'}`} />
           <span className="text-muted-foreground">Translator</span>
         </div>
         {isJdMode && (
           <div className="flex items-center gap-2">
-            <div className={`h-2 w-2 rounded-full ${jdcHealthLoading ? 'bg-muted-foreground animate-pulse' : jdcOk ? 'bg-green-500' : 'bg-red-500'}`} />
+            <div className={`h-2 w-2 rounded-full ${jdcHealthLoading ? 'bg-muted-foreground animate-pulse' : jdcHealthy ? 'bg-green-500' : 'bg-red-500'}`} />
             <span className="text-muted-foreground">JD Client</span>
           </div>
         )}
@@ -196,6 +207,8 @@ export function UnifiedDashboard() {
               ? 'Cannot connect to Translator. Make sure it is running.'
               : jdcDown
               ? 'Cannot connect to JD Client. Make sure it is running.'
+              : poolError
+              ? `Cannot fetch pool data via ${modeLabel}. Make sure monitoring endpoints are reachable.`
               : null}
           </span>
         </div>

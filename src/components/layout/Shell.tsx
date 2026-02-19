@@ -146,7 +146,7 @@ export function Shell({
       </aside>
 
       {/* Main Content */}
-      <main className="flex-1 flex flex-col h-full overflow-hidden bg-background">
+      <main className="flex-1 flex flex-col h-full overflow-hidden bg-background relative">
         {/* Mobile Top Bar */}
         <div className="md:hidden flex items-center justify-between px-4 h-14 border-b border-border shrink-0">
           <button
@@ -177,8 +177,8 @@ export function Shell({
           </button>
         </div>
 
-        {/* Content Area */}
-        <div className="flex-1 overflow-auto p-6 md:p-8">
+        {/* Content Area — pr-16 on desktop reserves space for the floating theme toggle */}
+        <div className="flex-1 overflow-auto p-6 md:p-8 md:pr-16">
           <div className="mx-auto max-w-7xl space-y-8 animate-fade-in">
             {children}
           </div>

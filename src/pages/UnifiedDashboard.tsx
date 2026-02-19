@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { Activity, Server, Search, RefreshCw, ArrowUpRight } from 'lucide-react';
+import { Activity, AlertTriangle, Server, Search, RefreshCw, ArrowUpRight } from 'lucide-react';
 import { Shell } from '@/components/layout/Shell';
 import { StatCard } from '@/components/data/StatCard';
 import { HashrateChart } from '@/components/data/HashrateChart';
@@ -35,26 +35,48 @@ export function UnifiedDashboard() {
   const { config } = useUiConfig();
 
   // Data from JDC or Translator depending on mode
-  const { 
-    modeLabel, 
-    isJdMode, 
-    global: poolGlobal, 
+  const {
+    modeLabel,
+    isJdMode,
+    global: poolGlobal,
     clientChannels,  // Downstream client channels (for hashrate, best diff)
     serverChannels,  // Upstream server channels (for shares to Pool)
-    isLoading: poolLoading, 
-    isError: poolError 
+    isLoading: poolLoading,
+    isError: poolError,
   } = usePoolData();
 
+  // Health checks for status indicators — also drive the error banner
+  // (poolError alone is insufficient: if Translator is down but JDC is up,
+  // usePoolData falls back to JDC and never sets isError, so we'd miss it)
+
   // SV1 clients (always from Translator)
-  const { 
-    data: sv1Data, 
+  const {
+    data: sv1Data,
     isLoading: sv1Loading,
     refetch: refetchSv1,
   } = useSv1ClientsData(0, 1000); // Fetch all for client-side filtering
 
-  // Health checks for status indicators
-  const { data: translatorOk } = useTranslatorHealth();
-  const { data: jdcOk } = useJdcHealth();
+  const {
+    data: translatorOk,
+    isLoading: translatorHealthLoading,
+    isError: translatorHealthError,
+  } = useTranslatorHealth();
+  const {
+    data: jdcOk,
+    isLoading: jdcHealthLoading,
+    isError: jdcHealthError,
+  } = useJdcHealth();
+
+  // Derive per-service error state from health checks.
+  // A service is considered down when:
+  //   - its health query has finished loading (!isLoading), AND
+  //   - there is no confirmed healthy response (`data !== true`) OR
+  //   - the query is in error state (covers both initial and refetch failures)
+  const translatorHealthy = translatorOk === true && !translatorHealthError;
+  const jdcHealthy = jdcOk === true && !jdcHealthError;
+  const translatorDown = !translatorHealthLoading && !translatorHealthy;
+  const jdcDown = !jdcHealthLoading && isJdMode && !jdcHealthy;
+  const showError = poolError || translatorDown || jdcDown;
 
   // SV1 client stats (from Translator)
   const allClients = sv1Data?.items || [];
@@ -160,12 +182,12 @@ export function UnifiedDashboard() {
       {/* Connection Status Banner */}
       <div className="flex items-center gap-4 text-sm mb-2">
         <div className="flex items-center gap-2">
-          <div className={`h-2 w-2 rounded-full ${translatorOk ? 'bg-green-500' : 'bg-red-500'}`} />
+          <div className={`h-2 w-2 rounded-full ${translatorHealthLoading ? 'bg-muted-foreground animate-pulse' : translatorHealthy ? 'bg-green-500' : 'bg-red-500'}`} />
           <span className="text-muted-foreground">Translator</span>
         </div>
         {isJdMode && (
           <div className="flex items-center gap-2">
-            <div className={`h-2 w-2 rounded-full ${jdcOk ? 'bg-green-500' : 'bg-red-500'}`} />
+            <div className={`h-2 w-2 rounded-full ${jdcHealthLoading ? 'bg-muted-foreground animate-pulse' : jdcHealthy ? 'bg-green-500' : 'bg-red-500'}`} />
             <span className="text-muted-foreground">JD Client</span>
           </div>
         )}
@@ -174,7 +196,25 @@ export function UnifiedDashboard() {
         </span>
       </div>
 
-      {/* Hero Stats Section - Matches Replit */}
+      {/* Connection Error Banner */}
+      {showError && (
+        <div className="flex items-center gap-3 rounded-xl border border-red-500/40 bg-red-500/10 px-5 py-4 text-sm text-red-500">
+          <AlertTriangle className="h-4 w-4 shrink-0" />
+          <span>
+            {translatorDown && jdcDown
+              ? 'Cannot connect to Translator or JD Client. Make sure both services are running.'
+              : translatorDown
+              ? 'Cannot connect to Translator. Make sure it is running.'
+              : jdcDown
+              ? 'Cannot connect to JD Client. Make sure it is running.'
+              : poolError
+              ? `Cannot fetch pool data via ${modeLabel}. Make sure monitoring endpoints are reachable.`
+              : null}
+          </span>
+        </div>
+      )}
+
+      {/* Hero Stats Section */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <StatCard
           title="Total Hashrate"
@@ -222,21 +262,15 @@ export function UnifiedDashboard() {
         description="Real-time data collected since page load"
       />
 
-      {/* Loading / Error States */}
+      {/* Loading State */}
       {poolLoading && (
         <div className="rounded-xl border border-border/40 bg-card/40 backdrop-blur-sm p-8 text-center text-muted-foreground">
           Connecting to monitoring API...
         </div>
       )}
 
-      {poolError && (
-        <div className="rounded-xl border border-red-500/40 bg-red-500/10 backdrop-blur-sm p-8 text-center text-red-500">
-          Failed to connect. Make sure Translator (and optionally JDC) are running with monitoring enabled.
-        </div>
-      )}
-
-      {/* Actions Bar - Sticky Header (Matches Replit) */}
-      {!poolLoading && !poolError && (
+      {/* Actions Bar - Sticky Header */}
+      {!poolLoading && (
         <div className="sticky top-0 z-30 bg-background/60 backdrop-blur-xl py-3 -mx-6 px-6 md:-mx-8 md:px-8 border-y border-border/40 transition-all duration-200 shadow-sm supports-[backdrop-filter]:bg-background/60 mt-8 mb-0">
           <div className="flex flex-col sm:flex-row items-center justify-between gap-4 max-w-7xl mx-auto">
             <div className="flex items-center gap-2 w-full sm:w-auto">
@@ -269,7 +303,7 @@ export function UnifiedDashboard() {
       )}
 
       {/* Workers Table */}
-      {!poolLoading && !poolError && (
+      {!poolLoading && (
         <>
           <Sv1ClientTable
             clients={paginatedClients}

@@ -6,9 +6,10 @@ import { UpstreamChannelTable } from '@/components/data/UpstreamChannelTable';
 import { usePoolData } from '@/hooks/usePoolData';
 import { formatHashrate, formatDifficulty, formatUptime } from '@/lib/utils';
 import { 
-  CheckCircle2, 
-  Activity, 
-  Network, 
+  AlertTriangle,
+  CheckCircle2,
+  Activity,
+  Network,
   Clock,
   Server,
   ArrowUpRight,
@@ -96,8 +97,9 @@ export function PoolStats() {
         )}
 
         {isError && (
-          <div className="rounded-xl border border-red-500/40 bg-red-500/10 backdrop-blur-sm p-8 text-center text-red-500">
-            Failed to connect to monitoring API. Make sure {modeLabel} is running.
+          <div className="flex items-center gap-3 rounded-xl border border-red-500/40 bg-red-500/10 px-5 py-4 text-sm text-red-500">
+            <AlertTriangle className="h-4 w-4 shrink-0" />
+            <span>Failed to connect to monitoring API. Make sure {modeLabel} is running.</span>
           </div>
         )}
 

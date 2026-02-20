@@ -13,8 +13,6 @@ import {
 import { useHashrateHistory } from '@/hooks/useHashrateHistory';
 import { formatHashrate, formatUptime, formatDifficulty } from '@/lib/utils';
 import type { Sv1ClientInfo } from '@/types/api';
-import { useUiConfig } from '@/hooks/useUiConfig';
-
 /**
  * Unified Dashboard for the SV2 Mining Stack.
  * 
@@ -32,7 +30,6 @@ export function UnifiedDashboard() {
   const [searchTerm, setSearchTerm] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 15;
-  const { config } = useUiConfig();
 
   // Data from JDC or Translator depending on mode
   const {
@@ -178,7 +175,7 @@ export function UnifiedDashboard() {
   }, [filteredClients, currentPage, itemsPerPage]);
 
   return (
-    <Shell appMode="translator" appName={config.appName}>
+    <Shell appMode="translator">
       {/* Connection Status Banner */}
       <div className="flex items-center gap-4 text-sm mb-2">
         <div className="flex items-center gap-2">

@@ -9,10 +9,9 @@ import {
   X,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { ConnectionStatus, getConnectionState } from '@/components/data/ConnectionStatus';
-import { useTranslatorHealth, useJdcHealth } from '@/hooks/usePoolData';
 import type { AppMode, AppFeatures } from '@/types/api';
 import { getAppFeatures } from '@/types/api';
+import { useUiConfig } from '@/hooks/useUiConfig';
 
 // Theme hook
 function useTheme() {
@@ -37,10 +36,19 @@ function useTheme() {
   return { isDark, toggle: () => setIsDark(!isDark) };
 }
 
+// Shared Sun/Moon toggle button — used in both mobile bar and desktop floating position
+function ThemeToggle({ onClick, className }: { onClick: () => void; className?: string }) {
+  return (
+    <button onClick={onClick} aria-label="Toggle theme" className={className}>
+      <Sun className="absolute h-[18px] w-[18px] transition-all duration-300 rotate-0 scale-100 dark:-rotate-90 dark:scale-0" />
+      <Moon className="absolute h-[18px] w-[18px] transition-all duration-300 rotate-90 scale-0 dark:rotate-0 dark:scale-100" />
+    </button>
+  );
+}
+
 interface ShellProps {
   children: React.ReactNode;
   appMode?: AppMode;
-  appName?: string;
 }
 
 /**
@@ -50,24 +58,22 @@ interface ShellProps {
 export function Shell({
   children,
   appMode = 'translator',
-  appName = 'SV2 Monitor',
 }: ShellProps) {
   const [location] = useLocation();
   const { isDark, toggle } = useTheme();
   const [isMobileOpen, setIsMobileOpen] = useState(false);
-  
-  // Check health of both services
-  const { data: translatorOk, isLoading: translatorLoading } = useTranslatorHealth();
-  const { data: jdcOk, isLoading: jdcLoading } = useJdcHealth();
-  
-  // Consider connected if at least one service is available
-  const isLoading = translatorLoading && jdcLoading;
-  const isSuccess = Boolean(translatorOk || jdcOk);
-  const isError = !isLoading && !isSuccess;
-  
-  const features = getAppFeatures(appMode);
+  const { config } = useUiConfig();
 
+  const features = getAppFeatures(appMode);
   const navItems = getNavItems(features, appMode);
+
+  // Dismiss mobile nav with Escape key
+  useEffect(() => {
+    if (!isMobileOpen) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setIsMobileOpen(false); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [isMobileOpen]);
 
   return (
     <div className="flex h-screen w-full bg-background text-foreground overflow-hidden font-sans transition-colors duration-300">
@@ -91,15 +97,23 @@ export function Shell({
           {/* Logo Area */}
           <div className="flex h-14 items-center px-6 border-b border-sidebar-border">
             <Link href="/">
-              <img
-                src="/sv2-logo-240x40.png"
-                srcSet="/sv2-logo-240x40.png 1x, /sv2-logo-480x80.png 2x"
-                alt="Stratum V2"
-                width="140"
-                height="23"
-                className="h-[23px] w-auto cursor-pointer"
-                style={isDark ? undefined : { filter: 'brightness(0.3)' }}
-              />
+              {config.customLogoDataUrl ? (
+                <img
+                  src={config.customLogoDataUrl}
+                  alt="Logo"
+                  className="h-[23px] w-auto max-w-[140px] object-contain cursor-pointer"
+                />
+              ) : (
+                <img
+                  src="/sv2-logo-240x40.png"
+                  srcSet="/sv2-logo-240x40.png 1x, /sv2-logo-480x80.png 2x"
+                  alt="Stratum V2"
+                  width="140"
+                  height="23"
+                  className="h-[23px] w-auto cursor-pointer"
+                  style={isDark ? undefined : { filter: 'brightness(0.3)' }}
+                />
+              )}
             </Link>
             <button
               className="md:hidden ml-auto p-1 hover:bg-muted/50 rounded"
@@ -154,26 +168,18 @@ export function Shell({
           >
             <Menu className="h-5 w-5" />
           </button>
-          <button
+          <ThemeToggle
             onClick={toggle}
-            aria-label="Toggle theme"
             className="relative w-9 h-9 flex items-center justify-center rounded-full hover:bg-muted/50 transition-colors"
-          >
-            <Sun className="absolute h-[18px] w-[18px] transition-all duration-300 rotate-0 scale-100 dark:-rotate-90 dark:scale-0" />
-            <Moon className="absolute h-[18px] w-[18px] transition-all duration-300 rotate-90 scale-0 dark:rotate-0 dark:scale-100" />
-          </button>
+          />
         </div>
 
         {/* Desktop Theme Toggle */}
         <div className="hidden md:block absolute top-4 right-4 z-40">
-          <button
+          <ThemeToggle
             onClick={toggle}
-            aria-label="Toggle theme"
             className="relative w-10 h-10 flex items-center justify-center rounded-full bg-background/50 backdrop-blur-sm border border-border/50 shadow-sm hover:bg-accent transition-colors"
-          >
-            <Sun className="absolute h-[18px] w-[18px] transition-all duration-300 rotate-0 scale-100 dark:-rotate-90 dark:scale-0" />
-            <Moon className="absolute h-[18px] w-[18px] transition-all duration-300 rotate-90 scale-0 dark:rotate-0 dark:scale-100" />
-          </button>
+          />
         </div>
 
         {/* Content Area — pr-16 on desktop reserves space for the floating theme toggle */}

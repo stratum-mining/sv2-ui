@@ -1,3 +1,4 @@
+import { useRef, useState, useEffect } from 'react';
 import { Shell } from '@/components/layout/Shell';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -7,15 +8,17 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { usePoolData, useTranslatorHealth, useJdcHealth, getEndpointConfig } from '@/hooks/usePoolData';
 import { formatUptime } from '@/lib/utils';
 import type { AppMode } from '@/types/api';
-import { 
-  Network, 
-  Server, 
+import {
+  Network,
+  Server,
   Activity,
   ExternalLink,
   CheckCircle2,
   XCircle,
   Info,
   Copy,
+  Upload,
+  RotateCcw,
 } from 'lucide-react';
 import { useUiConfig } from '@/hooks/useUiConfig';
 
@@ -32,14 +35,46 @@ export function Settings({ appMode = 'translator' }: SettingsProps) {
   const { data: translatorOk, isLoading: translatorLoading } = useTranslatorHealth();
   const { data: jdcOk, isLoading: jdcLoading } = useJdcHealth();
   const endpoints = getEndpointConfig();
-  const { config, updateConfig } = useUiConfig();
+  const translatorBase = endpoints.translator.base.replace('/api/v1', '');
+  const jdcBase = endpoints.jdc.base.replace('/api/v1', '');
+  const { config, updateConfig, resetConfig } = useUiConfig();
+  const logoInputRef = useRef<HTMLInputElement>(null);
+
+  // Show "Settings saved" indicator for 2s after any config change
+  const [showSaved, setShowSaved] = useState(false);
+  const isFirstRender = useRef(true);
+  useEffect(() => {
+    if (isFirstRender.current) { isFirstRender.current = false; return; }
+    setShowSaved(true);
+    const t = setTimeout(() => setShowSaved(false), 2000);
+    return () => clearTimeout(t);
+  }, [config]);
 
   const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text);
   };
 
+  const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const dataUrl = ev.target?.result as string;
+      updateConfig({ customLogoDataUrl: dataUrl });
+    };
+    reader.onerror = () => {
+      console.error('Failed to read logo file');
+    };
+    reader.readAsDataURL(file);
+    // Reset input so the same file can be re-selected if needed
+    e.target.value = '';
+  };
+
+  // Compute once per render so the color picker value and hex display stay in sync
+  const primaryHex = hslToHex(config.primaryColor);
+
   return (
-    <Shell appMode={appMode} appName={config.appName}>
+    <Shell appMode={appMode}>
       <div className="max-w-5xl mx-auto space-y-8">
         <div className="flex items-center justify-between">
           <div>
@@ -315,32 +350,8 @@ export function Settings({ appMode = 'translator' }: SettingsProps) {
                     Each service exposes interactive API documentation at <code className="text-primary">/swagger-ui</code>.
                   </p>
                   <div className="flex flex-wrap gap-3">
-                    {translatorOk && (
-                      <Button variant="outline" asChild>
-                        <a 
-                          href={`${endpoints.translator.base.replace('/api/v1', '')}/swagger-ui`} 
-                          target="_blank" 
-                          rel="noopener noreferrer"
-                          className="gap-2"
-                        >
-                          <ExternalLink className="h-4 w-4" />
-                          Translator Swagger UI
-                        </a>
-                      </Button>
-                    )}
-                    {jdcOk && (
-                      <Button variant="outline" asChild>
-                        <a 
-                          href={`${endpoints.jdc.base.replace('/api/v1', '')}/swagger-ui`} 
-                          target="_blank" 
-                          rel="noopener noreferrer"
-                          className="gap-2"
-                        >
-                          <ExternalLink className="h-4 w-4" />
-                          JDC Swagger UI
-                        </a>
-                      </Button>
-                    )}
+                    {translatorOk && <ServiceLinkButton href={`${translatorBase}/swagger-ui`} label="Translator Swagger UI" />}
+                    {jdcOk && <ServiceLinkButton href={`${jdcBase}/swagger-ui`} label="JDC Swagger UI" />}
                   </div>
                 </CardContent>
               </Card>
@@ -355,32 +366,8 @@ export function Settings({ appMode = 'translator' }: SettingsProps) {
                     Prometheus-compatible metrics are available at <code className="text-primary">/metrics</code>.
                   </p>
                   <div className="flex flex-wrap gap-3">
-                    {translatorOk && (
-                      <Button variant="outline" asChild>
-                        <a 
-                          href={`${endpoints.translator.base.replace('/api/v1', '')}/metrics`} 
-                          target="_blank" 
-                          rel="noopener noreferrer"
-                          className="gap-2"
-                        >
-                          <ExternalLink className="h-4 w-4" />
-                          Translator Metrics
-                        </a>
-                      </Button>
-                    )}
-                    {jdcOk && (
-                      <Button variant="outline" asChild>
-                        <a 
-                          href={`${endpoints.jdc.base.replace('/api/v1', '')}/metrics`} 
-                          target="_blank" 
-                          rel="noopener noreferrer"
-                          className="gap-2"
-                        >
-                          <ExternalLink className="h-4 w-4" />
-                          JDC Metrics
-                        </a>
-                      </Button>
-                    )}
+                    {translatorOk && <ServiceLinkButton href={`${translatorBase}/metrics`} label="Translator Metrics" />}
+                    {jdcOk && <ServiceLinkButton href={`${jdcBase}/metrics`} label="JDC Metrics" />}
                   </div>
                 </CardContent>
               </Card>
@@ -394,37 +381,91 @@ export function Settings({ appMode = 'translator' }: SettingsProps) {
                 <CardHeader>
                   <CardTitle>Branding</CardTitle>
                   <CardDescription>
-                    Customize the name shown in the sidebar and the secondary surface color.
+                    Customize the logo and primary accent color.
                   </CardDescription>
                 </CardHeader>
-                <CardContent className="space-y-6">
-                  <div className="space-y-2">
-                    <Label htmlFor="app-name">App name</Label>
-                    <Input
-                      id="app-name"
-                      value={config.appName}
-                      onChange={(e) => updateConfig({ appName: e.target.value })}
-                      placeholder="SV2 Mining Stack"
-                      className="max-w-md"
-                    />
+                <CardContent className="space-y-8">
+
+                  {/* Logo upload */}
+                  <div className="space-y-3">
+                    <Label>Logo</Label>
+                    <div className="flex items-center gap-4">
+                      {/* Preview */}
+                      <div className="flex items-center justify-center w-36 h-10 rounded-md border border-border bg-sidebar px-3">
+                        {config.customLogoDataUrl ? (
+                          <img
+                            src={config.customLogoDataUrl}
+                            alt="Custom logo preview"
+                            className="h-6 w-auto max-w-full object-contain"
+                          />
+                        ) : (
+                          <img
+                            src="/sv2-logo-240x40.png"
+                            alt="Default logo"
+                            className="h-[18px] w-auto object-contain opacity-60"
+                          />
+                        )}
+                      </div>
+                      <input
+                        ref={logoInputRef}
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={handleLogoUpload}
+                      />
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => logoInputRef.current?.click()}
+                      >
+                        <Upload className="mr-2 h-4 w-4" />
+                        Upload logo
+                      </Button>
+                    </div>
                     <p className="text-xs text-muted-foreground">
-                      This text appears in the sidebar header instead of the default name.
+                      SVG, PNG, or JPG. Displayed in the sidebar header.
                     </p>
                   </div>
 
-                  <div className="space-y-2">
-                    <Label htmlFor="secondary-color">Secondary color</Label>
-                    <Input
-                      id="secondary-color"
-                      type="color"
-                      value={hslToHex(config.secondary)}
-                      onChange={(e) => updateConfig({ secondary: hexToHslTriplet(e.target.value) })}
-                      className="w-24 h-10 p-1 cursor-pointer"
-                    />
+                  {/* Primary color */}
+                  <div className="space-y-3">
+                    <Label htmlFor="primary-color">Primary color</Label>
+                    <div className="flex items-center gap-4">
+                      <input
+                        id="primary-color"
+                        type="color"
+                        value={primaryHex}
+                        onChange={(e) => updateConfig({ primaryColor: hexToHslTriplet(e.target.value) })}
+                        className="w-10 h-10 rounded-md border border-border cursor-pointer p-0.5 bg-transparent"
+                      />
+                      <span className="text-sm text-muted-foreground font-mono">
+                        {primaryHex}
+                      </span>
+                    </div>
                     <p className="text-xs text-muted-foreground">
-                      Controls the secondary surfaces (e.g. subtle backgrounds). Applies to both light and dark themes.
+                      Changes the accent color used throughout the interface — buttons, links, active nav, and charts.
                     </p>
                   </div>
+
+                  {/* Actions row */}
+                  <div className="flex items-center gap-4 pt-2 border-t border-border/40">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={resetConfig}
+                    >
+                      <RotateCcw className="mr-2 h-3.5 w-3.5" />
+                      Reset to defaults
+                    </Button>
+                    <span
+                      className={`flex items-center gap-1.5 text-sm text-green-600 dark:text-green-400 transition-opacity duration-300 ${showSaved ? 'opacity-100' : 'opacity-0'}`}
+                      aria-live="polite"
+                    >
+                      <CheckCircle2 className="h-4 w-4" />
+                      Settings saved
+                    </span>
+                  </div>
+
                 </CardContent>
               </Card>
             </div>
@@ -527,5 +568,16 @@ function EndpointRow({ method, path, description }: { method: string; path: stri
       </div>
       <span className="text-muted-foreground text-xs">{description}</span>
     </div>
+  );
+}
+
+function ServiceLinkButton({ href, label }: { href: string; label: string }) {
+  return (
+    <Button variant="outline" asChild>
+      <a href={href} target="_blank" rel="noopener noreferrer" className="gap-2">
+        <ExternalLink className="h-4 w-4" />
+        {label}
+      </a>
+    </Button>
   );
 }

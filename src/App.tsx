@@ -2,7 +2,6 @@ import { Switch, Route } from 'wouter';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { queryClient } from '@/lib/queryClient';
 import { UnifiedDashboard } from '@/pages/UnifiedDashboard';
-import { PoolStats } from '@/pages/PoolStats';
 import { Settings } from '@/pages/Settings';
 
 /**
@@ -25,9 +24,6 @@ function Router() {
     <Switch>
       <Route path="/">
         <UnifiedDashboard />
-      </Route>
-      <Route path="/pool-stats">
-        <PoolStats />
       </Route>
       <Route path="/settings">
         <Settings appMode="translator" />

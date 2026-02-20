@@ -182,7 +182,7 @@ async function fetchAllClientChannels(baseUrl: string): Promise<AggregatedClient
  * Automatically fetches from JDC (if available) or Translator.
  * 
  * Returns both:
- * - serverChannels: upstream connection to Pool (for Pool Stats page)
+ * - serverChannels: upstream connection to Pool (shares, best diff)
  * - clientChannels: downstream clients connecting to JDC/Translator (for Dashboard)
  */
 export function usePoolData() {
@@ -199,7 +199,7 @@ export function usePoolData() {
     refetchInterval: 3000,
   });
   
-  // Fetch upstream server channels (Pool connection details - for Pool Stats)
+  // Fetch upstream server channels (Pool connection: shares, best diff)
   const serverChannelsQuery = useQuery({
     queryKey: ['server-channels', mode],
     queryFn: () => fetchWithTimeout<ServerChannelsResponse>(`${baseUrl}/server/channels?offset=0&limit=100`),
@@ -220,7 +220,7 @@ export function usePoolData() {
     modeLabel: mode === 'jdc' ? endpoints.jdc.label : endpoints.translator.label,
     isJdMode: mode === 'jdc',
     global: globalQuery.data,
-    // Server channels = upstream Pool connection (for Pool Stats)
+    // Server channels = upstream Pool connection
     serverChannels: serverChannelsQuery.data,
     // Client channels = downstream clients (for Dashboard)
     clientChannels: clientChannelsQuery.data,

@@ -7,7 +7,6 @@ import {
   Moon,
   Menu,
   X,
-  BarChart3,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { ConnectionStatus, getConnectionState } from '@/components/data/ConnectionStatus';
@@ -197,7 +196,6 @@ interface NavItem {
 function getNavItems(_features: AppFeatures, _appMode: AppMode): NavItem[] {
   return [
     { icon: LayoutDashboard, label: 'Dashboard', href: '/' },
-    { icon: BarChart3, label: 'Pool Stats', href: '/pool-stats' },
     { icon: Settings, label: 'Settings', href: '/settings' },
   ];
 }

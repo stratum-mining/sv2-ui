@@ -112,7 +112,6 @@ sv2-ui/
 │   │   └── useHashrateHistory.ts
 │   ├── pages/
 │   │   ├── UnifiedDashboard.tsx
-│   │   ├── PoolStats.tsx
 │   │   └── Settings.tsx
 │   ├── types/
 │   │   └── api.ts           # TypeScript types matching Rust API

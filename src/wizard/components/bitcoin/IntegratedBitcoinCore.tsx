@@ -320,8 +320,8 @@ export const IntegratedBitcoinCore = ({
               </Button>
             </div>
 
-            {/* Sync progress */}
-            {status?.blockchainInfo && (
+            {/* Sync progress (hide for regtest — IBD is always reported due to synthetic timestamps) */}
+            {status?.blockchainInfo && network !== 'regtest' && (
               <div className="bg-muted rounded-lg px-3 py-2 space-y-1">
                 <div className="flex justify-between text-xs">
                   <span className="text-muted-foreground">Chain</span>

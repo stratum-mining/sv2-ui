@@ -97,14 +97,25 @@ EOF
 
         # Mine 101 blocks if chain is empty (first start)
         BLOCKS=$(gosu bitcoin bitcoin-cli -rpcuser="$RPC_USER" -rpcpassword="$RPC_PASSWORD" -rpcport=18443 getblockcount 2>/dev/null || echo "0")
+        ADDR_FILE="/home/bitcoin/.bitcoin/regtest/mining_address"
         if [ "${BLOCKS}" -lt 101 ]; then
             ADDRESS=$(gosu bitcoin bitcoin-cli -rpcuser="$RPC_USER" -rpcpassword="$RPC_PASSWORD" -rpcport=18443 getnewaddress "mining" "bech32")
             echo "Mining 101 blocks to ${ADDRESS}..."
             gosu bitcoin bitcoin-cli -rpcuser="$RPC_USER" -rpcpassword="$RPC_PASSWORD" -rpcport=18443 generatetoaddress 101 "${ADDRESS}" > /dev/null
             BALANCE=$(gosu bitcoin bitcoin-cli -rpcuser="$RPC_USER" -rpcpassword="$RPC_PASSWORD" -rpcport=18443 getbalance)
             echo "Regtest ready. Address: ${ADDRESS}, Balance: ${BALANCE} BTC"
+            # Persist mining address for bitcoin-node (which has no wallet module)
+            echo "${ADDRESS}" > "$ADDR_FILE"
         else
             echo "Regtest chain already has ${BLOCKS} blocks, skipping initial mining."
+            # Ensure mining address is persisted even on restart
+            if [ ! -f "$ADDR_FILE" ]; then
+                ADDRESS=$(gosu bitcoin bitcoin-cli -rpcuser="$RPC_USER" -rpcpassword="$RPC_PASSWORD" -rpcport=18443 getaddressesbylabel "mining" 2>/dev/null | grep -oP '"[^"]+":' | head -1 | tr -d '":')
+                if [ -n "$ADDRESS" ]; then
+                    echo "${ADDRESS}" > "$ADDR_FILE"
+                    echo "Saved mining address: ${ADDRESS}"
+                fi
+            fi
         fi
 
         # Stop bitcoind and switch to bitcoin-node for IPC socket support

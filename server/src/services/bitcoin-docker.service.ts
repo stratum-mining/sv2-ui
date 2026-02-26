@@ -270,30 +270,39 @@ export interface RegtestInfo {
   blocks: number;
 }
 
+/**
+ * Read the mining address saved by the entrypoint.
+ * bitcoin-node has no wallet module, so we can't call getaddressesbylabel/getnewaddress.
+ */
+async function readSavedMiningAddress(containerName: string): Promise<string> {
+  const container = docker.getContainer(containerName);
+  const exec = await container.exec({
+    Cmd: ['cat', '/home/bitcoin/.bitcoin/regtest/mining_address'],
+    AttachStdout: true,
+    AttachStderr: true,
+  });
+  const stream = await exec.start({ Detach: false, Tty: false });
+  return new Promise<string>((resolve) => {
+    let data = '';
+    stream.on('data', (chunk: Buffer) => { data += chunk.toString('utf8'); });
+    stream.on('end', () => resolve(data.replace(/[^a-zA-Z0-9]/g, '')));
+    stream.on('error', () => resolve(''));
+  });
+}
+
 export async function getRegtestInfo(): Promise<RegtestInfo> {
   const containerName = getContainerName('regtest');
-
-  const balanceRaw = await execBitcoinCli(containerName, '-regtest', 'getbalance');
-  const balance = balanceRaw.match(/[\d.]+/)?.[0] || '0';
 
   const blockCountRaw = await execBitcoinCli(containerName, '-regtest', 'getblockcount');
   const blocks = parseInt(blockCountRaw.match(/\d+/)?.[0] || '0', 10);
 
-  // Reuse an existing address from the "mining" label, only create if none exist
-  let address = '';
-  try {
-    const addrsRaw = await execBitcoinCli(containerName, '-regtest', 'getaddressesbylabel', 'mining');
-    const addrsMatch = addrsRaw.match(/\{[\s\S]*\}/);
-    if (addrsMatch) {
-      const addrs = Object.keys(JSON.parse(addrsMatch[0]));
-      if (addrs.length > 0) address = addrs[0];
-    }
-  } catch { /* label doesn't exist yet */ }
+  // bitcoin-node has no wallet module — read the address saved by the entrypoint
+  const address = await readSavedMiningAddress(containerName);
 
-  if (!address) {
-    const addrRaw = await execBitcoinCli(containerName, '-regtest', 'getnewaddress', 'mining', 'bech32');
-    address = addrRaw.replace(/[^a-zA-Z0-9]/g, '');
-  }
+  // Balance can't be fetched without wallet; estimate from mined blocks
+  // First 100 blocks have no spendable reward (coinbase maturity), each block after = 50 BTC
+  const spendableBlocks = Math.max(0, blocks - 100);
+  const balance = (spendableBlocks * 50).toFixed(8);
 
   return { address, balance, blocks };
 }
@@ -303,11 +312,15 @@ export async function mineRegtestBlocks(numBlocks: number, address?: string): Pr
 
   let toAddress = address;
   if (!toAddress) {
-    const addrRaw = await execBitcoinCli(containerName, '-regtest', 'getnewaddress', 'mining', 'bech32');
-    toAddress = addrRaw.replace(/[^a-zA-Z0-9]/g, '');
+    toAddress = await readSavedMiningAddress(containerName);
+  }
+  if (!toAddress) {
+    throw new Error('No mining address available. Restart the regtest container to generate one.');
   }
 
-  await execBitcoinCli(containerName, '-regtest', 'generatetoaddress', String(numBlocks), toAddress);
+  // Use generatetodescriptor instead of generatetoaddress — works without wallet module
+  const descriptor = `addr(${toAddress})`;
+  await execBitcoinCli(containerName, '-regtest', 'generatetodescriptor', String(numBlocks), descriptor);
 
   const blockCountRaw = await execBitcoinCli(containerName, '-regtest', 'getblockcount');
   const blocks = parseInt(blockCountRaw.match(/\d+/)?.[0] || '0', 10);
@@ -321,13 +334,21 @@ export async function getBlockchainInfo(
   const containerName = getContainerName(network);
   const container = docker.getContainer(containerName);
 
+  const networkFlag =
+    network === 'regtest' ? '-regtest' :
+    network === 'testnet4' ? '-testnet4' :
+    undefined;
+
+  const cmd = [
+    'bitcoin-cli',
+    '-rpcuser=stratum',
+    '-rpcpassword=stratum123',
+    ...(networkFlag ? [networkFlag] : []),
+    'getblockchaininfo',
+  ];
+
   const exec = await container.exec({
-    Cmd: [
-      'bitcoin-cli',
-      '-rpcuser=stratum',
-      '-rpcpassword=stratum123',
-      'getblockchaininfo',
-    ],
+    Cmd: cmd,
     AttachStdout: true,
     AttachStderr: true,
   });

@@ -10,6 +10,10 @@ import {
 import type { ContainerStatus } from '../types.js';
 
 const docker = new Docker({ socketPath: '/var/run/docker.sock' });
+const LEGACY_CONTAINER_ALIASES: Record<string, string[]> = {
+  [CONTAINER_NAMES.tproxy]: ['tproxy_sv2'],
+  [CONTAINER_NAMES.jd_client]: ['jd_client_sv2'],
+};
 
 /**
  * Resolve the Docker network to use for sibling containers.
@@ -75,6 +79,14 @@ export async function removeExistingContainer(name: string): Promise<void> {
   }
 }
 
+async function removeContainerAndLegacyAliases(name: string): Promise<void> {
+  await removeExistingContainer(name);
+  const aliases = LEGACY_CONTAINER_ALIASES[name] || [];
+  for (const alias of aliases) {
+    await removeExistingContainer(alias);
+  }
+}
+
 export async function getContainerStatus(
   name: string
 ): Promise<ContainerStatus> {
@@ -113,7 +125,7 @@ export async function networkExists(): Promise<boolean> {
 export async function createTproxyContainer(
   jdMode: boolean
 ): Promise<void> {
-  await removeExistingContainer(CONTAINER_NAMES.tproxy);
+  await removeContainerAndLegacyAliases(CONTAINER_NAMES.tproxy);
 
   const configFile = CONFIG_FILES.tproxy;
   const netName = await resolveNetworkName();
@@ -146,7 +158,7 @@ export async function createJdClientContainer(
   socketPath?: string,
   ipcVolumeName?: string
 ): Promise<void> {
-  await removeExistingContainer(CONTAINER_NAMES.jd_client);
+  await removeContainerAndLegacyAliases(CONTAINER_NAMES.jd_client);
 
   const configFile = CONFIG_FILES.jd_client;
   const netName = await resolveNetworkName();

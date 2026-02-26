@@ -170,15 +170,15 @@ rpcallowip=0.0.0.0/0`}
             </p>
             <code className="block font-mono text-foreground">
               {network === 'mainnet'
-                ? '~/.bitcoin/node.ipc'
-                : `~/.bitcoin/${network}/node.ipc`}
+                ? '~/.bitcoin/node.sock'
+                : `~/.bitcoin/${network}/node.sock`}
             </code>
             <p>
               Replace <code className="font-mono">~</code> with your actual home directory, e.g.{' '}
               <code className="font-mono">
                 {network === 'mainnet'
-                  ? '/home/yourname/.bitcoin/node.ipc'
-                  : `/home/yourname/.bitcoin/${network}/node.ipc`}
+                  ? '/home/yourname/.bitcoin/node.sock'
+                  : `/home/yourname/.bitcoin/${network}/node.sock`}
               </code>.
               Not sure? Run <code className="font-mono">echo $HOME</code> in a terminal to find it.
             </p>
@@ -232,8 +232,8 @@ rpcallowip=0.0.0.0/0`}
                       required
                       placeholder={
                         network === 'mainnet'
-                          ? '/home/yourname/.bitcoin/node.ipc'
-                          : `/home/yourname/.bitcoin/${network}/node.ipc`
+                          ? '/home/yourname/.bitcoin/node.sock'
+                          : `/home/yourname/.bitcoin/${network}/node.sock`
                       }
                       value={socketPath}
                       onChange={(e) => {

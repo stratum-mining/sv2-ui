@@ -23,7 +23,7 @@ function demuxDockerLogs(raw: Buffer): string {
 }
 
 /**
- * GET /api/check-socket?path=/absolute/path/to/node.ipc
+ * GET /api/check-socket?path=/absolute/path/to/node.sock
  *
  * Spawns a temporary Alpine container that bind-mounts the given host path
  * and checks whether it is a Unix socket. Returns { ok: true } if accessible,
@@ -34,7 +34,7 @@ function demuxDockerLogs(raw: Buffer): string {
  * host filesystem — not from within the sv2-ui container.
  */
 router.get('/', async (req: Request, res: Response): Promise<void> => {
-  const socketPath = req.query['path'] as string;
+  const socketPath = typeof req.query['path'] === 'string' ? req.query['path'].trim() : '';
 
   if (!socketPath || !socketPath.startsWith('/')) {
     res.status(400).json({ ok: false, reason: 'Path must be an absolute path starting with /' });
@@ -63,7 +63,17 @@ router.get('/', async (req: Request, res: Response): Promise<void> => {
     // root always exists and nothing is created.
     container = await docker.createContainer({
       Image: 'alpine:latest',
-      Cmd: ['sh', '-c', `if [ -S /host${socketPath} ]; then echo ok; elif [ -e /host${socketPath} ]; then echo exists_not_socket; else echo not_found; fi`],
+      // Pass the target path as an argument so spaces/special chars are handled safely.
+      // Check both:
+      // - /host$path (Linux hosts)
+      // - /host/host_mnt$path (Docker Desktop host mount root)
+      Cmd: [
+        'sh',
+        '-c',
+        'source_path="$1"; target_linux="/host${source_path}"; target_desktop="/host/host_mnt${source_path}"; if [ -S "$target_linux" ] || [ -S "$target_desktop" ]; then echo ok; elif [ -e "$target_linux" ] || [ -e "$target_desktop" ]; then echo exists_not_socket; else echo not_found; fi',
+        'check-socket',
+        socketPath,
+      ],
       HostConfig: {
         Binds: ['/:/host:ro'],
         AutoRemove: false,

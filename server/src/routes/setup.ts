@@ -7,12 +7,15 @@ import {
   createJdClientContainer,
   startContainer,
   getContainerStatus,
+  getContainerIp,
 } from '../services/docker.service.js';
 import {
   isBitcoinRunning,
   getIpcVolumeName,
 } from '../services/bitcoin-docker.service.js';
-import { IMAGES, CONTAINER_NAMES } from '../constants.js';
+import { readFile, writeFile } from 'node:fs/promises';
+import path from 'node:path';
+import { IMAGES, CONTAINER_NAMES, CONFIG_DIR, CONFIG_FILES } from '../constants.js';
 import type { SetupRequest, SetupResponse } from '../types.js';
 
 const router = Router();
@@ -57,6 +60,22 @@ router.post('/', async (req: Request, res: Response): Promise<void> => {
       // Start jd_client first, then tproxy
       await createJdClientContainer(data.socketPath, ipcVolumeName);
       await startContainer(CONTAINER_NAMES.jd_client);
+
+      // The translator proxy binary only accepts IP addresses, not hostnames.
+      // Now that JDC is running, resolve its container IP and patch the
+      // translator config before tProxy starts.
+      if (!skipTproxy) {
+        const jdcIp = await getContainerIp(CONTAINER_NAMES.jd_client);
+        if (jdcIp) {
+          const tproxyConfigPath = path.join(CONFIG_DIR, CONFIG_FILES.tproxy);
+          const toml = await readFile(tproxyConfigPath, 'utf-8');
+          const patched = toml.replace(
+            new RegExp(`"${CONTAINER_NAMES.jd_client}"`, 'g'),
+            `"${jdcIp}"`,
+          );
+          await writeFile(tproxyConfigPath, patched, 'utf-8');
+        }
+      }
     }
 
     if (!skipTproxy) {

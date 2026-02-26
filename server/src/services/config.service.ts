@@ -127,9 +127,11 @@ export async function generateConfigs(data: SetupRequest): Promise<void> {
   };
 
   if (jdMode) {
-    // In JD mode, translator connects to jd_client via Docker DNS
+    // In JD mode, translator connects to jd_client, not the pool.
+    // Use JDC's authority key (the default), not the pool's.
     translatorTemplateData.upstreamAddress = CONTAINER_NAMES.jd_client;
     translatorTemplateData.upstreamPort = PORTS.jd_client.listening;
+    translatorTemplateData.upstreamAuthorityPubkey = undefined;
   }
 
   const translatorToml = buildTranslatorConfig(translatorTemplateData, {

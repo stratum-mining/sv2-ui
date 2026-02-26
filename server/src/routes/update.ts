@@ -7,12 +7,14 @@ import {
   createJdClientContainer,
   startContainer,
   getContainerStatus,
+  getContainerIp,
+  removeExistingContainer,
 } from '../services/docker.service.js';
 import {
   isBitcoinRunning,
   getIpcVolumeName,
 } from '../services/bitcoin-docker.service.js';
-import { IMAGES, CONTAINER_NAMES, CONFIG_DIR } from '../constants.js';
+import { IMAGES, CONTAINER_NAMES, CONFIG_DIR, CONFIG_FILES } from '../constants.js';
 
 const router = Router();
 const docker = new Docker({ socketPath: '/var/run/docker.sock' });
@@ -98,7 +100,47 @@ router.get('/', async (req: Request, res: Response): Promise<void> => {
       }
       await createJdClientContainer(wizardData.socketPath as string | undefined, ipcVolumeName);
       await startContainer(CONTAINER_NAMES.jd_client);
+
+      // JDC may have a new IP — update the translator config so tProxy can reconnect.
+      const jdcIp = await getContainerIp(CONTAINER_NAMES.jd_client);
+      if (jdcIp) {
+        const tproxyConfigPath = path.join(CONFIG_DIR, CONFIG_FILES.tproxy);
+        try {
+          const toml = await fs.readFile(tproxyConfigPath, 'utf-8');
+          // Replace any IP-like address or the hostname in the upstream address field
+          const patched = toml.replace(
+            /(upstream_address\s*=\s*")[^"]+(")/,
+            `$1${jdcIp}$2`,
+          );
+          if (patched !== toml) {
+            await fs.writeFile(tproxyConfigPath, patched, 'utf-8');
+            send('progress', { message: 'Updated translator config with new JDC address. Restarting tProxy …' });
+            // Restart tProxy so it picks up the new config
+            try {
+              await removeExistingContainer(CONTAINER_NAMES.tproxy);
+              await createTproxyContainer(true);
+              await startContainer(CONTAINER_NAMES.tproxy);
+            } catch { /* tProxy may not be running */ }
+          }
+        } catch { /* config not found or not in JD mode */ }
+      }
     } else {
+      // When in JD mode, ensure the translator config has JDC's current IP
+      // (the Rust binary only accepts IPs, not Docker hostnames).
+      if (jdMode) {
+        const jdcIp = await getContainerIp(CONTAINER_NAMES.jd_client);
+        if (jdcIp) {
+          const tproxyConfigPath = path.join(CONFIG_DIR, CONFIG_FILES.tproxy);
+          try {
+            const toml = await fs.readFile(tproxyConfigPath, 'utf-8');
+            const patched = toml.replace(
+              new RegExp(`"${CONTAINER_NAMES.jd_client}"`, 'g'),
+              `"${jdcIp}"`,
+            );
+            await fs.writeFile(tproxyConfigPath, patched, 'utf-8');
+          } catch { /* config already has an IP */ }
+        }
+      }
       await createTproxyContainer(jdMode);
       await startContainer(CONTAINER_NAMES.tproxy);
     }

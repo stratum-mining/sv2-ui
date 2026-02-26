@@ -214,6 +214,18 @@ export async function startContainer(name: string): Promise<void> {
   await container.start();
 }
 
+export async function getContainerIp(name: string): Promise<string | null> {
+  try {
+    const container = docker.getContainer(name);
+    const info = await container.inspect();
+    const networks = info.NetworkSettings.Networks;
+    const first = Object.values(networks)[0];
+    return first?.IPAddress || null;
+  } catch {
+    return null;
+  }
+}
+
 export async function stopContainer(name: string): Promise<void> {
   try {
     const container = docker.getContainer(name);

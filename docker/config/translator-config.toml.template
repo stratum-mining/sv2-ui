@@ -1,0 +1,29 @@
+# SRI Translator Proxy config (populated by envsubst at container start)
+
+# SV1 miners connect here
+downstream_address = "0.0.0.0"
+downstream_port = 34255
+
+max_supported_version = 2
+min_supported_version = 2
+
+downstream_extranonce2_size = 4
+
+user_identity = "${TPROXY_USER_IDENTITY}"
+aggregate_channels = ${TPROXY_AGGREGATE_CHANNELS}
+
+# Monitoring (exposed to sv2-ui via nginx)
+monitoring_address = "0.0.0.0:9092"
+monitoring_cache_refresh_secs = 15
+
+[downstream_difficulty_config]
+min_individual_miner_hashrate = ${TPROXY_MIN_INDIVIDUAL_MINER_HASHRATE}
+shares_per_minute = ${TPROXY_SHARES_PER_MINUTE}
+enable_vardiff = ${TPROXY_ENABLE_VARDIFF}
+job_keepalive_interval_secs = 60
+
+# Upstream: pool (tproxy-only) or jd_client (JD mode)
+[[upstreams]]
+address = "${TPROXY_UPSTREAM_ADDRESS}"
+port = ${TPROXY_UPSTREAM_PORT}
+authority_pubkey = "${TPROXY_UPSTREAM_AUTHORITY_PUBKEY}"

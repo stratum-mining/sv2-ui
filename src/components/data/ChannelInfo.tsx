@@ -19,7 +19,7 @@ interface ChannelInfoProps {
  */
 export function ChannelInfo({ channel, type: _type }: ChannelInfoProps) {
   const isExtended = 'full_extranonce_size' in channel;
-  const hasSharesPerMinute = 'shares_per_minute' in channel;
+  const hasSharesPerMinute = 'expected_shares_per_minute' in channel;
   
   return (
     <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 p-4 bg-muted/30 rounded-lg">
@@ -27,7 +27,7 @@ export function ChannelInfo({ channel, type: _type }: ChannelInfoProps) {
       <InfoItem label="User Identity" value={channel.user_identity || '-'} />
       <InfoItem 
         label="Hashrate" 
-        value={formatHashrate(channel.nominal_hashrate)} 
+        value={formatHashrate(channel.nominal_hashrate ?? 0)}
         highlight 
       />
       <InfoItem 
@@ -41,7 +41,7 @@ export function ChannelInfo({ channel, type: _type }: ChannelInfoProps) {
       {hasSharesPerMinute && (
         <InfoItem 
           label="Shares/min" 
-          value={(channel as ExtendedChannelInfo).shares_per_minute.toFixed(2)} 
+          value={(channel as ExtendedChannelInfo).expected_shares_per_minute.toFixed(2)}
         />
       )}
       <InfoItem 

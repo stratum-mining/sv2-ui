@@ -24,8 +24,6 @@ export interface AggregatedClientChannels {
  * In dev mode, we use Vite's proxy to avoid CORS issues.
  * In production (embedded UI), we use absolute URLs.
  */
-const isDev = import.meta.env.DEV;
-
 /**
  * Get endpoint configuration.
  * 
@@ -38,38 +36,19 @@ const isDev = import.meta.env.DEV;
  *   - VITE_JDC_URL, VITE_TRANSLATOR_URL
  */
 function getEndpoints() {
-  if (isDev) {
-    // Development: use Vite proxy to avoid CORS
-    return {
-      jdc: {
-        base: '/jdc-api/v1',
-        label: 'JD Client',
-      },
-      translator: {
-        base: '/translator-api/v1',
-        label: 'Translator',
-      },
-    };
-  }
-  
-  // Production: use absolute URLs
+  // Check for explicit URL overrides (URL params or env vars)
   const urlParams = new URLSearchParams(window.location.search);
-  
-  const jdcUrl = urlParams.get('jdc_url') 
-    || import.meta.env.VITE_JDC_URL 
-    || 'http://localhost:9091';
-  
-  const translatorUrl = urlParams.get('translator_url') 
-    || import.meta.env.VITE_TRANSLATOR_URL 
-    || 'http://localhost:9092';
-  
+
+  const jdcOverride = urlParams.get('jdc_url') || import.meta.env.VITE_JDC_URL;
+  const translatorOverride = urlParams.get('translator_url') || import.meta.env.VITE_TRANSLATOR_URL;
+
   return {
     jdc: {
-      base: `${jdcUrl}/api/v1`,
+      base: jdcOverride ? `${jdcOverride}/api/v1` : '/jdc-api/v1',
       label: 'JD Client',
     },
     translator: {
-      base: `${translatorUrl}/api/v1`,
+      base: translatorOverride ? `${translatorOverride}/api/v1` : '/translator-api/v1',
       label: 'Translator',
     },
   };
@@ -86,22 +65,60 @@ function getEndpointsCached() {
 }
 
 /**
- * Detect which mode is active by checking endpoint availability.
- * Returns 'jdc' if JDC is available, otherwise 'translator'.
+ * Detect which mode is active.
+ * Checks wizard-data first to know what was deployed, then confirms via health.
+ * Only probes endpoints for components that were actually deployed.
  */
 async function detectMode(): Promise<'jdc' | 'translator'> {
   const endpoints = getEndpointsCached();
-  
+
+  // Check wizard data to know what was deployed
+  let deployedJdc = false;
+  let deployedTproxy = true;
+  try {
+    const res = await fetch('/api/wizard-data', { signal: AbortSignal.timeout(2000) });
+    if (res.ok) {
+      const wd = await res.json();
+      deployedJdc = wd.constructTemplates === true;
+      // tProxy skip is only valid in JD mode — ignore stale skip flags from previous runs
+      deployedTproxy = !(wd.constructTemplates === true && wd.skipped_translator_proxy_configuration === true);
+    }
+  } catch {
+    // No wizard data — fall through to health probing
+  }
+
+  // If JDC was deployed, check if it's alive
+  if (deployedJdc) {
+    try {
+      const response = await fetch(`${endpoints.jdc.base}/health`, {
+        signal: AbortSignal.timeout(2000),
+      });
+      if (response.ok) return 'jdc';
+    } catch {
+      // JDC not available
+    }
+  }
+
+  // If tproxy was deployed, check if it's alive
+  if (deployedTproxy) {
+    try {
+      const response = await fetch(`${endpoints.translator.base}/health`, {
+        signal: AbortSignal.timeout(2000),
+      });
+      if (response.ok) return 'translator';
+    } catch {
+      // Translator not available
+    }
+  }
+
+  // Fallback: try both regardless (e.g. no wizard data yet)
   try {
     const response = await fetch(`${endpoints.jdc.base}/health`, {
       signal: AbortSignal.timeout(2000),
     });
-    if (response.ok) {
-      return 'jdc';
-    }
-  } catch {
-    // JDC not available
-  }
+    if (response.ok) return 'jdc';
+  } catch {}
+
   return 'translator';
 }
 
@@ -236,9 +253,9 @@ export function usePoolData() {
  * Hook to fetch SV1 clients data.
  * Always fetches from Translator (the only app with SV1 clients).
  */
-export function useSv1ClientsData(offset = 0, limit = 25) {
+export function useSv1ClientsData(offset = 0, limit = 25, enabled = true) {
   const endpoints = getEndpointsCached();
-  
+
   return useQuery({
     queryKey: ['sv1-clients', offset, limit],
     queryFn: async () => {
@@ -251,16 +268,17 @@ export function useSv1ClientsData(offset = 0, limit = 25) {
       }
       return response.json() as Promise<Sv1ClientsResponse>;
     },
-    refetchInterval: 3000,
+    enabled,
+    refetchInterval: enabled ? 3000 : false,
   });
 }
 
 /**
  * Hook to fetch Translator health (to show connection status).
  */
-export function useTranslatorHealth() {
+export function useTranslatorHealth(enabled = true) {
   const endpoints = getEndpointsCached();
-  
+
   return useQuery({
     queryKey: ['translator-health'],
     queryFn: async () => {
@@ -269,7 +287,8 @@ export function useTranslatorHealth() {
       });
       return response.ok;
     },
-    refetchInterval: 5000,
+    enabled,
+    refetchInterval: enabled ? 5000 : false,
     retry: false,
   });
 }
@@ -277,9 +296,9 @@ export function useTranslatorHealth() {
 /**
  * Hook to fetch JDC health (to show connection status).
  */
-export function useJdcHealth() {
+export function useJdcHealth(enabled = true) {
   const endpoints = getEndpointsCached();
-  
+
   return useQuery({
     queryKey: ['jdc-health'],
     queryFn: async () => {
@@ -288,7 +307,8 @@ export function useJdcHealth() {
       });
       return response.ok;
     },
-    refetchInterval: 5000,
+    enabled,
+    refetchInterval: enabled ? 5000 : false,
     retry: false,
   });
 }

@@ -1,0 +1,35 @@
+# SRI JD Client config (populated by envsubst at container start)
+listening_address = "0.0.0.0:34265"
+
+max_supported_version = 2
+min_supported_version = 2
+
+# Auth keys for encrypted downstream connection
+authority_public_key = "9auqWEzQDVyd2oe1JVGFLMLHZtCo2FFqZwtKA5gd9xbuEu7PH72"
+authority_secret_key = "mkDLTBBRxdBv998612qipDYoTK3YUrqLe8uWw7gu3iXbSrn2n"
+cert_validity_sec = 3600
+
+user_identity = "${JDC_USER_IDENTITY}"
+shares_per_minute = ${JDC_SHARES_PER_MINUTE}
+share_batch_size = ${JDC_SHARE_BATCH_SIZE}
+
+mode = "FULLTEMPLATE"
+
+jdc_signature = "${JDC_SIGNATURE}"
+coinbase_reward_script = "${JDC_COINBASE_REWARD_SCRIPT}"
+
+# Monitoring (exposed to sv2-ui via nginx)
+monitoring_address = "0.0.0.0:9091"
+monitoring_cache_refresh_secs = 15
+
+[[upstreams]]
+authority_pubkey = "${JDC_UPSTREAM_AUTHORITY_PUBKEY}"
+pool_address = "${JDC_POOL_ADDRESS}"
+pool_port = ${JDC_POOL_PORT}
+jds_address = "${JDC_UPSTREAM_JDS_ADDRESS}"
+jds_port = ${JDC_UPSTREAM_JDS_PORT}
+
+[template_provider_type.BitcoinCoreIpc]
+network = "${JDC_BITCOIN_NETWORK}"
+fee_threshold = ${JDC_FEE_THRESHOLD}
+min_interval = ${JDC_MIN_INTERVAL}

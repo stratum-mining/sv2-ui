@@ -79,3 +79,17 @@ export function calculateSharesPerMinute(shares: number, uptimeSecs: number): nu
   if (uptimeSecs === 0) return 0;
   return (shares / uptimeSecs) * 60;
 }
+
+/**
+ * Converts H/s to TH/s (1 TH/s = 1e12 H/s).
+ */
+export function convertHashesToTerahashes(hashesPerSecond: number): number {
+  return hashesPerSecond / 1e12;
+}
+
+/**
+ * Converts TH/s to H/s (1 TH/s = 1e12 H/s).
+ */
+export function convertTerahashesToHashes(terahashesPerSecond: number): number {
+  return terahashesPerSecond * 1e12;
+}

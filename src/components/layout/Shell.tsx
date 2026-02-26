@@ -7,6 +7,7 @@ import {
   Moon,
   Menu,
   X,
+  Network,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { AppMode, AppFeatures } from '@/types/api';
@@ -203,5 +204,6 @@ function getNavItems(_features: AppFeatures, _appMode: AppMode): NavItem[] {
   return [
     { icon: LayoutDashboard, label: 'Dashboard', href: '/' },
     { icon: Settings, label: 'Settings', href: '/settings' },
+    { icon: Network, label: 'Connection', href: '/connection' },
   ];
 }

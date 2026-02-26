@@ -14,6 +14,11 @@ export default defineConfig({
   // This avoids CORS issues when fetching from different origins
   server: {
     proxy: {
+      // Proxy requests to backend API
+      '/api': {
+        target: 'http://localhost:3000',
+        changeOrigin: true,
+      },
       // Proxy requests to JDC (port 9091)
       '/jdc-api': {
         target: 'http://localhost:9091',

@@ -84,7 +84,7 @@ export function UpstreamChannelTable({
                 {channel.user_identity || '-'}
               </TableCell>
               <TableCell className="text-right font-mono font-medium">
-                {formatHashrate(channel.nominal_hashrate)}
+                {formatHashrate(channel.nominal_hashrate ?? 0)}
               </TableCell>
               <TableCell className="text-right font-mono">
                 {formatNumber(channel.shares_accepted)}

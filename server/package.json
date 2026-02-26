@@ -1,0 +1,29 @@
+{
+  "name": "sv2-ui-backend",
+  "version": "0.1.0",
+  "description": "Backend for SV2 UI Docker orchestration",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc",
+    "start": "node dist/server/src/index.js",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dockerode": "^4.0.4",
+    "express": "^4.21.2",
+    "smol-toml": "^1.6.0",
+    "tar-stream": "^3.1.7"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.17",
+    "@types/dockerode": "^3.3.34",
+    "@types/express": "^5.0.0",
+    "@types/node": "^22.10.2",
+    "@types/tar-stream": "^3.1.4",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  }
+}

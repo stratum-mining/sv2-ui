@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { STORAGE_KEYS } from '@/lib/storage-keys';
 
 type UiConfig = {
   // Stored as HSL triplet string, e.g. '190 100% 45%'
@@ -7,7 +8,7 @@ type UiConfig = {
   customLogoDataUrl: string;
 };
 
-const STORAGE_KEY = 'sv2-ui-config';
+const STORAGE_KEY = STORAGE_KEYS.UI_CONFIG;
 
 const DEFAULT_CONFIG: UiConfig = {
   // Cyan — matches --primary in index.css light mode

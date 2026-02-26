@@ -1,5 +1,6 @@
-import { useState, useMemo } from 'react';
-import { AlertTriangle, Search, RefreshCw } from 'lucide-react';
+import { useState, useMemo, useEffect } from 'react';
+import { Link } from 'wouter';
+import { AlertTriangle, Search, RefreshCw, Settings } from 'lucide-react';
 import { Shell } from '@/components/layout/Shell';
 import { StatCard } from '@/components/data/StatCard';
 import { HashrateChart } from '@/components/data/HashrateChart';
@@ -31,6 +32,22 @@ export function UnifiedDashboard() {
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 15;
 
+  // Fetch wizard data to know which components were actually deployed
+  const [deployedTproxy, setDeployedTproxy] = useState(true);
+  const [deployedJdc, setDeployedJdc] = useState(false);
+
+  useEffect(() => {
+    fetch('/api/wizard-data')
+      .then((res) => (res.ok ? res.json() : null))
+      .then((wd) => {
+        if (!wd) return;
+        // tProxy is only optional in JD mode — guard against stale skip flags from previous runs
+        if (wd.constructTemplates === true && wd.skipped_translator_proxy_configuration === true) setDeployedTproxy(false);
+        if (wd.constructTemplates === true) setDeployedJdc(true);
+      })
+      .catch(() => {});
+  }, []);
+
   // Data from JDC or Translator depending on mode
   const {
     modeLabel,
@@ -51,18 +68,18 @@ export function UnifiedDashboard() {
     data: sv1Data,
     isLoading: sv1Loading,
     refetch: refetchSv1,
-  } = useSv1ClientsData(0, 1000); // Fetch all for client-side filtering
+  } = useSv1ClientsData(0, 1000, deployedTproxy);
 
   const {
     data: translatorOk,
     isLoading: translatorHealthLoading,
     isError: translatorHealthError,
-  } = useTranslatorHealth();
+  } = useTranslatorHealth(deployedTproxy);
   const {
     data: jdcOk,
     isLoading: jdcHealthLoading,
     isError: jdcHealthError,
-  } = useJdcHealth();
+  } = useJdcHealth(deployedJdc);
 
   // Derive per-service error state from health checks.
   // A service is considered down when:
@@ -71,8 +88,8 @@ export function UnifiedDashboard() {
   //   - the query is in error state (covers both initial and refetch failures)
   const translatorHealthy = translatorOk === true && !translatorHealthError;
   const jdcHealthy = jdcOk === true && !jdcHealthError;
-  const translatorDown = !translatorHealthLoading && !translatorHealthy;
-  const jdcDown = !jdcHealthLoading && isJdMode && !jdcHealthy;
+  const translatorDown = deployedTproxy && !translatorHealthLoading && !translatorHealthy;
+  const jdcDown = deployedJdc && !jdcHealthLoading && !jdcHealthy;
   const showError = poolError || translatorDown || jdcDown;
 
   // SV1 client stats (from Translator)
@@ -87,9 +104,9 @@ export function UnifiedDashboard() {
   }, [allClients]);
 
   // Total hashrate:
-  // - JD mode: from SV2 client channels (poolGlobal.sv2_clients.total_hashrate)
-  // - Translator-only mode: from SV1 clients (poolGlobal.sv1_clients.total_hashrate or calculated)
-  const totalHashrate = isJdMode 
+  // - JD mode: from SV2 client channels
+  // - Translator-only mode: from SV1 clients
+  const totalHashrate = isJdMode
     ? (poolGlobal?.sv2_clients?.total_hashrate || 0)
     : (poolGlobal?.sv1_clients?.total_hashrate || sv1TotalHashrate);
 
@@ -178,11 +195,13 @@ export function UnifiedDashboard() {
     <Shell appMode="translator">
       {/* Connection Status Banner */}
       <div className="flex items-center gap-4 text-sm mb-2">
-        <div className="flex items-center gap-2">
-          <div className={`h-2 w-2 rounded-full ${translatorHealthLoading ? 'bg-muted-foreground animate-pulse' : translatorHealthy ? 'bg-green-500' : 'bg-red-500'}`} />
-          <span className="text-muted-foreground">Translator</span>
-        </div>
-        {isJdMode && (
+        {deployedTproxy && (
+          <div className="flex items-center gap-2">
+            <div className={`h-2 w-2 rounded-full ${translatorHealthLoading ? 'bg-muted-foreground animate-pulse' : translatorHealthy ? 'bg-green-500' : 'bg-red-500'}`} />
+            <span className="text-muted-foreground">Translator</span>
+          </div>
+        )}
+        {deployedJdc && (
           <div className="flex items-center gap-2">
             <div className={`h-2 w-2 rounded-full ${jdcHealthLoading ? 'bg-muted-foreground animate-pulse' : jdcHealthy ? 'bg-green-500' : 'bg-red-500'}`} />
             <span className="text-muted-foreground">JD Client</span>
@@ -328,6 +347,14 @@ export function UnifiedDashboard() {
           )}
         </>
       )}
+
+      {/* Go to Wizard */}
+      <div className="flex justify-center pt-8 pb-4">
+        <Link href="/setup" className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg border border-border bg-card hover:bg-accent transition-colors">
+          <Settings className="w-4 h-4" />
+          Go to Setup Wizard
+        </Link>
+      </div>
     </Shell>
   );
 }

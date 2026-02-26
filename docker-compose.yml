@@ -1,0 +1,22 @@
+services:
+  sv2_ui:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    image: stratumv2/sv2-ui:latest
+    container_name: sv2_ui
+    ports:
+      - "2121:2121"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - sv2-data:/data
+      - ./docker/bitcoin-core-ipc:/app/bitcoin-core-ipc
+    networks:
+      - sv2
+    restart: unless-stopped
+
+networks:
+  sv2:
+
+volumes:
+  sv2-data:

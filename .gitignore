@@ -3,11 +3,13 @@ node_modules/
 
 # Build output
 dist/
+server/dist/
 
 # Environment
 .env
 .env.local
 .env.*.local
+docker/.env
 
 # Editor
 .vscode/

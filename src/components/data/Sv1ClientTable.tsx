@@ -65,7 +65,7 @@ export function Sv1ClientTable({ clients, isLoading }: Sv1ClientTableProps) {
                 <div className="flex items-center space-x-2">
                   <div className={cn(
                     "h-2.5 w-2.5 rounded-full shadow-sm",
-                    client.hashrate !== null ? "bg-green-500" : "bg-muted-foreground"
+                    client.channel_id !== null ? "bg-green-500" : "bg-muted-foreground"
                   )} />
                   <span>{client.authorized_worker_name || '-'}</span>
                 </div>

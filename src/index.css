@@ -60,6 +60,14 @@
   --cyan-500: 190 100% 42%;
   --cyan-600: 192 91% 36%;
 
+  /* Semantic colors */
+  --success: 142 71% 45%;
+  --success-foreground: 142 71% 29%;
+  --info: 199 89% 48%;
+  --info-foreground: 199 89% 32%;
+  --warning: 38 92% 50%;
+  --warning-foreground: 38 92% 35%;
+
   /* Glass system */
   --glass-bg: 0 0% 100%;
   --glass-border: 0 0% 0%;
@@ -113,6 +121,14 @@
   --cyan-400: 187 92% 60%;
   --cyan-500: 190 100% 50%;
   --cyan-600: 192 91% 36%;
+
+  /* Semantic colors */
+  --success: 142 71% 45%;
+  --success-foreground: 142 76% 73%;
+  --info: 199 89% 48%;
+  --info-foreground: 199 89% 68%;
+  --warning: 38 92% 50%;
+  --warning-foreground: 38 92% 70%;
 
   /* Glass system - dark */
   --glass-bg: 0 0% 100%;

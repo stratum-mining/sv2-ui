@@ -100,6 +100,10 @@ export function Wizard({ config, onComplete, className, initialData }: WizardPro
   const handleContinue = () => {
     if (currentStep.nextStepId) {
       setHistory((prev) => [...prev, currentStepId]);
+      // Clear any stale skip flag from a previous wizard run
+      if (currentStep.skipStepId) {
+        updateData({ [`skipped_${currentStep.id}`]: false });
+      }
       setCurrentStepId(currentStep.nextStepId);
       syncToLocalStorage(data, currentStep.nextStepId);
     } else if (onComplete) {

@@ -5,15 +5,17 @@ import { Shell } from '@/components/layout/Shell';
 import { StatCard } from '@/components/data/StatCard';
 import { HashrateChart } from '@/components/data/HashrateChart';
 import { Sv1ClientTable } from '@/components/data/Sv1ClientTable';
-import { 
-  usePoolData, 
-  useSv1ClientsData, 
+import { Sv2ClientTable } from '@/components/data/Sv2ClientTable';
+import {
+  usePoolData,
+  useSv1ClientsData,
+  useSv2ClientsData,
   useTranslatorHealth,
   useJdcHealth,
 } from '@/hooks/usePoolData';
 import { useHashrateHistory } from '@/hooks/useHashrateHistory';
 import { formatHashrate, formatUptime, formatDifficulty } from '@/lib/utils';
-import type { Sv1ClientInfo } from '@/types/api';
+import type { Sv1ClientInfo, ClientMetadata } from '@/types/api';
 /**
  * Unified Dashboard for the SV2 Mining Stack.
  * 
@@ -63,12 +65,19 @@ export function UnifiedDashboard() {
   // (poolError alone is insufficient: if Translator is down but JDC is up,
   // usePoolData falls back to JDC and never sets isError, so we'd miss it)
 
-  // SV1 clients (always from Translator)
+  // SV1 clients (from Translator — only when tProxy is deployed)
   const {
     data: sv1Data,
     isLoading: sv1Loading,
     refetch: refetchSv1,
   } = useSv1ClientsData(0, 1000, deployedTproxy);
+
+  // SV2 clients (from JDC — only when tProxy is skipped)
+  const {
+    data: sv2Data,
+    isLoading: sv2Loading,
+    refetch: refetchSv2,
+  } = useSv2ClientsData(deployedJdc && !deployedTproxy);
 
   const {
     data: translatorOk,
@@ -93,15 +102,23 @@ export function UnifiedDashboard() {
   const showError = poolError || translatorDown || jdcDown;
 
   // SV1 client stats (from Translator)
-  const allClients = sv1Data?.items || [];
-  const activeClients = allClients.filter((c: Sv1ClientInfo) => c.hashrate !== null);
-  const totalClients = sv1Data?.total || 0;
-  const activeCount = activeClients.length;
+  const allSv1Clients = sv1Data?.items || [];
+  const activeSv1Clients = allSv1Clients.filter((c: Sv1ClientInfo) => c.hashrate !== null);
+  const totalSv1Clients = sv1Data?.total || 0;
+  const activeSv1Count = activeSv1Clients.length;
+
+  // SV2 client stats (from JDC — when tProxy is skipped)
+  const allSv2Clients = sv2Data?.items || [];
+  const totalSv2Clients = sv2Data?.total || 0;
+
+  // Unified worker counts depending on mode
+  const totalClients = deployedTproxy ? totalSv1Clients : totalSv2Clients;
+  const activeCount = deployedTproxy ? activeSv1Count : totalSv2Clients;
 
   // Calculate total hashrate from SV1 clients
   const sv1TotalHashrate = useMemo(() => {
-    return allClients.reduce((sum, c) => sum + (c.hashrate || 0), 0);
-  }, [allClients]);
+    return allSv1Clients.reduce((sum, c) => sum + (c.hashrate || 0), 0);
+  }, [allSv1Clients]);
 
   // Total hashrate:
   // - JD mode: from SV2 client channels
@@ -174,22 +191,39 @@ export function UnifiedDashboard() {
     ? ((shareStats.accepted / shareStats.submitted) * 100).toFixed(2) 
     : '0.00';
 
-  // Filter clients by search
-  const filteredClients = useMemo(() => {
-    if (!searchTerm) return allClients;
+  // Filter SV1 clients by search
+  const filteredSv1Clients = useMemo(() => {
+    if (!searchTerm) return allSv1Clients;
     const term = searchTerm.toLowerCase();
-    return allClients.filter((c: Sv1ClientInfo) => 
+    return allSv1Clients.filter((c: Sv1ClientInfo) =>
       c.authorized_worker_name?.toLowerCase().includes(term) ||
       c.user_identity?.toLowerCase().includes(term)
     );
-  }, [allClients, searchTerm]);
+  }, [allSv1Clients, searchTerm]);
+
+  // Filter SV2 clients by search (search by client_id)
+  const filteredSv2Clients = useMemo(() => {
+    if (!searchTerm) return allSv2Clients;
+    const term = searchTerm.toLowerCase();
+    return allSv2Clients.filter((c: ClientMetadata) =>
+      String(c.client_id).includes(term)
+    );
+  }, [allSv2Clients, searchTerm]);
+
+  // Use the appropriate filtered list based on deployment mode
+  const filteredClients = deployedTproxy ? filteredSv1Clients : filteredSv2Clients;
 
   // Pagination
   const totalPages = Math.ceil(filteredClients.length / itemsPerPage);
-  const paginatedClients = useMemo(() => {
+  const paginatedSv1Clients = useMemo(() => {
     const start = (currentPage - 1) * itemsPerPage;
-    return filteredClients.slice(start, start + itemsPerPage);
-  }, [filteredClients, currentPage, itemsPerPage]);
+    return filteredSv1Clients.slice(start, start + itemsPerPage);
+  }, [filteredSv1Clients, currentPage, itemsPerPage]);
+
+  const paginatedSv2Clients = useMemo(() => {
+    const start = (currentPage - 1) * itemsPerPage;
+    return filteredSv2Clients.slice(start, start + itemsPerPage);
+  }, [filteredSv2Clients, currentPage, itemsPerPage]);
 
   return (
     <Shell appMode="translator">
@@ -245,7 +279,7 @@ export function UnifiedDashboard() {
               {activeCount} <span className="text-muted-foreground text-lg">/ {totalClients}</span>
             </span>
           }
-          subtitle={`${totalClients - activeCount} offline workers`}
+          subtitle={deployedTproxy ? `${totalClients - activeCount} offline workers` : `${totalSv2Clients} SV2 client(s)`}
         />
 
         <StatCard
@@ -302,7 +336,7 @@ export function UnifiedDashboard() {
 
             <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
               <button
-                onClick={() => refetchSv1()}
+                onClick={() => deployedTproxy ? refetchSv1() : refetchSv2()}
                 className="h-9 px-3 rounded-lg border border-border/50 bg-muted/30 hover:bg-background transition-colors flex items-center gap-2 text-sm"
               >
                 <RefreshCw className="h-4 w-4" />
@@ -316,16 +350,23 @@ export function UnifiedDashboard() {
       {/* Workers Table */}
       {!poolLoading && (
         <>
-          <Sv1ClientTable
-            clients={paginatedClients}
-            isLoading={sv1Loading}
-          />
+          {deployedTproxy ? (
+            <Sv1ClientTable
+              clients={paginatedSv1Clients}
+              isLoading={sv1Loading}
+            />
+          ) : (
+            <Sv2ClientTable
+              clients={paginatedSv2Clients}
+              isLoading={sv2Loading}
+            />
+          )}
 
           {/* Pagination Footer */}
           {filteredClients.length > itemsPerPage && (
             <div className="flex items-center justify-between mt-4">
               <div className="text-sm text-muted-foreground">
-                Showing {paginatedClients.length} of {filteredClients.length} workers
+                Showing {(deployedTproxy ? paginatedSv1Clients : paginatedSv2Clients).length} of {filteredClients.length} workers
               </div>
               <div className="flex gap-2">
                 <button

@@ -250,6 +250,21 @@ export function usePoolData() {
 }
 
 /**
+ * Hook to fetch SV2 clients from JDC.
+ * Used when tProxy is skipped and SV2 miners connect directly to JDC.
+ */
+export function useSv2ClientsData(enabled = true) {
+  const endpoints = getEndpointsCached();
+
+  return useQuery({
+    queryKey: ['sv2-clients'],
+    queryFn: () => fetchWithTimeout<ClientsResponse>(`${endpoints.jdc.base}/clients?offset=0&limit=100`),
+    enabled,
+    refetchInterval: enabled ? 3000 : false,
+  });
+}
+
+/**
  * Hook to fetch SV1 clients data.
  * Always fetches from Translator (the only app with SV1 clients).
  */

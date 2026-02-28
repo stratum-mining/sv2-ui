@@ -3,7 +3,9 @@ import { lookup } from 'node:dns/promises';
 import path from 'node:path';
 import { parse as parseTOML, stringify as stringifyTOML } from 'smol-toml';
 import { buildJdClientConfig, buildTranslatorConfig } from '../../../src/config-templates/config-builder.js';
+import { DEFAULT_AUTHORITY_PUBLIC_KEY, DEFAULT_AUTHORITY_SECRET_KEY } from '../../../src/config-templates/constants.js';
 import { CONFIG_DIR, CONFIG_FILES, CONTAINER_NAMES, PORTS } from '../constants.js';
+import { generateKeypair } from './keygen.service.js';
 import type { SetupRequest } from '../types.js';
 import type { ConfigTemplateData } from '../../../src/config-templates/types.js';
 
@@ -109,10 +111,52 @@ async function mergeWithExisting(wizardToml: string, configPath: string): Promis
   return stringifyTOML(merged);
 }
 
+/**
+ * Read the existing JDC config and extract authority keys.
+ * Returns the keys if they exist and are NOT the hardcoded defaults, otherwise null.
+ */
+async function readExistingJdcKeys(
+  configPath: string
+): Promise<{ publicKey: string; secretKey: string } | null> {
+  try {
+    const raw = await readFile(configPath, 'utf-8');
+    const parsed = parseTOML(raw) as Record<string, any>;
+    const pub = parsed.authority_public_key as string | undefined;
+    const sec = parsed.authority_secret_key as string | undefined;
+    if (
+      pub && sec &&
+      pub !== DEFAULT_AUTHORITY_PUBLIC_KEY &&
+      sec !== DEFAULT_AUTHORITY_SECRET_KEY
+    ) {
+      return { publicKey: pub, secretKey: sec };
+    }
+  } catch {
+    // File missing or unparseable — will generate fresh keys
+  }
+  return null;
+}
+
 export async function generateConfigs(data: SetupRequest): Promise<void> {
   await mkdir(CONFIG_DIR, { recursive: true });
 
   const jdMode = data.constructTemplates;
+
+  // Resolve JDC authority keys: reuse existing non-default keys, or generate fresh ones
+  let jdcPublicKey: string | undefined;
+  let jdcSecretKey: string | undefined;
+
+  if (jdMode) {
+    const jdcConfigPath = path.join(CONFIG_DIR, CONFIG_FILES.jd_client);
+    const existing = await readExistingJdcKeys(jdcConfigPath);
+    if (existing) {
+      jdcPublicKey = existing.publicKey;
+      jdcSecretKey = existing.secretKey;
+    } else {
+      const fresh = generateKeypair();
+      jdcPublicKey = fresh.publicKey;
+      jdcSecretKey = fresh.secretKey;
+    }
+  }
 
   // Build translator config
   const translatorTemplateData: ConfigTemplateData = {
@@ -128,10 +172,10 @@ export async function generateConfigs(data: SetupRequest): Promise<void> {
 
   if (jdMode) {
     // In JD mode, translator connects to jd_client, not the pool.
-    // Use JDC's authority key (the default), not the pool's.
+    // Use JDC's actual authority key so the Noise handshake succeeds.
     translatorTemplateData.upstreamAddress = CONTAINER_NAMES.jd_client;
     translatorTemplateData.upstreamPort = PORTS.jd_client.listening;
-    translatorTemplateData.upstreamAuthorityPubkey = undefined;
+    translatorTemplateData.upstreamAuthorityPubkey = jdcPublicKey;
   }
 
   const translatorToml = buildTranslatorConfig(translatorTemplateData, {
@@ -154,6 +198,8 @@ export async function generateConfigs(data: SetupRequest): Promise<void> {
       feeThreshold: data.clientFeeThreshold,
       minInterval: data.clientMinInterval,
       socketPath: data.socketPath,
+      authorityPublicKey: jdcPublicKey,
+      authoritySecretKey: jdcSecretKey,
     };
 
     let jdcToml = buildJdClientConfig(jdcTemplateData);

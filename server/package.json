@@ -11,6 +11,8 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@noble/secp256k1": "^2.3.0",
+    "bs58check": "^3.0.1",
     "cors": "^2.8.5",
     "dockerode": "^4.0.4",
     "express": "^4.21.2",

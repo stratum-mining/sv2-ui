@@ -9,6 +9,7 @@ import configRouter from './routes/config.js';
 import logsRouter from './routes/logs.js';
 import checkSocketRouter from './routes/check-socket.js';
 import updateRouter from './routes/update.js';
+import keysRouter from './routes/keys.js';
 
 const app = express();
 
@@ -23,6 +24,7 @@ app.use('/api/config', configRouter);
 app.use('/api/logs', logsRouter);
 app.use('/api/check-socket', checkSocketRouter);
 app.use('/api/update', updateRouter);
+app.use('/api/keys', keysRouter);
 app.use('/api', controlRouter);
 
 export default app;

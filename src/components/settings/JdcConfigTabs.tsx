@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Copy, Plus, RefreshCw, ScrollText, Trash2 } from 'lucide-react';
+import { Copy, KeyRound, Plus, RefreshCw, ScrollText, Trash2 } from 'lucide-react';
 import { LogsPanel } from './LogsPanel';
 import { UpdateTab } from './UpdateTab';
 
@@ -363,6 +363,28 @@ export function JdcTabs() {
                   placeholder="Base58-encoded secret key"
                 />
               </FieldRow>
+              <Button
+                variant="outline"
+                onClick={async () => {
+                  try {
+                    const r = await fetch('/api/keys/generate', { method: 'POST' });
+                    if (!r.ok) throw new Error('Generation failed');
+                    const { publicKey, secretKey } = await r.json();
+                    upd('authority_public_key', publicKey);
+                    upd('authority_secret_key', secretKey);
+                  } catch {
+                    // silent — user can retry
+                  }
+                }}
+                className="flex items-center gap-1.5"
+              >
+                <KeyRound className="h-3.5 w-3.5" />
+                Generate New Keypair
+              </Button>
+              <p className="text-xs text-muted-foreground">
+                Generates a fresh Noise authority keypair. The tProxy upstream key is also updated automatically.
+                Click Save Config then restart both JDC and tProxy containers to apply.
+              </p>
             </CardContent>
           </Card>
         </TabsContent>

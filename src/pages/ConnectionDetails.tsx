@@ -1,17 +1,25 @@
 import { useState, useEffect } from 'react';
 import { Shell } from '@/components/layout/Shell';
-import { Network, Cpu, ChevronDown, ChevronUp } from 'lucide-react';
+import { Network, Cpu, ChevronDown, ChevronUp, Copy, Check, Key } from 'lucide-react';
 import { useJdcHealth, useTranslatorHealth } from '@/hooks/usePoolData';
 import { CodeBlock } from '@/wizard/components/ui';
 
 export function ConnectionDetails() {
   const [showCpuMiner, setShowCpuMiner] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   const [wizardData, setWizardData] = useState<Record<string, any> | null>(null);
+  const [authorityPubKey, setAuthorityPubKey] = useState<string | null>(null);
   useEffect(() => {
     fetch('/api/wizard-data')
       .then((res) => (res.ok ? res.json() : null))
       .then((wd) => { if (wd) setWizardData(wd); })
+      .catch(() => {});
+    fetch('/api/config?service=jdc&format=json')
+      .then((res) => (res.ok ? res.json() : null))
+      .then((cfg) => {
+        if (cfg?.data?.authority_public_key) setAuthorityPubKey(cfg.data.authority_public_key);
+      })
       .catch(() => {});
   }, []);
 
@@ -67,6 +75,38 @@ export function ConnectionDetails() {
                       stratum+tcp://&lt;host-ip&gt;:{port}
                     </code>
                   </div>
+
+                  {!tproxyRunning && jdcRunning && authorityPubKey && (
+                    <div className="mb-4">
+                      <div className="flex items-center gap-2 mb-1.5">
+                        <Key className="w-3.5 h-3.5 text-muted-foreground" />
+                        <span className="text-xs font-medium text-muted-foreground">Authority Public Key</span>
+                      </div>
+                      <div className="bg-muted/50 rounded p-3 flex items-center gap-2">
+                        <code className="text-xs font-mono text-foreground flex-1 break-all select-all">
+                          {authorityPubKey}
+                        </code>
+                        <button
+                          onClick={() => {
+                            navigator.clipboard.writeText(authorityPubKey);
+                            setCopied(true);
+                            setTimeout(() => setCopied(false), 2000);
+                          }}
+                          className="flex-shrink-0 p-1.5 rounded hover:bg-muted transition-colors"
+                          title="Copy to clipboard"
+                        >
+                          {copied ? (
+                            <Check className="w-3.5 h-3.5 text-green-500" />
+                          ) : (
+                            <Copy className="w-3.5 h-3.5 text-muted-foreground" />
+                          )}
+                        </button>
+                      </div>
+                      <p className="text-[11px] text-muted-foreground mt-1.5">
+                        Configure your SV2 miner with this key for Noise-encrypted connections.
+                      </p>
+                    </div>
+                  )}
 
                   {!tproxyRunning && jdcRunning && (
                     <p className="text-xs text-muted-foreground mb-4">

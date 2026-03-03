@@ -149,7 +149,7 @@ const JDC_DEFAULTS: Record<string, unknown> = {
   authority_secret_key: '',
   cert_validity_sec: 3600,
   user_identity: '',
-  shares_per_minute: 10,
+  shares_per_minute: 20,
   share_batch_size: 20,
   mode: 'FULLTEMPLATE',
   jdc_signature: '',
@@ -439,7 +439,7 @@ export function JdcTabs() {
                 <FieldRow label="Shares Per Minute">
                   <Input
                     type="number"
-                    value={(cfg.shares_per_minute as number) ?? 10}
+                    value={(cfg.shares_per_minute as number) ?? 20}
                     onChange={(e) => upd('shares_per_minute', parseInt(e.target.value) || 0)}
                   />
                 </FieldRow>

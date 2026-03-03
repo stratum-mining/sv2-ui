@@ -6,7 +6,7 @@ export const DEFAULT_AUTHORITY_SECRET_KEY = "mkDLTBBRxdBv998612qipDYoTK3YUrqLe8u
 // Default configuration values
 export const DEFAULT_CONFIG_VALUES = {
   // Shares and difficulty
-  sharesPerMinute: 6.0,
+  sharesPerMinute: 20.0,
   shareBatchSize: 10,
   minIndividualMinerHashrate: 10000000000000.0, // 100Th/s in H/s
 

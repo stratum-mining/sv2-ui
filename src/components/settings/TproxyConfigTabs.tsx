@@ -22,7 +22,7 @@ const TPROXY_DEFAULTS: Record<string, unknown> = {
   monitoring_address: '0.0.0.0:9092',
   downstream_difficulty_config: {
     min_individual_miner_hashrate: 10_000_000_000_000,
-    shares_per_minute: 10,
+    shares_per_minute: 20,
     enable_vardiff: true,
     job_keepalive_interval_secs: 60,
   },
@@ -301,7 +301,7 @@ export function TproxyTabs() {
               <FieldRow label="Shares Per Minute">
                 <Input
                   type="number"
-                  value={(diff.shares_per_minute as number) ?? 10}
+                  value={(diff.shares_per_minute as number) ?? 20}
                   onChange={(e) => updDiff('shares_per_minute', parseInt(e.target.value) || 0)}
                   className="max-w-32"
                 />

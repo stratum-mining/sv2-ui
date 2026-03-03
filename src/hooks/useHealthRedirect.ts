@@ -6,7 +6,12 @@ export function useHealthRedirect() {
   // null = still fetching, false = not complete, true = complete
   const [wizardComplete, setWizardComplete] = useState<boolean | null>(null);
 
+  // Re-fetch wizard-data every time the user navigates to '/'.
+  // This ensures that after completing the wizard and navigating back,
+  // we pick up the freshly saved data instead of using a stale 'false'.
   useEffect(() => {
+    if (location !== '/') return;
+    setWizardComplete(null); // Reset to "deciding" while we re-check
     fetch('/api/wizard-data')
       .then((res) => (res.ok ? res.json() : null))
       .then((wd) => {
@@ -17,7 +22,7 @@ export function useHealthRedirect() {
         setWizardComplete(true);
       })
       .catch(() => setWizardComplete(false));
-  }, []);
+  }, [location]);
 
   // Wizard never completed — go to setup immediately
   useEffect(() => {

@@ -4,14 +4,22 @@
   "description": "Unified monitoring dashboard for the SRI mining stack",
   "private": true,
   "type": "module",
+  "workspaces": [
+    "server"
+  ],
   "scripts": {
-    "dev": "vite",
+    "dev": "concurrently \"vite\" \"npm run dev --prefix server\"",
+    "dev:ui": "vite",
+    "dev:server": "npm run dev --prefix server",
     "build": "tsc && vite build",
+    "build:server": "npm run build --prefix server",
+    "build:all": "npm run build && npm run build:server",
     "preview": "vite preview",
     "lint": "eslint . --max-warnings 0",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@radix-ui/react-switch": "^1.2.6",
     "@tanstack/react-query": "^5.62.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
@@ -29,6 +37,7 @@
     "@types/react-dom": "^18.3.3",
     "@vitejs/plugin-react": "^4.3.4",
     "autoprefixer": "^10.4.20",
+    "concurrently": "^9.2.1",
     "eslint": "^9.17.0",
     "eslint-plugin-react-hooks": "^5.0.0",
     "eslint-plugin-react-refresh": "^0.4.16",

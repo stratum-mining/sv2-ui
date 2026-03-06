@@ -10,17 +10,21 @@ export default defineConfig({
       '@': path.resolve(__dirname, './src'),
     },
   },
-  // In development, proxy API requests to the monitoring servers
-  // This avoids CORS issues when fetching from different origins
+  // In development, proxy API requests to backend and monitoring servers
   server: {
     proxy: {
-      // Proxy requests to JDC (port 9091)
+      // Proxy control API requests to sv2-ui backend (port 3001)
+      '/api': {
+        target: 'http://localhost:3001',
+        changeOrigin: true,
+      },
+      // Proxy requests to JDC monitoring (port 9091)
       '/jdc-api': {
         target: 'http://localhost:9091',
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/jdc-api/, '/api'),
       },
-      // Proxy requests to Translator (port 9092)
+      // Proxy requests to Translator monitoring (port 9092)
       '/translator-api': {
         target: 'http://localhost:9092',
         changeOrigin: true,

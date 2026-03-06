@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { AlertTriangle, Search, RefreshCw } from 'lucide-react';
+import { AlertTriangle, Search, RefreshCw, Play } from 'lucide-react';
 import { Shell } from '@/components/layout/Shell';
 import { StatCard } from '@/components/data/StatCard';
 import { HashrateChart } from '@/components/data/HashrateChart';
@@ -11,6 +11,7 @@ import {
   useJdcHealth,
 } from '@/hooks/usePoolData';
 import { useHashrateHistory } from '@/hooks/useHashrateHistory';
+import { useSetupStatus } from '@/hooks/useSetupStatus';
 import { formatHashrate, formatUptime, formatDifficulty } from '@/lib/utils';
 import type { Sv1ClientInfo } from '@/types/api';
 /**
@@ -31,9 +32,11 @@ export function UnifiedDashboard() {
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 15;
 
-  // Data from JDC or Translator depending on mode
+  // Get configured template mode and pool name from setup status
+  const { isOrchestrated, isConfigured, isRunning, mode: templateMode, poolName } = useSetupStatus();
+
+  // Data from JDC or Translator depending on configured mode
   const {
-    modeLabel,
     isJdMode,
     global: poolGlobal,
     clientChannels,  // Downstream client channels (for hashrate, best diff)
@@ -74,6 +77,27 @@ export function UnifiedDashboard() {
   const translatorDown = !translatorHealthLoading && !translatorHealthy;
   const jdcDown = !jdcHealthLoading && isJdMode && !jdcHealthy;
   const showError = poolError || translatorDown || jdcDown;
+
+  // Check if configured but not running (show "Start Mining" instead of error)
+  const { isOrchestrated, isConfigured, isRunning } = useSetupStatus();
+  const configuredButStopped = isOrchestrated && isConfigured && !isRunning;
+  const [isStarting, setIsStarting] = useState(false);
+
+  const handleStartMining = async () => {
+    setIsStarting(true);
+    try {
+      const response = await fetch('/api/restart', { method: 'POST' });
+      if (response.ok) {
+        // Give containers time to start, then refresh health checks
+        setTimeout(() => {
+          window.location.reload();
+        }, 3000);
+      }
+    } catch (error) {
+      console.error('Failed to start mining:', error);
+      setIsStarting(false);
+    }
+  };
 
   // SV1 client stats (from Translator)
   const allClients = useMemo(() => sv1Data?.items || [], [sv1Data?.items]);
@@ -174,39 +198,59 @@ export function UnifiedDashboard() {
     return filteredClients.slice(start, start + itemsPerPage);
   }, [filteredClients, currentPage, itemsPerPage]);
 
+  // Determine if pool is connected (healthy stack means pool connection is working)
+  const isHealthLoading = translatorHealthLoading || (isJdMode && jdcHealthLoading);
+  const isPoolConnected = isJdMode ? (translatorHealthy && jdcHealthy) : translatorHealthy;
+
   return (
     <Shell appMode="translator">
-      {/* Connection Status Banner */}
+      {/* Pool Connection Status */}
       <div className="flex items-center gap-4 text-sm mb-2">
         <div className="flex items-center gap-2">
-          <div className={`h-2 w-2 rounded-full ${translatorHealthLoading ? 'bg-muted-foreground animate-pulse' : translatorHealthy ? 'bg-green-500' : 'bg-red-500'}`} />
-          <span className="text-muted-foreground">Translator</span>
+          <div className={`h-2 w-2 rounded-full ${isHealthLoading ? 'bg-muted-foreground animate-pulse' : isPoolConnected ? 'bg-green-500' : 'bg-red-500'}`} />
+          <span className="text-muted-foreground">
+            {isHealthLoading 
+              ? 'Connecting...' 
+              : isPoolConnected 
+                ? `Connected to ${poolName || 'Pool'}` 
+                : 'Disconnected'}
+          </span>
         </div>
-        {isJdMode && (
-          <div className="flex items-center gap-2">
-            <div className={`h-2 w-2 rounded-full ${jdcHealthLoading ? 'bg-muted-foreground animate-pulse' : jdcHealthy ? 'bg-green-500' : 'bg-red-500'}`} />
-            <span className="text-muted-foreground">JD Client</span>
-          </div>
-        )}
         <span className="text-xs text-muted-foreground ml-auto">
-          Pool data via {modeLabel} • Uptime: {formatUptime(uptime)}
+          Uptime: {formatUptime(uptime)}
         </span>
       </div>
 
-      {/* Connection Error Banner */}
-      {showError && (
+      {/* Start Mining Banner (configured but stopped) */}
+      {configuredButStopped && showError && (
+        <div className="flex items-center justify-between gap-3 rounded-xl border border-primary/40 bg-primary/10 px-5 py-4 text-sm">
+          <div className="flex items-center gap-3">
+            <Play className="h-4 w-4 shrink-0 text-primary" />
+            <span>Mining services are stopped.</span>
+          </div>
+          <button
+            onClick={handleStartMining}
+            disabled={isStarting}
+            className="h-9 px-4 rounded-full bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors font-medium flex items-center gap-2"
+          >
+            {isStarting ? (
+              <>
+                <div className="h-4 w-4 border-2 border-primary-foreground/30 border-t-primary-foreground rounded-full animate-spin" />
+                Starting...
+              </>
+            ) : (
+              'Start Mining'
+            )}
+          </button>
+        </div>
+      )}
+
+      {/* Connection Error Banner (not configured or unknown error) */}
+      {showError && !configuredButStopped && (
         <div className="flex items-center gap-3 rounded-xl border border-red-500/40 bg-red-500/10 px-5 py-4 text-sm text-red-500">
           <AlertTriangle className="h-4 w-4 shrink-0" />
           <span>
-            {translatorDown && jdcDown
-              ? 'Cannot connect to Translator or JD Client. Make sure both services are running.'
-              : translatorDown
-              ? 'Cannot connect to Translator. Make sure it is running.'
-              : jdcDown
-              ? 'Cannot connect to JD Client. Make sure it is running.'
-              : poolError
-              ? `Cannot fetch pool data via ${modeLabel}. Make sure monitoring endpoints are reachable.`
-              : null}
+            Cannot connect to pool. Make sure mining services are running.
           </span>
         </div>
       )}

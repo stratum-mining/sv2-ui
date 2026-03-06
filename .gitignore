@@ -25,3 +25,6 @@ npm-debug.log*
 
 # TypeScript
 *.tsbuildinfo
+
+# Generated config files
+data/config/

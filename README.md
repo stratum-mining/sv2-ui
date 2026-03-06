@@ -1,178 +1,120 @@
 # SV2 UI
 
-A unified monitoring dashboard for the SRI stack.
-
-## Overview
-
-This UI provides real-time monitoring for SV2 mining deployments:
-
-- **Translator Proxy** - Translates SV1 miners to SV2
-- **JD Client** - Enables Job Declaration Protocol with custom block templates
-
-### Deployment Modes
-
-**Non-JD Mode (Translator Only)**
-```
-Pool ── Translator ── SV1 Clients (legacy miners)
-```
-
-**JD Mode (JDC + Translator)**
-```
-Pool ── JDC ── Translator ── SV1 Clients
-            ↖── Native SV2 miners (optional)
-```
-
-The UI **automatically detects** which mode is active.
+A unified setup wizard and monitoring dashboard for Stratum V2 mining.
 
 ## Quick Start
 
 ```bash
-# Install dependencies
+# Install dependencies (includes server workspace)
 npm install
 
-# Start development server
+# Start frontend + backend
 npm run dev
-
-# Build for production
-npm run build
 ```
 
-Then open http://localhost:5173
+Then open **http://localhost:5173**. On first run, you'll be guided through the setup wizard.
 
-## Configuration
+## What It Does
 
-### Endpoint URLs
+1. **Setup Wizard** - Guides you through configuration
+   - Choose Solo or Pool mining
+   - Select a pool (Braiins, SRI, etc.)
+   - Configure your username/Bitcoin address
+   - For JD mode: configure Bitcoin Core connection
 
-Configure where JDC and Translator are running:
+2. **Docker Orchestration** - Starts and manages containers
+   - Translator Proxy (SV1 to SV2 translation)
+   - JD Client (for custom block templates, optional)
 
-**URL Parameters (runtime):**
+3. **Monitoring Dashboard** - Real-time stats
+   - Total hashrate from connected miners
+   - Active workers
+   - Shares to pool
+   - Hashrate history chart
+
+## Deployment Modes
+
+**Pool Mining (No-JD)**
 ```
-http://localhost:5173/?jdc_url=http://192.168.1.10:9091&translator_url=http://192.168.1.10:9092
-```
-
-**Environment Variables (build time):**
-```bash
-VITE_JDC_URL=http://localhost:9091 \
-VITE_TRANSLATOR_URL=http://localhost:9092 \
-npm run build
-```
-
-**Defaults:**
-- JDC: `http://localhost:9091`
-- Translator: `http://localhost:9092`
-
-### Backend Requirements
-
-The monitoring APIs must be enabled in your SV2 applications:
-
-```toml
-# translator-config.toml
-monitoring_address = "0.0.0.0:9092"
-
-# jdc-config.toml (if using JD mode)
-monitoring_address = "0.0.0.0:9091"
+Pool ← Translator ← SV1 Miners
 ```
 
-## Features
+**Pool Mining with Job Declaration**
+```
+Pool ← JDC ← Translator ← SV1 Miners
+        ↑
+   Bitcoin Core (your node creates block templates)
+```
 
-### Dashboard
-- **Total Hashrate** - Combined hashrate from all connected clients
-- **Active Workers** - Number of SV1 clients connected
-- **Shares to Pool** - Accepted/submitted shares with acceptance rate
-- **Best Difficulty** - Highest difficulty share submitted
-- **Hashrate Chart** - Real-time hashrate history
+**Solo Mining**
+```
+Solo Pool ← Translator ← SV1 Miners
+```
 
-### Pool Stats
-- Detailed upstream connection information
-- Channel-level statistics
-- Share work sum and acceptance metrics
+## Supported Pools
 
-### Settings
-- Connection status for all services
-- Endpoint configuration display
-- API documentation links
+| Pool | Mode | Status |
+|------|------|--------|
+| Braiins Pool | Pool (No-JD) | Available |
+| SRI Pool | Pool (JD) | Testing |
+| SRI Solo Pool | Solo | Available |
+| Blitzpool | Solo | Coming Soon |
 
 ## Development
 
-### Prerequisites
-- Node.js 18+
-- npm 9+
+```bash
+# Build for production
+npm run build:all
+```
 
 ### Project Structure
 
 ```
 sv2-ui/
-├── src/
+├── src/                    # React frontend
 │   ├── components/
-│   │   ├── ui/              # Base UI primitives
-│   │   ├── data/            # Data display components
-│   │   └── layout/          # Shell, navigation
-│   ├── hooks/
-│   │   ├── usePoolData.ts   # Main data hook (auto-detects mode)
-│   │   └── useHashrateHistory.ts
-│   ├── pages/
-│   │   ├── UnifiedDashboard.tsx
-│   │   └── Settings.tsx
-│   ├── types/
-│   │   └── api.ts           # TypeScript types matching Rust API
-│   └── lib/
-│       └── utils.ts         # Formatting utilities
-├── public/
-├── package.json
-├── vite.config.ts
-├── tailwind.config.js
-└── tsconfig.json
+│   │   ├── setup/          # Setup wizard steps
+│   │   ├── settings/       # Settings page components
+│   │   ├── data/           # Dashboard components
+│   │   └── ui/             # Base UI primitives
+│   ├── hooks/              # React hooks
+│   └── pages/              # Page components
+├── server/                 # Node.js backend
+│   └── src/
+│       ├── index.ts        # Express API
+│       ├── docker.ts       # Docker orchestration
+│       └── config-generator.ts  # TOML config generation
+├── Dockerfile              # Multi-stage build
+└── public/                 # Static assets
 ```
 
-### Running with Live Backends
+### Docker Images Used
 
-1. Start your SV2 applications with monitoring enabled
-2. Run `npm run dev`
-3. The UI auto-detects available services
+- `stratumv2/translator_sv2:main` - Translator Proxy
+- `stratumv2/jd_client_sv2:main` - JD Client
 
-### CORS During Development
+## Ports
 
-The Vite dev server proxies API requests to avoid CORS issues:
-- `/jdc-api/*` → `http://localhost:9091/api/*`
-- `/translator-api/*` → `http://localhost:9092/api/*`
-
-### Building for Embedding
-
-The built UI can be embedded directly into Rust binaries:
-
-```bash
-npm run build
-# Output in dist/
-```
-
-See [stratum-apps](https://github.com/stratum-mining/sv2-apps) for embedding instructions.
-
-## API Endpoints Consumed
-
-| Endpoint | Source | Description |
-|----------|--------|-------------|
-| `/api/v1/health` | Both | Health check |
-| `/api/v1/global` | JDC or Translator | Global stats |
-| `/api/v1/server/channels` | JDC or Translator | Upstream pool channels |
-| `/api/v1/clients` | JDC only | SV2 clients list |
-| `/api/v1/clients/{id}/channels` | JDC only | SV2 client channels |
-| `/api/v1/sv1/clients` | Translator only | SV1 clients list |
-| `/metrics` | Both | Prometheus metrics |
-| `/swagger-ui` | Both | Interactive API docs |
+| Port | Service | Description |
+|------|---------|-------------|
+| 3000 | sv2-ui | Web UI |
+| 34255 | Translator | SV1 miners connect here |
+| 9092 | Translator | Monitoring API |
+| 34265 | JDC | Translator connects here (JD mode) |
+| 9091 | JDC | Monitoring API (JD mode) |
 
 ## Tech Stack
 
-- **React 18** - UI framework
-- **TypeScript** - Type safety
+- **React 18** + **TypeScript** - Frontend
 - **Vite** - Build tool
 - **Tailwind CSS** - Styling
-- **React Query** - Data fetching with auto-refresh
-- **Recharts** - Charts
-- **wouter** - Lightweight routing
+- **React Query** - Data fetching
+- **Express** - Backend API
+- **Dockerode** - Docker orchestration
 
 ## Related Projects
 
-- [stratum-mining/sv2-apps](https://github.com/stratum-mining/sv2-apps) - Translator Proxy, JD Client, Pool, JDS
+- [stratum-mining/sv2-apps](https://github.com/stratum-mining/sv2-apps) - Translator, JDC, Pool, JDS
 - [stratum-mining/stratum](https://github.com/stratum-mining/stratum) - SV2 protocol implementation
 
 ## License

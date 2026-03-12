@@ -289,7 +289,7 @@ export function ConfigurationTab() {
           {isJdMode && config.bitcoin && (
             <div className="p-4 rounded-lg border border-border/50 bg-muted/20 space-y-2">
               <div className="flex items-center gap-2">
-                <Bitcoin className="h-4 w-4 text-orange-500" />
+                <Bitcoin className="h-5 w-5 text-orange-500" />
                 <p className="font-medium">Bitcoin Core</p>
               </div>
               <div className="text-sm space-y-1">

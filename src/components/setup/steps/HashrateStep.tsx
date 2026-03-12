@@ -58,29 +58,36 @@ function formatHashrateDisplay(hashrate: number): string {
  */
 export function HashrateStep({ data, updateData, onNext }: StepProps) {
   const existingHashrate = data.translator?.min_hashrate || 0;
-  
+
   const getInitialPreset = () => {
     if (!existingHashrate) return 'single-asic';
     const match = HASHRATE_PRESETS.find(p => p.hashrate === existingHashrate);
     return match?.id || 'custom';
   };
 
+  const SLIDER_MIN = 9;  // log10(1 GH/s)
+  const SLIDER_MAX = 16; // log10(10 PH/s)
+  const SLIDER_STEPS = 1000;
+
+  const rawToSlider = (hr: number) =>
+    Math.round(((Math.log10(Math.max(hr, 1e9)) - SLIDER_MIN) / (SLIDER_MAX - SLIDER_MIN)) * SLIDER_STEPS);
+  const sliderToRaw = (s: number) =>
+    Math.round(Math.pow(10, SLIDER_MIN + (s / SLIDER_STEPS) * (SLIDER_MAX - SLIDER_MIN)));
+
+  const getAutoUnit = (hr: number): { label: string; multiplier: number } => {
+    if (hr >= 1e15) return { label: 'PH/s', multiplier: 1e15 };
+    if (hr >= 1e12) return { label: 'TH/s', multiplier: 1e12 };
+    if (hr >= 1e9)  return { label: 'GH/s', multiplier: 1e9  };
+    return { label: 'MH/s', multiplier: 1e6 };
+  };
+
   const [selectedPreset, setSelectedPreset] = useState(getInitialPreset());
-  const [customHashrate, setCustomHashrate] = useState(
-    selectedPreset === 'custom' ? existingHashrate : 0
+  const [rawHashrate, setRawHashrate] = useState(
+    existingHashrate > 0 ? existingHashrate : 100_000_000_000_000 // default 100 TH/s
   );
-  const [customUnit, setCustomUnit] = useState<'mh' | 'gh' | 'th' | 'ph'>('th');
 
   const getHashrateValue = (): number => {
-    if (selectedPreset === 'custom') {
-      const multipliers: Record<string, number> = {
-        mh: 1_000_000,
-        gh: 1_000_000_000,
-        th: 1_000_000_000_000,
-        ph: 1_000_000_000_000_000,
-      };
-      return customHashrate * multipliers[customUnit];
-    }
+    if (selectedPreset === 'custom') return rawHashrate;
     return HASHRATE_PRESETS.find(p => p.id === selectedPreset)?.hashrate || 0;
   };
 
@@ -100,9 +107,6 @@ export function HashrateStep({ data, updateData, onNext }: StepProps) {
 
   const handlePresetClick = (presetId: string) => {
     setSelectedPreset(presetId);
-    if (presetId !== 'custom') {
-      setCustomHashrate(0);
-    }
   };
 
   const isValid = hashrate > 0;
@@ -154,32 +158,42 @@ export function HashrateStep({ data, updateData, onNext }: StepProps) {
         ))}
       </div>
 
-      {/* Custom Input */}
-      {selectedPreset === 'custom' && (
-        <div className="p-4 rounded-xl border border-border bg-muted/50">
-          <label className="block text-sm font-medium mb-3">Enter your hashrate</label>
-          <div className="flex gap-3">
+      {/* Custom Slider */}
+      {selectedPreset === 'custom' && (() => {
+        const { label, multiplier } = getAutoUnit(rawHashrate);
+        return (
+          <div className="p-4 rounded-xl border border-border bg-muted/50 space-y-3">
+            <div className="flex items-center gap-2">
+              <input
+                type="number"
+                min="0"
+                value={parseFloat((rawHashrate / multiplier).toPrecision(6))}
+                onChange={(e) => {
+                  const v = Number(e.target.value);
+                  if (v >= 0) setRawHashrate(v * multiplier);
+                }}
+                className="flex-1 h-10 px-3 rounded-lg border border-input bg-background text-sm focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/15 outline-none transition-all"
+              />
+              <span className="text-sm font-medium text-muted-foreground w-12 text-right">{label}</span>
+            </div>
             <input
-              type="number"
-              value={customHashrate || ''}
-              onChange={(e) => setCustomHashrate(Number(e.target.value))}
-              placeholder="0"
-              min="0"
-              className="flex-1 h-10 px-3 rounded-lg border border-input bg-background text-sm focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/15 outline-none transition-all"
+              type="range"
+              min={0}
+              max={SLIDER_STEPS}
+              value={rawToSlider(rawHashrate)}
+              onChange={(e) => setRawHashrate(sliderToRaw(Number(e.target.value)))}
+              className="w-full accent-primary"
             />
-            <select
-              value={customUnit}
-              onChange={(e) => setCustomUnit(e.target.value as 'mh' | 'gh' | 'th' | 'ph')}
-              className="h-10 px-3 rounded-lg border border-input bg-background text-sm focus-visible:border-primary outline-none"
-            >
-              <option value="mh">MH/s</option>
-              <option value="gh">GH/s</option>
-              <option value="th">TH/s</option>
-              <option value="ph">PH/s</option>
-            </select>
+            <div className="flex justify-between text-xs text-muted-foreground select-none">
+              <span>1 GH/s</span>
+              <span>1 TH/s</span>
+              <span>100 TH/s</span>
+              <span>1 PH/s</span>
+              <span>10 PH/s</span>
+            </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* Summary */}
       {hashrate > 0 && (

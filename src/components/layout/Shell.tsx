@@ -40,8 +40,8 @@ function useTheme() {
 function ThemeToggle({ onClick, className }: { onClick: () => void; className?: string }) {
   return (
     <button onClick={onClick} aria-label="Toggle theme" className={className}>
-      <Sun className="absolute h-[18px] w-[18px] transition-all duration-300 rotate-0 scale-100 dark:-rotate-90 dark:scale-0" />
-      <Moon className="absolute h-[18px] w-[18px] transition-all duration-300 rotate-90 scale-0 dark:rotate-0 dark:scale-100" />
+      <Sun className="absolute h-4 w-4 transition-all duration-300 rotate-0 scale-100 dark:-rotate-90 dark:scale-0" />
+      <Moon className="absolute h-4 w-4 transition-all duration-300 rotate-90 scale-0 dark:rotate-0 dark:scale-100" />
     </button>
   );
 }

@@ -151,7 +151,7 @@ export function Settings() {
                       size="sm"
                       onClick={resetConfig}
                     >
-                      <RotateCcw className="mr-2 h-3.5 w-3.5" />
+                      <RotateCcw className="mr-2 h-4 w-4" />
                       Reset to defaults
                     </Button>
                     <span

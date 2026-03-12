@@ -212,7 +212,7 @@ export function SetupWizard() {
           {/* Step Content */}
           <CardContent className="p-8 md:p-12">
             {isReconfiguring && currentStepIndex === 0 && (
-              <div className="mb-6 p-4 rounded-xl bg-warning/10 border border-warning/20 text-sm text-warning-foreground">
+              <div className="mb-6 p-4 rounded-xl bg-warning/10 border border-warning/20 text-sm text-warning">
                 You are reconfiguring your SV2 setup. This will replace your current configuration.
               </div>
             )}

@@ -48,7 +48,9 @@ export function MinerConnectionInfo({ isJdMode }: MinerConnectionInfoProps) {
         </div>
         <CopyableAddress address={translatorUrl} />
         <p className="text-xs text-muted-foreground">
-          Replace <code className="font-mono bg-muted-foreground/20 px-1 py-0.5 rounded">&lt;your-machine-ip&gt;</code> with the local network IP of the machine running the SV2 stack (e.g. <code className="font-mono bg-muted-foreground/20 px-1 py-0.5 rounded">192.168.1.100</code>).
+          Replace <code className="font-mono bg-muted-foreground/20 px-1 py-0.5 rounded">&lt;your-machine-ip&gt;</code> with
+          the local network IP of the machine running SV2{' '}
+          <span className="whitespace-nowrap">(e.g. <code className="font-mono bg-muted-foreground/20 px-1 py-0.5 rounded">192.168.1.100</code>)</span>.
         </p>
       </div>
 

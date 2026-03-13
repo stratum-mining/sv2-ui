@@ -138,6 +138,7 @@ function refreshDockerConnection(): void {
 }
 
 const NETWORK_NAME = 'sv2-network';
+const CONFIG_VOLUME = 'sv2-config';
 const TRANSLATOR_CONTAINER = 'sv2-translator';
 const JDC_CONTAINER = 'sv2-jdc';
 const TRANSLATOR_IMAGE = 'stratumv2/translator_sv2:main';
@@ -161,6 +162,19 @@ async function ensureNetwork(): Promise<void> {
       Name: NETWORK_NAME,
       Driver: 'bridge',
     });
+  }
+}
+
+/**
+ * Ensure the sv2-config volume exists
+ */
+async function ensureConfigVolume(): Promise<void> {
+  try {
+    const volume = docker.getVolume(CONFIG_VOLUME);
+    await volume.inspect();
+  } catch {
+    console.log(`Creating volume ${CONFIG_VOLUME}...`);
+    await docker.createVolume({ Name: CONFIG_VOLUME });
   }
 }
 
@@ -234,16 +248,18 @@ async function getContainerStatus(name: string): Promise<ContainerStatus | null>
 
 /**
  * Start the Translator container
+ * Uses the shared sv2-config volume for config files
  */
-async function startTranslator(configPath: string): Promise<void> {
+async function startTranslator(configFileName: string): Promise<void> {
   await removeContainer(TRANSLATOR_CONTAINER);
 
   const container = await docker.createContainer({
     Image: TRANSLATOR_IMAGE,
     name: TRANSLATOR_CONTAINER,
-    Cmd: ['-c', '/app/translator-config.toml'],
+    Entrypoint: ['/app/translator_sv2'],
+    Cmd: ['-c', `/config/${configFileName}`],
     HostConfig: {
-      Binds: [`${configPath}:/app/translator-config.toml:ro`],
+      Binds: [`${CONFIG_VOLUME}:/config:ro`],
       PortBindings: {
         '34255/tcp': [{ HostPort: '34255' }],
         '9092/tcp': [{ HostPort: '9092' }],
@@ -263,9 +279,10 @@ async function startTranslator(configPath: string): Promise<void> {
 
 /**
  * Start the JDC container
+ * Uses the shared sv2-config volume for config files
  */
 async function startJdc(
-  configPath: string,
+  configFileName: string,
   bitcoinSocketPath: string
 ): Promise<void> {
   await removeContainer(JDC_CONTAINER);
@@ -273,10 +290,11 @@ async function startJdc(
   const container = await docker.createContainer({
     Image: JDC_IMAGE,
     name: JDC_CONTAINER,
-    Cmd: ['-c', '/app/jdc-config.toml'],
+    Entrypoint: ['/app/jd_client_sv2'],
+    Cmd: ['-c', `/config/${configFileName}`],
     HostConfig: {
       Binds: [
-        `${configPath}:/app/jdc-config.toml:ro`,
+        `${CONFIG_VOLUME}:/config:ro`,
         `${bitcoinSocketPath}:/root/.bitcoin/node.sock:ro`,
       ],
       PortBindings: {
@@ -298,15 +316,17 @@ async function startJdc(
 
 /**
  * Start the mining stack
+ * Config files should be written to the sv2-config volume before calling this
  */
 export async function startStack(
   data: SetupData,
-  configDir: string
+  _configDir: string
 ): Promise<void> {
   await ensureDockerAvailable();
 
-  // Ensure network exists
+  // Ensure network and config volume exist
   await ensureNetwork();
+  await ensureConfigVolume();
 
   // Pull latest images from Docker Hub
   await pullImage(TRANSLATOR_IMAGE);
@@ -317,14 +337,14 @@ export async function startStack(
   // Start JDC first if in JD mode (Translator connects to JDC)
   if (data.mode === 'jd' && data.bitcoin) {
     const socketPath = expandHomePath(data.bitcoin.socket_path);
-    await startJdc(`${configDir}/jdc.toml`, socketPath);
+    await startJdc('jdc.toml', socketPath);
     // Wait for JDC to be ready before starting Translator
     console.log('Waiting for JDC to initialize...');
     await new Promise(resolve => setTimeout(resolve, 3000));
   }
 
   // Start Translator
-  await startTranslator(`${configDir}/translator.toml`);
+  await startTranslator('translator.toml');
 }
 
 /**

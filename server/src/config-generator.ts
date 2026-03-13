@@ -3,14 +3,48 @@
  * Based on sv2-apps/docker/config templates
  */
 
+import { readFileSync } from 'fs';
+import { join, dirname } from 'path';
+import { fileURLToPath } from 'url';
 import type { SetupData } from './types.js';
-import { TRANSLATOR_PORT, JDC_PORT } from '../../src/lib/ports.js';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+
+interface PortsConfig {
+  TRANSLATOR_PORT: number;
+  JDC_PORT: number;
+}
+
+function loadPorts(): PortsConfig {
+  // In production (Docker), __dirname is /app/dist, so ../shared resolves to /app/shared
+  // In development, __dirname is server/dist, so ../shared resolves to server/shared (wrong)
+  // We need to go up one more level in dev: ../../shared
+  // Try production path first, fall back to dev path
+  const prodPath = join(__dirname, '../shared/ports.json');
+  const devPath = join(__dirname, '../../shared/ports.json');
+  
+  try {
+    const data = readFileSync(prodPath, 'utf-8');
+    return JSON.parse(data) as PortsConfig;
+  } catch {
+    const data = readFileSync(devPath, 'utf-8');
+    return JSON.parse(data) as PortsConfig;
+  }
+}
+
+const ports = loadPorts();
+export const TRANSLATOR_PORT = ports.TRANSLATOR_PORT;
+export const JDC_PORT = ports.JDC_PORT;
 
 /**
  * Generate Translator Proxy config (tproxy-config.toml)
  */
 export function generateTranslatorConfig(data: SetupData): string {
   const { pool, translator, mode } = data;
+  
+  if (!pool || !translator) {
+    throw new Error('Pool and translator configuration are required');
+  }
   
   // If JD mode, translator connects to JDC container; otherwise directly to pool
   // Both containers are on sv2-network, so we can use the container name as hostname
@@ -74,7 +108,7 @@ authority_pubkey = "${authorityPubkey}"
  * Generate JD Client config (jdc-config.toml)
  */
 export function generateJdcConfig(data: SetupData): string | null {
-  if (data.mode !== 'jd' || !data.jdc || !data.bitcoin) {
+  if (data.mode !== 'jd' || !data.jdc || !data.bitcoin || !data.pool) {
     return null;
   }
 

@@ -1,7 +1,9 @@
 /**
  * SV2 stack port configuration.
- * These values must match the ports configured in server/src/config-generator.ts
+ * Single source of truth: shared/ports.json
  */
 
-export const TRANSLATOR_PORT = 34255;
-export const JDC_PORT = 34265;
+import ports from '../../shared/ports.json';
+
+export const TRANSLATOR_PORT = ports.TRANSLATOR_PORT;
+export const JDC_PORT = ports.JDC_PORT;

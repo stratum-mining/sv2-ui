@@ -112,7 +112,6 @@ export function SetupWizard() {
 
   const steps = computeSteps(data);
   const currentStepIndex = steps.indexOf(currentStep);
-  const totalSteps = steps.length;
 
   useEffect(() => {
     if (currentStepIndex === -1 && !loadingConfig) setCurrentStep('mining-mode');

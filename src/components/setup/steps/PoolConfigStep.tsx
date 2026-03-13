@@ -34,6 +34,7 @@ const POOL_MINING_JD: KnownPool[] = [
     authority_public_key: '9auqWEzQDVyd2oe1JVGFLMLHZtCo2FFqZwtKA5gd9xbuEu7PH72',
     description: 'Community testing pool. Payouts go to SRI development.',
     badge: 'testing',
+    logoUrl: '/sri-logo.png',
   },
 ];
 
@@ -45,6 +46,7 @@ const SOLO_POOLS: KnownPool[] = [
     port: 3333,
     authority_public_key: '9auqWEzQDVyd2oe1JVGFLMLHZtCo2FFqZwtKA5gd9xbuEu7PH72',
     description: 'Community-run solo mining pool',
+    logoUrl: '/sri-logo.png',
   },
   {
     id: 'blitzpool',

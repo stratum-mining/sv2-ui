@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { StepProps } from '../types';
-import { Zap, HelpCircle } from 'lucide-react';
+import { HelpCircle, Check } from 'lucide-react';
 
 interface HashratePreset {
   id: string;
@@ -10,63 +10,30 @@ interface HashratePreset {
 }
 
 const HASHRATE_PRESETS: HashratePreset[] = [
-  {
-    id: 'bitaxe',
-    label: 'Bitaxe / USB Miner',
-    hashrate: 500_000_000_000,
-    description: '~500 GH/s',
-  },
-  {
-    id: 'single-asic',
-    label: 'Single ASIC',
-    hashrate: 100_000_000_000_000,
-    description: '~100 TH/s',
-  },
-  {
-    id: 'small-farm',
-    label: 'Small Farm',
-    hashrate: 1_000_000_000_000_000,
-    description: '~1 PH/s',
-  },
-  {
-    id: 'custom',
-    label: 'Custom',
-    hashrate: 0,
-    description: 'Enter your own value',
-  },
+  { id: 'bitaxe',      label: 'Bitaxe / USB Miner', hashrate: 500_000_000_000,       description: '~500 GH/s' },
+  { id: 'single-asic', label: 'Single ASIC',         hashrate: 100_000_000_000_000,   description: '~100 TH/s' },
+  { id: 'small-farm',  label: 'Small Farm',           hashrate: 1_000_000_000_000_000, description: '~1 PH/s'   },
+  { id: 'custom',      label: 'Custom',               hashrate: 0,                     description: 'Enter your own value' },
 ];
 
 function formatHashrateDisplay(hashrate: number): string {
-  if (hashrate >= 1_000_000_000_000_000) {
-    return `${(hashrate / 1_000_000_000_000_000).toFixed(2)} PH/s`;
-  }
-  if (hashrate >= 1_000_000_000_000) {
-    return `${(hashrate / 1_000_000_000_000).toFixed(2)} TH/s`;
-  }
-  if (hashrate >= 1_000_000_000) {
-    return `${(hashrate / 1_000_000_000).toFixed(2)} GH/s`;
-  }
-  if (hashrate >= 1_000_000) {
-    return `${(hashrate / 1_000_000).toFixed(2)} MH/s`;
-  }
+  if (hashrate >= 1e15) return `${(hashrate / 1e15).toFixed(2)} PH/s`;
+  if (hashrate >= 1e12) return `${(hashrate / 1e12).toFixed(2)} TH/s`;
+  if (hashrate >= 1e9)  return `${(hashrate / 1e9).toFixed(2)} GH/s`;
+  if (hashrate >= 1e6)  return `${(hashrate / 1e6).toFixed(2)} MH/s`;
   return `${hashrate.toLocaleString()} H/s`;
 }
 
-/**
- * Step: Expected Hashrate Configuration
- * Used to set min_individual_miner_hashrate for difficulty calculation.
- */
 export function HashrateStep({ data, updateData, onNext }: StepProps) {
   const existingHashrate = data.translator?.min_hashrate || 0;
 
   const getInitialPreset = () => {
     if (!existingHashrate) return 'single-asic';
-    const match = HASHRATE_PRESETS.find(p => p.hashrate === existingHashrate);
-    return match?.id || 'custom';
+    return HASHRATE_PRESETS.find(p => p.hashrate === existingHashrate)?.id || 'custom';
   };
 
-  const SLIDER_MIN = 9;  // log10(1 GH/s)
-  const SLIDER_MAX = 16; // log10(10 PH/s)
+  const SLIDER_MIN = 9;
+  const SLIDER_MAX = 16;
   const SLIDER_STEPS = 1000;
 
   const rawToSlider = (hr: number) =>
@@ -82,14 +49,10 @@ export function HashrateStep({ data, updateData, onNext }: StepProps) {
   };
 
   const [selectedPreset, setSelectedPreset] = useState(getInitialPreset());
-  const [rawHashrate, setRawHashrate] = useState(
-    existingHashrate > 0 ? existingHashrate : 100_000_000_000_000 // default 100 TH/s
-  );
+  const [rawHashrate, setRawHashrate] = useState(existingHashrate > 0 ? existingHashrate : 100_000_000_000_000);
 
-  const getHashrateValue = (): number => {
-    if (selectedPreset === 'custom') return rawHashrate;
-    return HASHRATE_PRESETS.find(p => p.id === selectedPreset)?.hashrate || 0;
-  };
+  const getHashrateValue = () =>
+    selectedPreset === 'custom' ? rawHashrate : (HASHRATE_PRESETS.find(p => p.id === selectedPreset)?.hashrate || 0);
 
   const hashrate = getHashrateValue();
 
@@ -105,76 +68,62 @@ export function HashrateStep({ data, updateData, onNext }: StepProps) {
     });
   }, [hashrate, data.translator, updateData]);
 
-  const handlePresetClick = (presetId: string) => {
-    setSelectedPreset(presetId);
-  };
-
-  const isValid = hashrate > 0;
-
   return (
     <div className="space-y-8">
       <div className="text-center">
-        <h2 className="text-2xl md:text-3xl font-semibold tracking-tight mb-3">
-          Expected Hashrate
-        </h2>
+        <h2 className="text-2xl md:text-3xl font-semibold tracking-tight mb-3">Expected Hashrate</h2>
         <p className="text-lg text-muted-foreground">
           What's the total hashrate you'll point to this SV2 client?
         </p>
       </div>
 
-      {/* Info */}
-      <div className="p-4 rounded-xl bg-info/10 border border-info/20">
-        <div className="flex gap-3">
-          <HelpCircle className="h-5 w-5 text-info flex-shrink-0 mt-0.5" />
-          <div className="text-sm text-muted-foreground">
-            <p>
-              This helps configure the initial mining difficulty. The SV2 client will automatically 
-              adjust difficulty based on actual hashrate (vardiff) in any case.
-            </p>
-          </div>
-        </div>
+      <div className="p-4 rounded-xl bg-muted/40 flex gap-3" role="note">
+        <HelpCircle className="h-5 w-5 text-muted-foreground flex-shrink-0 mt-0.5" aria-hidden="true" />
+        <p className="text-sm text-muted-foreground">
+          This sets the initial mining difficulty. The SV2 client will automatically adjust via vardiff.
+        </p>
       </div>
 
-      {/* Preset Selection */}
-      <div className="grid grid-cols-2 gap-3">
-        {HASHRATE_PRESETS.map((preset) => (
-          <button
-            key={preset.id}
-            onClick={() => handlePresetClick(preset.id)}
-            className={`p-4 rounded-xl border-2 transition-all text-left ${
-              selectedPreset === preset.id
-                ? 'border-primary bg-primary/5'
-                : 'border-border hover:border-primary/50 hover:bg-accent'
-            }`}
-          >
-            <div className="flex items-start gap-3">
-              <Zap className={`h-5 w-5 mt-0.5 ${selectedPreset === preset.id ? 'text-primary' : 'text-muted-foreground'}`} />
-              <div>
-                <div className="font-medium">{preset.label}</div>
-                <div className="text-sm text-muted-foreground">{preset.description}</div>
+      <div className="grid grid-cols-2 gap-3" role="group" aria-labelledby="hashrate-group-label">
+        <span id="hashrate-group-label" className="sr-only">Select hashrate preset</span>
+        {HASHRATE_PRESETS.map((preset) => {
+          const active = selectedPreset === preset.id;
+          return (
+            <button
+              key={preset.id}
+              type="button"
+              onClick={() => setSelectedPreset(preset.id)}
+              aria-pressed={active}
+              className={`relative p-4 rounded-xl border transition-all text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 ${
+                active ? 'border-primary bg-primary/[0.04]' : 'border-border bg-card hover:border-primary/45 hover:bg-primary/[0.02]'
+              }`}
+            >
+              {active && <div className="absolute top-3 right-3 w-5 h-5 rounded-full bg-primary flex items-center justify-center" aria-hidden="true"><Check className="w-3 h-3 text-background" /></div>}
+              <div className="pr-6">
+                <div className={`font-medium text-sm mb-1 ${active ? 'text-primary' : ''}`}>{preset.label}</div>
+                <div className="text-xs text-muted-foreground leading-relaxed">{preset.description}</div>
               </div>
-            </div>
-          </button>
-        ))}
+            </button>
+          );
+        })}
       </div>
 
-      {/* Custom Slider */}
       {selectedPreset === 'custom' && (() => {
         const { label, multiplier } = getAutoUnit(rawHashrate);
         return (
-          <div className="p-4 rounded-xl border border-border bg-muted/50 space-y-3">
+          <div className="p-4 rounded-xl bg-muted/40 space-y-3">
             <div className="flex items-center gap-2">
+              <label htmlFor="custom-hashrate" className="sr-only">Hashrate value in {label}</label>
               <input
+                id="custom-hashrate"
                 type="number"
                 min="0"
                 value={parseFloat((rawHashrate / multiplier).toPrecision(6))}
-                onChange={(e) => {
-                  const v = Number(e.target.value);
-                  if (v >= 0) setRawHashrate(v * multiplier);
-                }}
+                onChange={(e) => { const v = Number(e.target.value); if (v >= 0) setRawHashrate(v * multiplier); }}
+                aria-describedby="hashrate-unit"
                 className="flex-1 h-10 px-3 rounded-lg border border-input bg-background text-sm focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/15 outline-none transition-all"
               />
-              <span className="text-sm font-medium text-muted-foreground w-12 text-right">{label}</span>
+              <span id="hashrate-unit" className="text-sm font-medium text-muted-foreground w-12 text-right" aria-live="polite">{label}</span>
             </div>
             <input
               type="range"
@@ -182,35 +131,32 @@ export function HashrateStep({ data, updateData, onNext }: StepProps) {
               max={SLIDER_STEPS}
               value={rawToSlider(rawHashrate)}
               onChange={(e) => setRawHashrate(sliderToRaw(Number(e.target.value)))}
+              aria-label={`Hashrate: ${formatHashrateDisplay(rawHashrate)}`}
+              aria-valuemin={0}
+              aria-valuemax={SLIDER_STEPS}
+              aria-valuenow={rawToSlider(rawHashrate)}
               className="w-full accent-primary"
             />
             <div className="flex justify-between text-xs text-muted-foreground select-none">
-              <span>1 GH/s</span>
-              <span>1 TH/s</span>
-              <span>100 TH/s</span>
-              <span>1 PH/s</span>
-              <span>10 PH/s</span>
+              <span>1 GH/s</span><span>1 TH/s</span><span>100 TH/s</span><span>1 PH/s</span><span>10 PH/s</span>
             </div>
           </div>
         );
       })()}
 
-      {/* Summary */}
       {hashrate > 0 && (
-        <div className="p-4 rounded-xl border border-primary/20 bg-primary/5 text-center">
+        <div className="p-4 rounded-xl bg-primary/[0.08] text-center">
           <div className="text-sm text-muted-foreground mb-1">Starting difficulty for</div>
-          <div className="text-2xl font-semibold text-primary">
-            {formatHashrateDisplay(hashrate)}
-          </div>
+          <div className="text-2xl font-semibold text-primary">{formatHashrateDisplay(hashrate)}</div>
         </div>
       )}
 
-      {/* Navigation */}
-      <div className="flex justify-end">
+      <div className="flex justify-center">
         <button
+          type="button"
           onClick={onNext}
-          disabled={!isValid}
-          className="h-10 px-8 rounded-full bg-foreground text-background hover:bg-foreground/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-medium"
+          disabled={hashrate <= 0}
+          className="h-11 px-10 rounded-full bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 transition-colors font-medium"
         >
           Continue
         </button>

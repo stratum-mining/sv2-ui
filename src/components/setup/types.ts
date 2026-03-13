@@ -52,10 +52,11 @@ export const initialSetupData: SetupData = {
   translator: null,
 };
 
-export type SetupStep = 
+export type SetupStep =
   | 'mining-mode'
   | 'template-mode'
   | 'pool'
+  | 'bitcoin-prereq'
   | 'bitcoin'
   | 'hashrate'
   | 'identity'

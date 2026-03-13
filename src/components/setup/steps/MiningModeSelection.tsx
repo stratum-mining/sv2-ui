@@ -101,16 +101,26 @@ export function MiningModeSelection({ updateData, onNext }: StepProps) {
           />
         </g>
 
-        {/* Nose cone */}
-        <path
-          d={`M ${rcx} 28 C ${rcx-2} 44, ${rcx-18} 62, ${rcx-20} 78 L ${rcx+20} 78 C ${rcx+18} 62, ${rcx+2} 44 ${rcx} 28 Z`}
-          style={{ fill: 'hsl(var(--primary) / 0.08)', stroke: 'hsl(var(--primary))', strokeWidth: 1.5, strokeLinejoin: 'round' }}
+        {/* Fins — drawn before body so body stroke cleanly covers the attachment seam */}
+        <path d={`M ${rcx-20} 150 L ${rcx-42} 182 L ${rcx-20} 172 Z`}
+          style={{ fill: 'hsl(var(--primary) / 0.1)', stroke: 'hsl(var(--primary))', strokeWidth: 1.4, strokeLinejoin: 'round' }}
         />
-        <line x1={rcx-6} y1={38} x2={rcx-14} y2={68}
-          style={{ stroke: 'hsl(var(--primary))', strokeWidth: 0.5, opacity: 0.22 }}
+        <path d={`M ${rcx+20} 150 L ${rcx+42} 182 L ${rcx+20} 172 Z`}
+          style={{ fill: 'hsl(var(--primary) / 0.1)', stroke: 'hsl(var(--primary))', strokeWidth: 1.4, strokeLinejoin: 'round' }}
         />
 
-        {/* Main body */}
+        {/* Nozzle bell — pronounced curve, drawn before body so body covers the throat seam */}
+        <path d={`M ${rcx-13} 174 C ${rcx-13} 179, ${rcx-22} 189, ${rcx-22} 196 L ${rcx+22} 196 C ${rcx+22} 189, ${rcx+13} 179, ${rcx+13} 174 Z`}
+          style={{ fill: 'hsl(var(--primary) / 0.07)', stroke: 'hsl(var(--primary))', strokeWidth: 1.4, strokeLinejoin: 'round' }}
+        />
+
+        {/* Nose cone */}
+        <path
+          d={`M ${rcx} 20 C ${rcx-2} 38, ${rcx-18} 62, ${rcx-20} 78 L ${rcx+20} 78 C ${rcx+18} 62, ${rcx+2} 38 ${rcx} 20 Z`}
+          style={{ fill: 'hsl(var(--primary) / 0.08)', stroke: 'hsl(var(--primary))', strokeWidth: 1.5, strokeLinejoin: 'round' }}
+        />
+
+        {/* Main body — drawn after fins/nozzle so its stroke covers all attachment seams */}
         <rect x={rcx-20} y={78} width={40} height={96} rx={2}
           style={{ fill: 'hsl(var(--primary) / 0.05)', stroke: 'hsl(var(--primary))', strokeWidth: 1.5 }}
         />
@@ -119,7 +129,6 @@ export function MiningModeSelection({ updateData, onNext }: StepProps) {
         <line x1={rcx-20} y1={96}  x2={rcx+20} y2={96}  style={{ stroke: 'hsl(var(--primary))', strokeWidth: 0.5, opacity: 0.22 }} />
         <line x1={rcx-20} y1={130} x2={rcx+20} y2={130} style={{ stroke: 'hsl(var(--primary))', strokeWidth: 1.0, opacity: 0.45 }} />
         <line x1={rcx-20} y1={158} x2={rcx+20} y2={158} style={{ stroke: 'hsl(var(--primary))', strokeWidth: 0.5, opacity: 0.22 }} />
-        <line x1={rcx-8}  y1={84}  x2={rcx-8}  y2={128} style={{ stroke: 'hsl(var(--primary))', strokeWidth: 0.6, opacity: 0.28 }} />
 
         {/* Window */}
         <circle cx={rcx} cy={113} r={13}
@@ -148,31 +157,6 @@ export function MiningModeSelection({ updateData, onNext }: StepProps) {
             />
           </>
         )}
-
-        {/* Fins */}
-        <path d={`M ${rcx-20} 150 L ${rcx-42} 182 L ${rcx-20} 172 Z`}
-          style={{ fill: 'hsl(var(--primary) / 0.1)', stroke: 'hsl(var(--primary))', strokeWidth: 1.4, strokeLinejoin: 'round' }}
-        />
-        <line x1={rcx-22} y1={155} x2={rcx-39} y2={178}
-          style={{ stroke: 'hsl(var(--primary))', strokeWidth: 0.5, opacity: 0.28 }}
-        />
-        <path d={`M ${rcx+20} 150 L ${rcx+42} 182 L ${rcx+20} 172 Z`}
-          style={{ fill: 'hsl(var(--primary) / 0.1)', stroke: 'hsl(var(--primary))', strokeWidth: 1.4, strokeLinejoin: 'round' }}
-        />
-        <line x1={rcx+22} y1={155} x2={rcx+39} y2={178}
-          style={{ stroke: 'hsl(var(--primary))', strokeWidth: 0.5, opacity: 0.28 }}
-        />
-
-        {/* Nozzle bell */}
-        <path d={`M ${rcx-16} 172 L ${rcx-19} 196 L ${rcx+19} 196 L ${rcx+16} 172 Z`}
-          style={{ fill: 'hsl(var(--primary) / 0.07)', stroke: 'hsl(var(--primary))', strokeWidth: 1.4, strokeLinejoin: 'round' }}
-        />
-        <line x1={rcx-10} y1={175} x2={rcx-13} y2={194}
-          style={{ stroke: 'hsl(var(--primary))', strokeWidth: 0.5, opacity: 0.22 }}
-        />
-        <line x1={rcx+10} y1={175} x2={rcx+13} y2={194}
-          style={{ stroke: 'hsl(var(--primary))', strokeWidth: 0.5, opacity: 0.22 }}
-        />
       </>
     );
   }
@@ -278,10 +262,7 @@ export function MiningModeSelection({ updateData, onNext }: StepProps) {
           width="144"
           height="24"
           className="h-6 w-auto"
-          style={{
-            imageRendering: 'crisp-edges',
-            ...(isDark ? undefined : { filter: 'brightness(0.3)' }),
-          }}
+          style={isDark ? undefined : { filter: 'brightness(0.3)' }}
         />
       </div>
 
@@ -295,17 +276,21 @@ export function MiningModeSelection({ updateData, onNext }: StepProps) {
         </p>
         <div className="grid grid-cols-2 gap-3">
           <button
+            type="button"
             onClick={() => handleSelect('solo')}
             disabled={isActive}
-            className="group p-5 rounded-xl border border-border bg-card hover:border-primary/45 hover:bg-primary/[0.03] transition-all duration-250 text-left disabled:pointer-events-none"
+            aria-pressed={selectedMode === 'solo'}
+            className="group p-5 rounded-xl border border-border bg-card hover:border-primary/45 hover:bg-primary/[0.03] transition-all duration-250 text-left disabled:pointer-events-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
           >
             <div className="text-foreground font-medium text-sm mb-1">Solo</div>
             <div className="text-muted-foreground text-xs leading-relaxed">Full block reward</div>
           </button>
           <button
+            type="button"
             onClick={() => handleSelect('pool')}
             disabled={isActive}
-            className="group p-5 rounded-xl border border-border bg-card hover:border-primary/45 hover:bg-primary/[0.03] transition-all duration-250 text-left disabled:pointer-events-none"
+            aria-pressed={selectedMode === 'pool'}
+            className="group p-5 rounded-xl border border-border bg-card hover:border-primary/45 hover:bg-primary/[0.03] transition-all duration-250 text-left disabled:pointer-events-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
           >
             <div className="text-foreground font-medium text-sm mb-1">Pool</div>
             <div className="text-muted-foreground text-xs leading-relaxed">Regular payouts</div>

@@ -2,7 +2,54 @@
 
 A unified setup wizard and monitoring dashboard for Stratum V2 mining.
 
-## Quick Start
+## Quick Start (Docker)
+
+```bash
+docker run -d \
+  --name sv2-ui \
+  -p 8080:8080 \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  -v sv2-config:/app/data/config \
+  stratumv2/sv2_ui:main
+```
+
+Then open **http://localhost:8080** (or your machine's IP). On first run, you'll be guided through the setup wizard.
+
+**Important:**
+- The `-v /var/run/docker.sock:/var/run/docker.sock` mount is required so sv2-ui can manage the Translator and JDC containers
+- The `-v sv2-config:/app/data/config` volume is shared with the Translator/JDC containers for configuration files
+
+### macOS / Colima / OrbStack
+
+If you're using Docker Desktop, Colima, or OrbStack on macOS, mount the appropriate socket:
+
+```bash
+# Docker Desktop
+docker run -d --name sv2-ui -p 8080:8080 \
+  -v $HOME/.docker/run/docker.sock:/var/run/docker.sock \
+  -v sv2-config:/app/data/config \
+  stratumv2/sv2_ui:main
+
+# Colima
+docker run -d --name sv2-ui -p 8080:8080 \
+  -v $HOME/.colima/default/docker.sock:/var/run/docker.sock \
+  -v sv2-config:/app/data/config \
+  stratumv2/sv2_ui:main
+
+# OrbStack
+docker run -d --name sv2-ui -p 8080:8080 \
+  -v $HOME/.orbstack/run/docker.sock:/var/run/docker.sock \
+  -v sv2-config:/app/data/config \
+  stratumv2/sv2_ui:main
+```
+
+### Stopping
+
+```bash
+docker stop sv2-ui && docker rm sv2-ui
+```
+
+## Development
 
 ```bash
 # Install dependencies (includes server workspace)

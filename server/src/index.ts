@@ -33,8 +33,12 @@ const STATE_FILE = path.join(CONFIG_DIR, 'state.json');
 app.use(cors());
 app.use(express.json());
 
-// Serve static files from the built UI (production)
-const UI_DIR = path.join(__dirname, '../../dist');
+// Serve static files from the built UI
+// In Docker (NODE_ENV=production): /app/public
+// In development: ../../dist (relative to server/dist/)
+const UI_DIR = process.env.NODE_ENV === 'production'
+  ? path.join(__dirname, '../public')
+  : path.join(__dirname, '../../dist');
 app.use(express.static(UI_DIR));
 
 /**

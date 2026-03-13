@@ -2,9 +2,6 @@ import { useState, useEffect } from 'react';
 import { StepProps, JdcConfig } from '../types';
 import { Info } from 'lucide-react';
 
-/**
- * Step 4 (JD mode only): JDC Configuration (sv2-wizard inspired)
- */
 export function JdcConfigStep({ data, updateData, onNext }: StepProps) {
   const [config, setConfig] = useState<JdcConfig>(
     data.jdc || {
@@ -37,10 +34,9 @@ export function JdcConfigStep({ data, updateData, onNext }: StepProps) {
         </p>
       </div>
 
-      {/* Info Card */}
-      <div className="p-4 rounded-xl bg-info/10 border border-info/20">
+      <div className="p-4 rounded-xl bg-info/10 border border-info/20" role="note">
         <div className="flex gap-3">
-          <Info className="h-5 w-5 text-info flex-shrink-0 mt-0.5" />
+          <Info className="h-5 w-5 text-info flex-shrink-0 mt-0.5" aria-hidden="true" />
           <div className="text-sm text-muted-foreground">
             <p>
               The JD Client connects to the pool and declares your custom block templates.
@@ -50,17 +46,20 @@ export function JdcConfigStep({ data, updateData, onNext }: StepProps) {
         </div>
       </div>
 
-      {/* Configuration Form */}
       <div className="space-y-4">
         <div>
-          <label className="block text-sm font-medium mb-2">
-            User Identity <span className="text-primary">*</span>
+          <label htmlFor="jdc-user-identity" className="block text-sm font-medium mb-2">
+            User Identity <span className="text-primary" aria-hidden="true">*</span>
+            <span className="sr-only">(required)</span>
           </label>
           <input
+            id="jdc-user-identity"
             type="text"
             value={config.user_identity}
             onChange={(e) => handleChange('user_identity', e.target.value)}
             placeholder="miner.worker1"
+            aria-required="true"
+            autoComplete="off"
             className="w-full h-10 px-3 rounded-lg border border-input bg-background focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/15 outline-none transition-all"
           />
           <p className="text-xs text-muted-foreground mt-2">
@@ -69,14 +68,18 @@ export function JdcConfigStep({ data, updateData, onNext }: StepProps) {
         </div>
 
         <div>
-          <label className="block text-sm font-medium mb-2">
-            Coinbase Reward Address <span className="text-primary">*</span>
+          <label htmlFor="jdc-coinbase-address" className="block text-sm font-medium mb-2">
+            Coinbase Reward Address <span className="text-primary" aria-hidden="true">*</span>
+            <span className="sr-only">(required)</span>
           </label>
           <input
+            id="jdc-coinbase-address"
             type="text"
             value={config.coinbase_reward_address}
             onChange={(e) => handleChange('coinbase_reward_address', e.target.value)}
             placeholder="bc1q..."
+            aria-required="true"
+            autoComplete="off"
             className="w-full h-10 px-3 rounded-lg border border-input bg-background font-mono text-sm focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/15 outline-none transition-all"
           />
           <p className="text-xs text-muted-foreground mt-2">
@@ -85,12 +88,12 @@ export function JdcConfigStep({ data, updateData, onNext }: StepProps) {
         </div>
       </div>
 
-      {/* Navigation */}
-      <div className="flex justify-end">
+      <div className="flex justify-center">
         <button
+          type="button"
           onClick={onNext}
           disabled={!isValid}
-          className="h-10 px-8 rounded-full bg-foreground text-background hover:bg-foreground/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-medium"
+          className="h-11 px-10 rounded-full bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 transition-colors font-medium"
         >
           Continue
         </button>

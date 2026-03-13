@@ -356,6 +356,62 @@
   border-radius: var(--radius);
 }
 
+/* Rocket launch — compress → liftoff → accelerate away */
+@keyframes sv2-launch {
+  0%   { transform: translateY(0)    scale(1);    opacity: 1; }
+  8%   { transform: translateY(8px)  scale(0.97); opacity: 1; }
+  22%  { transform: translateY(-18px) scale(1.02); opacity: 1; }
+  55%  { transform: translateY(-120px);             opacity: 1; }
+  100% { transform: translateY(-700px) scale(0.3);  opacity: 0; }
+}
+
+@keyframes sv2-shockwave {
+  0%   { transform: scale(1);   opacity: 0.7; }
+  100% { transform: scale(5.5); opacity: 0;   }
+}
+@keyframes sv2-vent {
+  0%   { transform: scaleX(1);   opacity: 0.2; }
+  100% { transform: scaleX(2.8); opacity: 0.75; }
+}
+@keyframes sv2-form-left {
+  0%   { transform: translateX(-50px) translateY(18px); opacity: 0; }
+  100% { transform: translateX(0) translateY(0);        opacity: 1; }
+}
+@keyframes sv2-form-right {
+  0%   { transform: translateX(50px) translateY(18px); opacity: 0; }
+  100% { transform: translateX(0) translateY(0);       opacity: 1; }
+}
+@keyframes sv2-vibrate {
+  0%, 100% { transform: translateX(0) translateY(0); }
+  20%       { transform: translateX(-1.5px) translateY(0.5px); }
+  40%       { transform: translateX(1.5px) translateY(-0.5px); }
+  60%       { transform: translateX(-1px) translateY(1px); }
+  80%       { transform: translateX(1px) translateY(-0.5px); }
+}
+@keyframes sv2-flame-idle {
+  0%   { transform: scale(1,    1)    skewX(0deg);   opacity: 0.62; }
+  20%  { transform: scale(1.08, 1.18) skewX(1.5deg); opacity: 0.78; }
+  45%  { transform: scale(0.96, 1.06) skewX(-1deg);  opacity: 0.52; }
+  70%  { transform: scale(1.1,  1.22) skewX(1deg);   opacity: 0.82; }
+  100% { transform: scale(1,    1)    skewX(0deg);   opacity: 0.62; }
+}
+@keyframes sv2-flame-hot {
+  0%   { transform: scale(1,    1);    opacity: 1;    }
+  30%  { transform: scale(1.1,  1.18); opacity: 0.88; }
+  60%  { transform: scale(0.97, 1.05); opacity: 1;    }
+  100% { transform: scale(1.07, 1.13); opacity: 0.9;  }
+}
+@keyframes sv2-mach {
+  0%   { opacity: 0.95; transform: scaleX(1.2); }
+  100% { opacity: 0.2;  transform: scaleX(0.55); }
+}
+@keyframes sv2-mach-idle {
+  0%   { opacity: 0.7;  transform: scaleX(1.1); }
+  50%  { opacity: 0.28; transform: scaleX(0.7); }
+  100% { opacity: 0.6;  transform: scaleX(1); }
+}
+
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: 0.01ms !important;

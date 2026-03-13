@@ -153,6 +153,11 @@ export function SetupWizard() {
     );
   }
 
+  // Step 1 gets a full-screen immersive experience — no card wrapper
+  if (currentStep === 'mining-mode') {
+    return <MiningModeSelection {...stepProps} />;
+  }
+
   return (
     <div className="min-h-screen flex items-center justify-center p-4 bg-background">
       <div className="w-full max-w-3xl">
@@ -217,7 +222,6 @@ export function SetupWizard() {
               </div>
             )}
             
-            {currentStep === 'mining-mode' && <MiningModeSelection {...stepProps} />}
             {currentStep === 'template-mode' && <TemplateModeSelection {...stepProps} />}
             {currentStep === 'pool' && <PoolConfigStep {...stepProps} />}
             {currentStep === 'bitcoin' && <BitcoinSetup {...stepProps} />}

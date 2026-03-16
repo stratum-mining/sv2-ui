@@ -319,8 +319,18 @@ app.get('*', (_req, res) => {
 
 // Start server
 app.listen(PORT, () => {
-  console.log(`sv2-ui server running on http://localhost:${PORT}`);
-  console.log(`Config directory: ${CONFIG_DIR}`);
   const dockerConnection = getDockerConnectionInfo();
-  console.log(`Docker endpoint: ${dockerConnection.endpoint} (${dockerConnection.source})`);
+  
+  console.log('');
+  console.log(`Config directory: ${CONFIG_DIR}`);
+  console.log(`Docker: ${dockerConnection.endpoint} (${dockerConnection.source})`);
+  console.log('');
+  console.log('┌─────────────────────────────────────────────────────┐');
+  console.log('│                                                     │');
+  console.log('│   ⛏️  SV2 UI is ready!                               │');
+  console.log('│                                                     │');
+  console.log(`│   Open in browser: http://localhost:${PORT}             │`);
+  console.log('│                                                     │');
+  console.log('└─────────────────────────────────────────────────────┘');
+  console.log('');
 });

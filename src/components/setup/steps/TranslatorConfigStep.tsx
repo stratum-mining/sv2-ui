@@ -3,6 +3,7 @@ import { StepProps, TranslatorConfig } from '../types';
 import { Switch } from '@/components/ui/switch';
 import { Info } from 'lucide-react';
 import { TRANSLATOR_PORT } from '@/lib/ports';
+import { isValidBitcoinAddress } from '@/lib/utils';
 
 export function TranslatorConfigStep({ data, updateData, onNext }: StepProps) {
   const isSoloMode = data.miningMode === 'solo';
@@ -20,11 +21,22 @@ export function TranslatorConfigStep({ data, updateData, onNext }: StepProps) {
     updateData({ translator: config });
   }, [config, updateData]);
 
+  const [identityError, setIdentityError] = useState('');
+
   const handleChange = (field: keyof TranslatorConfig, value: string | boolean) => {
+    if (field === 'user_identity') setIdentityError('');
     setConfig({ ...config, [field]: value });
   };
 
   const isValid = config.user_identity.length > 0;
+
+  const handleContinue = () => {
+    if (isSoloMode && !isValidBitcoinAddress(config.user_identity)) {
+      setIdentityError('Invalid Bitcoin address');
+      return;
+    }
+    onNext();
+  };
 
   const getUserIdentityLabel = () => {
     if (isSoloMode) {
@@ -86,9 +98,10 @@ export function TranslatorConfigStep({ data, updateData, onNext }: StepProps) {
             autoComplete="off"
             className="w-full h-10 px-3 rounded-lg border border-input bg-background focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/15 outline-none transition-all font-mono text-sm"
           />
-          <p className="text-xs text-muted-foreground mt-2">
-            {getUserIdentityDescription()}
-          </p>
+          {identityError
+            ? <p className="text-xs text-destructive mt-1">{identityError}</p>
+            : <p className="text-xs text-muted-foreground mt-2">{getUserIdentityDescription()}</p>
+          }
         </div>
 
         <div className="p-6 rounded-xl border border-border bg-muted space-y-4">
@@ -132,7 +145,7 @@ export function TranslatorConfigStep({ data, updateData, onNext }: StepProps) {
       <div className="flex justify-center">
         <button
           type="button"
-          onClick={onNext}
+          onClick={handleContinue}
           disabled={!isValid}
           className="h-11 px-10 rounded-full bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 transition-colors font-medium"
         >

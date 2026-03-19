@@ -1,5 +1,10 @@
 import { type ClassValue, clsx } from 'clsx';
 import { twMerge } from 'tailwind-merge';
+import { validate } from 'bitcoin-address-validation';
+
+export function isValidBitcoinAddress(address: string): boolean {
+  return validate(address);
+}
 
 /**
  * Combines class names with Tailwind merge support.

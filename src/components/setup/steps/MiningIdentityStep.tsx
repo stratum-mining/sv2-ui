@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { StepProps } from '../types';
 import { Info } from 'lucide-react';
+import { isValidBitcoinAddress } from '@/lib/utils';
 
 export function MiningIdentityStep({ data, updateData, onNext }: StepProps) {
   const isSoloMode = data.miningMode === 'solo';
@@ -10,6 +11,8 @@ export function MiningIdentityStep({ data, updateData, onNext }: StepProps) {
     data.translator?.user_identity || data.jdc?.user_identity || ''
   );
   const [coinbaseAddress, setCoinbaseAddress] = useState(data.jdc?.coinbase_reward_address || '');
+  const [userIdentityError, setUserIdentityError] = useState('');
+  const [coinbaseError, setCoinbaseError] = useState('');
 
   useEffect(() => {
     updateData({
@@ -23,6 +26,19 @@ export function MiningIdentityStep({ data, updateData, onNext }: StepProps) {
   }, [userIdentity, coinbaseAddress, isJdMode, data.jdc?.jdc_signature, data.translator, updateData]);
 
   const isValid = userIdentity.length > 0 && (!isJdMode || coinbaseAddress.length > 0);
+
+  const handleContinue = () => {
+    let valid = true;
+    if (isSoloMode && !isValidBitcoinAddress(userIdentity)) {
+      setUserIdentityError('Invalid Bitcoin address');
+      valid = false;
+    }
+    if (isJdMode && !isValidBitcoinAddress(coinbaseAddress)) {
+      setCoinbaseError('Invalid Bitcoin address');
+      valid = false;
+    }
+    if (valid) onNext();
+  };
 
   return (
     <div className="space-y-8">
@@ -42,17 +58,20 @@ export function MiningIdentityStep({ data, updateData, onNext }: StepProps) {
           id="user-identity"
           type="text"
           value={userIdentity}
-          onChange={(e) => setUserIdentity(e.target.value)}
+          onChange={(e) => { setUserIdentity(e.target.value); setUserIdentityError(''); }}
           placeholder={isSoloMode ? 'bc1q...' : 'username.worker1'}
           aria-required="true"
           autoComplete="off"
           className="w-full h-10 px-3 rounded-lg border border-input bg-background focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/15 outline-none transition-all font-mono text-sm"
         />
-        <p className="text-xs text-muted-foreground mt-2">
-          {isSoloMode
-            ? 'Your Bitcoin address where you want to receive mining rewards'
-            : 'Your pool account username (e.g., username.workername)'}
-        </p>
+        {userIdentityError
+          ? <p className="text-xs text-destructive mt-1">{userIdentityError}</p>
+          : <p className="text-xs text-muted-foreground mt-2">
+              {isSoloMode
+                ? 'Your Bitcoin address where you want to receive mining rewards'
+                : 'Your pool account username (e.g., username.workername)'}
+            </p>
+        }
       </div>
 
       {isJdMode && (
@@ -73,22 +92,23 @@ export function MiningIdentityStep({ data, updateData, onNext }: StepProps) {
             id="coinbase-address"
             type="text"
             value={coinbaseAddress}
-            onChange={(e) => setCoinbaseAddress(e.target.value)}
+            onChange={(e) => { setCoinbaseAddress(e.target.value); setCoinbaseError(''); }}
             placeholder="bc1q..."
             aria-required="true"
             autoComplete="off"
             className="w-full h-10 px-3 rounded-lg border border-input bg-background focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/15 outline-none transition-all font-mono text-sm"
           />
-          <p className="text-xs text-muted-foreground mt-2">
-            Bitcoin address for receiving rewards during solo mining fallback
-          </p>
+          {coinbaseError
+            ? <p className="text-xs text-destructive mt-1">{coinbaseError}</p>
+            : <p className="text-xs text-muted-foreground mt-2">Bitcoin address for receiving rewards during solo mining fallback</p>
+          }
         </div>
       )}
 
       <div className="flex justify-center">
         <button
           type="button"
-          onClick={onNext}
+          onClick={handleContinue}
           disabled={!isValid}
           className="h-11 px-10 rounded-full bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 transition-colors font-medium"
         >

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { StepProps, JdcConfig } from '../types';
 import { Info } from 'lucide-react';
+import { isValidBitcoinAddress } from '@/lib/utils';
 
 export function JdcConfigStep({ data, updateData, onNext }: StepProps) {
   const [config, setConfig] = useState<JdcConfig>(
@@ -15,13 +16,24 @@ export function JdcConfigStep({ data, updateData, onNext }: StepProps) {
     updateData({ jdc: config });
   }, [config, updateData]);
 
+  const [coinbaseError, setCoinbaseError] = useState('');
+
   const handleChange = (field: keyof JdcConfig, value: string) => {
+    if (field === 'coinbase_reward_address') setCoinbaseError('');
     setConfig({ ...config, [field]: value });
   };
 
-  const isValid = 
-    config.user_identity.length > 0 && 
+  const isValid =
+    config.user_identity.length > 0 &&
     config.coinbase_reward_address.length > 0;
+
+  const handleContinue = () => {
+    if (!isValidBitcoinAddress(config.coinbase_reward_address)) {
+      setCoinbaseError('Invalid Bitcoin address');
+      return;
+    }
+    onNext();
+  };
 
   return (
     <div className="space-y-8">
@@ -82,16 +94,17 @@ export function JdcConfigStep({ data, updateData, onNext }: StepProps) {
             autoComplete="off"
             className="w-full h-10 px-3 rounded-lg border border-input bg-background font-mono text-sm focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/15 outline-none transition-all"
           />
-          <p className="text-xs text-muted-foreground mt-2">
-            Bitcoin address for receiving mining rewards (fallback for solo mining)
-          </p>
+          {coinbaseError
+            ? <p className="text-xs text-destructive mt-1">{coinbaseError}</p>
+            : <p className="text-xs text-muted-foreground mt-2">Bitcoin address for receiving mining rewards (fallback for solo mining)</p>
+          }
         </div>
       </div>
 
       <div className="flex justify-center">
         <button
           type="button"
-          onClick={onNext}
+          onClick={handleContinue}
           disabled={!isValid}
           className="h-11 px-10 rounded-full bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 transition-colors font-medium"
         >

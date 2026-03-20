@@ -1,19 +1,11 @@
-import { useState, useEffect } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link, useLocation } from 'wouter';
-import {
-  LayoutDashboard,
-  Settings,
-  Sun,
-  Moon,
-  Menu,
-  X,
-} from 'lucide-react';
+import { Sun, Moon, Menu, X, LayoutDashboard, Settings } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { AppMode, AppFeatures } from '@/types/api';
 import { getAppFeatures } from '@/types/api';
 import { useUiConfig } from '@/hooks/useUiConfig';
 
-// Theme hook
 function useTheme() {
   const [isDark, setIsDark] = useState(() => {
     if (typeof window === 'undefined') return true;
@@ -36,163 +28,6 @@ function useTheme() {
   return { isDark, toggle: () => setIsDark(!isDark) };
 }
 
-// Shared Sun/Moon toggle button — used in both mobile bar and desktop floating position
-function ThemeToggle({ onClick, className }: { onClick: () => void; className?: string }) {
-  return (
-    <button onClick={onClick} aria-label="Toggle theme" className={className}>
-      <Sun className="absolute h-4 w-4 transition-all duration-300 rotate-0 scale-100 dark:-rotate-90 dark:scale-0" />
-      <Moon className="absolute h-4 w-4 transition-all duration-300 rotate-90 scale-0 dark:rotate-0 dark:scale-100" />
-    </button>
-  );
-}
-
-interface ShellProps {
-  children: React.ReactNode;
-  appMode?: AppMode;
-}
-
-/**
- * Main application shell with sidebar navigation.
- * Matches Replit UI styling - sidebar-glass effect.
- */
-export function Shell({
-  children,
-  appMode = 'translator',
-}: ShellProps) {
-  const [location] = useLocation();
-  const { isDark, toggle } = useTheme();
-  const [isMobileOpen, setIsMobileOpen] = useState(false);
-  const { config } = useUiConfig();
-
-  const features = getAppFeatures(appMode);
-  const navItems = getNavItems(features, appMode);
-
-  // Dismiss mobile nav with Escape key
-  useEffect(() => {
-    if (!isMobileOpen) return;
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setIsMobileOpen(false); };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [isMobileOpen]);
-
-  return (
-    <div className="flex h-screen w-full bg-background text-foreground overflow-hidden font-sans transition-colors duration-300">
-      {/* Mobile Nav Overlay */}
-      {isMobileOpen && (
-        <div
-          className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm md:hidden"
-          onClick={() => setIsMobileOpen(false)}
-        />
-      )}
-
-      {/* Sidebar */}
-      <aside
-        className={cn(
-          'fixed inset-y-0 left-0 z-50 w-64 transform transition-transform duration-200 md:relative md:translate-x-0',
-          'sidebar-glass',
-          isMobileOpen ? 'translate-x-0' : '-translate-x-full'
-        )}
-      >
-        <div className="flex h-full flex-col">
-          {/* Logo Area */}
-          <div className="flex h-14 items-center px-6 border-b border-sidebar-border">
-            <Link href="/">
-              {config.customLogoDataUrl ? (
-                <img
-                  src={config.customLogoDataUrl}
-                  alt="Logo"
-                  className="h-[23px] w-auto max-w-[140px] object-contain cursor-pointer"
-                />
-              ) : (
-                <img
-                  src="/sv2-logo-240x40.png"
-                  srcSet="/sv2-logo-240x40.png 1x, /sv2-logo-480x80.png 2x"
-                  alt="Stratum V2"
-                  width="140"
-                  height="23"
-                  className="h-[23px] w-auto cursor-pointer"
-                  style={isDark ? undefined : { filter: 'brightness(0.3)' }}
-                />
-              )}
-            </Link>
-            <button
-              className="md:hidden ml-auto p-1 hover:bg-muted/50 rounded"
-              onClick={() => setIsMobileOpen(false)}
-            >
-              <X className="h-5 w-5" />
-            </button>
-          </div>
-
-          {/* Navigation */}
-          <nav className="flex-1 space-y-1 px-3 py-4">
-            {navItems.map((item) => {
-              const isActive =
-                location === item.href ||
-                (item.href !== '/' && location.startsWith(item.href));
-              return (
-                <Link key={item.href} href={item.href}>
-                  <div
-                    className={cn(
-                      'group flex items-center rounded-lg px-3 py-2 text-sm font-medium transition-all duration-200 mb-1 cursor-pointer',
-                      isActive
-                        ? 'bg-primary/10 text-primary shadow-sm'
-                        : 'text-muted-foreground hover:bg-foreground/5 hover:text-foreground'
-                    )}
-                  >
-                    <item.icon
-                      className={cn(
-                        'mr-3 h-4 w-4 transition-colors',
-                        isActive
-                          ? 'text-primary'
-                          : 'text-muted-foreground group-hover:text-foreground'
-                      )}
-                    />
-                    {item.label}
-                  </div>
-                </Link>
-              );
-            })}
-          </nav>
-
-          <div className="border-t border-border" />
-        </div>
-      </aside>
-
-      {/* Main Content */}
-      <main className="flex-1 flex flex-col h-full overflow-hidden bg-background relative">
-        {/* Mobile Top Bar */}
-        <div className="md:hidden flex items-center justify-between px-4 h-14 border-b border-border shrink-0">
-          <button
-            className="p-2 hover:bg-muted/50 rounded-lg transition-colors"
-            onClick={() => setIsMobileOpen(true)}
-          >
-            <Menu className="h-5 w-5" />
-          </button>
-          <ThemeToggle
-            onClick={toggle}
-            className="relative w-9 h-9 flex items-center justify-center rounded-full hover:bg-muted/50 transition-colors"
-          />
-        </div>
-
-        {/* Desktop Theme Toggle */}
-        <div className="hidden md:block absolute top-4 right-4 z-40">
-          <ThemeToggle
-            onClick={toggle}
-            className="relative w-10 h-10 flex items-center justify-center rounded-full bg-background/50 backdrop-blur-sm border border-border/50 shadow-sm hover:bg-accent transition-colors"
-          />
-        </div>
-
-        {/* Content Area — pr-16 on desktop reserves space for the floating theme toggle */}
-        <div className="flex-1 overflow-auto p-6 md:p-8 md:pr-16">
-          <div className="mx-auto max-w-7xl space-y-8 animate-fade-in">
-            {children}
-          </div>
-        </div>
-      </main>
-    </div>
-  );
-}
-
 interface NavItem {
   icon: typeof LayoutDashboard;
   label: string;
@@ -204,4 +39,182 @@ function getNavItems(_features: AppFeatures, _appMode: AppMode): NavItem[] {
     { icon: LayoutDashboard, label: 'Dashboard', href: '/' },
     { icon: Settings, label: 'Settings', href: '/settings' },
   ];
+}
+
+interface ShellProps {
+  children: React.ReactNode;
+  appMode?: AppMode;
+}
+
+export function Shell({ children, appMode = 'translator' }: ShellProps) {
+  const [location] = useLocation();
+  const { isDark, toggle } = useTheme();
+  const { config } = useUiConfig();
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  const features = getAppFeatures(appMode);
+  const navItems = getNavItems(features, appMode);
+
+  // Close on route change
+  useEffect(() => { setMenuOpen(false); }, [location]);
+
+  // Close on Escape
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setMenuOpen(false); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
+  // Close on outside click
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onClick = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setMenuOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', onClick);
+    return () => document.removeEventListener('mousedown', onClick);
+  }, [menuOpen]);
+
+  const Logo = () => (
+    <Link href="/" className="shrink-0 flex items-center">
+      {config.customLogoDataUrl ? (
+        <img
+          src={config.customLogoDataUrl}
+          alt="Logo"
+          className="h-5 w-auto max-w-[120px] object-contain"
+        />
+      ) : (
+        <img
+          src="/sv2-logo-240x40.png"
+          srcSet="/sv2-logo-240x40.png 1x, /sv2-logo-480x80.png 2x"
+          alt="Stratum V2"
+          width="120"
+          height="20"
+          className="h-5 w-auto"
+          style={isDark ? undefined : { filter: 'brightness(0.25)' }}
+        />
+      )}
+    </Link>
+  );
+
+  const ThemeBtn = ({ size = 7 }: { size?: number }) => (
+    <button
+      onClick={toggle}
+      aria-label="Toggle theme"
+      className={cn(
+        'relative flex items-center justify-center rounded-full text-muted-foreground hover:text-foreground hover:bg-foreground/8 transition-all duration-150',
+        `w-${size} h-${size}`
+      )}
+    >
+      <Sun className="absolute h-[14px] w-[14px] transition-all duration-300 rotate-0 scale-100 dark:-rotate-90 dark:scale-0" />
+      <Moon className="absolute h-[14px] w-[14px] transition-all duration-300 rotate-90 scale-0 dark:rotate-0 dark:scale-100" />
+    </button>
+  );
+
+  return (
+    <div className="flex flex-col h-screen w-full bg-background text-foreground font-sans transition-colors duration-300">
+
+      {/* ── Navbar ── */}
+      <header
+        ref={menuRef}
+        className="sticky top-0 z-40 shrink-0 bg-background/80 backdrop-blur-md border-b border-border/60"
+      >
+        {/* Bar */}
+        <div className="mx-auto max-w-7xl h-11 px-4 sm:px-6 flex items-center gap-5">
+
+          <Logo />
+
+          {/* Desktop: nav */}
+          <nav className="hidden sm:flex items-stretch h-11 gap-0 ml-2">
+            {navItems.map((item) => {
+              const isActive =
+                location === item.href ||
+                (item.href !== '/' && location.startsWith(item.href));
+              return (
+                <Link key={item.href} href={item.href}>
+                  <span
+                    className={cn(
+                      'inline-flex items-center gap-1.5 px-3.5 h-full text-[13px] font-medium tracking-[-0.01em] border-b-2 transition-all duration-150 cursor-pointer',
+                      isActive
+                        ? 'border-primary text-foreground'
+                        : 'border-transparent text-muted-foreground hover:text-foreground hover:border-border'
+                    )}
+                  >
+                    <item.icon className="h-3.5 w-3.5" />
+                    {item.label}
+                  </span>
+                </Link>
+              );
+            })}
+          </nav>
+
+          {/* Right side */}
+          <div className="ml-auto flex items-center gap-2">
+            <ThemeBtn />
+
+            {/* Hamburger — mobile only */}
+            <button
+              className="sm:hidden relative w-7 h-7 flex items-center justify-center rounded-full text-muted-foreground hover:text-foreground hover:bg-foreground/8 transition-all duration-150"
+              onClick={() => setMenuOpen((o) => !o)}
+              aria-label={menuOpen ? 'Close menu' : 'Open menu'}
+            >
+              <Menu
+                className={cn(
+                  'absolute h-[15px] w-[15px] transition-all duration-200',
+                  menuOpen ? 'opacity-0 scale-75 rotate-90' : 'opacity-100 scale-100 rotate-0'
+                )}
+              />
+              <X
+                className={cn(
+                  'absolute h-[15px] w-[15px] transition-all duration-200',
+                  menuOpen ? 'opacity-100 scale-100 rotate-0' : 'opacity-0 scale-75 -rotate-90'
+                )}
+              />
+            </button>
+          </div>
+        </div>
+
+        {/* Mobile dropdown */}
+        <div
+          className={cn(
+            'sm:hidden overflow-hidden transition-all duration-200 ease-in-out',
+            menuOpen ? 'max-h-48 opacity-100' : 'max-h-0 opacity-0'
+          )}
+        >
+          <nav className="px-4 pb-3 pt-1 flex flex-col gap-0.5 border-t border-border/40">
+            {navItems.map((item) => {
+              const isActive =
+                location === item.href ||
+                (item.href !== '/' && location.startsWith(item.href));
+              return (
+                <Link key={item.href} href={item.href}>
+                  <span
+                    className={cn(
+                      'flex items-center w-full px-3 py-2.5 rounded-lg text-[14px] font-medium transition-all duration-150 cursor-pointer',
+                      isActive
+                        ? 'text-foreground bg-foreground/8'
+                        : 'text-muted-foreground hover:text-foreground hover:bg-foreground/5'
+                    )}
+                  >
+                    {item.label}
+                  </span>
+                </Link>
+              );
+            })}
+          </nav>
+        </div>
+      </header>
+
+      {/* Content */}
+      <main className="flex-1 overflow-auto">
+        <div className="px-4 sm:px-6 py-6 sm:py-8 mx-auto max-w-7xl space-y-6 sm:space-y-8 animate-fade-in">
+          {children}
+        </div>
+      </main>
+
+    </div>
+  );
 }

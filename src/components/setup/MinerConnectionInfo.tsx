@@ -27,9 +27,10 @@ function CopyableAddress({ address }: { address: string }) {
 
 interface MinerConnectionInfoProps {
   isJdMode: boolean;
+  centered?: boolean;
 }
 
-export function MinerConnectionInfo({ isJdMode }: MinerConnectionInfoProps) {
+export function MinerConnectionInfo({ isJdMode, centered = false }: MinerConnectionInfoProps) {
   const translatorUrl = `stratum+tcp://<your-machine-ip>:${TRANSLATOR_PORT}`;
   const jdcUrl = `stratum+tcp://<your-machine-ip>:${JDC_PORT}`;
 
@@ -40,18 +41,16 @@ export function MinerConnectionInfo({ isJdMode }: MinerConnectionInfoProps) {
   );
 
   return (
-    <div className="grid gap-3 md:grid-cols-2">
-      {/* SV1 — always shown */}
-      <div className="p-4 rounded-xl border border-border bg-card space-y-2">
+    <div className={centered ? 'flex flex-wrap justify-center gap-3' : 'grid gap-3 md:grid-cols-2'}>
+      <div className={`p-4 rounded-xl border border-border bg-card space-y-2${centered ? ' w-full max-w-sm' : ''}`}>
         <div className="font-semibold text-sm">SV1 Firmware</div>
         <div className="text-xs text-muted-foreground">Point to the Translator Proxy</div>
         <CopyableAddress address={translatorUrl} />
         {hint}
       </div>
 
-      {/* SV2 — only in JD mode */}
       {isJdMode && (
-        <div className="p-4 rounded-xl border border-border bg-card space-y-2">
+        <div className={`p-4 rounded-xl border border-border bg-card space-y-2${centered ? ' w-full max-w-sm' : ''}`}>
           <div className="font-semibold text-sm">SV2 Firmware</div>
           <div className="text-xs text-muted-foreground">Point directly to the JD Client</div>
           <CopyableAddress address={jdcUrl} />

@@ -60,7 +60,7 @@ export function ReviewStart({ data, onComplete }: ReviewStartProps) {
           <h2 className="text-2xl md:text-3xl font-semibold tracking-tight mb-3">Client is running!</h2>
           <p className="text-lg text-muted-foreground">Point your mining devices to the addresses below</p>
         </div>
-        <MinerConnectionInfo isJdMode={isJdMode} />
+        <MinerConnectionInfo isJdMode={isJdMode} centered />
         <div className="flex flex-col items-center gap-2">
           <button
             type="button"

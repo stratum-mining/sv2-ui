@@ -18,41 +18,34 @@ const SAMPLE_INTERVAL_MS = 5000; // Sample every 5 seconds
  */
 export function useHashrateHistory(currentHashrate: number | undefined): HashrateDataPoint[] {
   const [history, setHistory] = useState<HashrateDataPoint[]>([]);
-  const lastSampleTime = useRef<number>(0);
+  const hashrateRef = useRef<number | undefined>(currentHashrate);
+
+  // Keep ref in sync with latest value without re-creating the interval
+  useEffect(() => {
+    hashrateRef.current = currentHashrate;
+  }, [currentHashrate]);
 
   useEffect(() => {
-    if (currentHashrate === undefined || currentHashrate === null) return;
+    const interval = setInterval(() => {
+      const value = hashrateRef.current;
+      if (!value) return; // Skip zero and undefined (loading state)
 
-    const now = Date.now();
-    
-    // Only add a new sample if enough time has passed
-    if (now - lastSampleTime.current < SAMPLE_INTERVAL_MS) return;
-    
-    lastSampleTime.current = now;
-    
-    const timeStr = new Date(now).toLocaleTimeString('en-US', {
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: false,
-    });
+      const now = Date.now();
+      const timeStr = new Date(now).toLocaleTimeString('en-US', {
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false,
+      });
 
-    setHistory(prev => {
-      const newPoint: HashrateDataPoint = {
-        time: timeStr,
-        timestamp: now,
-        hashrate: currentHashrate,
-      };
-      
-      const updated = [...prev, newPoint];
-      
-      // Keep only the last MAX_HISTORY_POINTS
-      if (updated.length > MAX_HISTORY_POINTS) {
-        return updated.slice(-MAX_HISTORY_POINTS);
-      }
-      
-      return updated;
-    });
-  }, [currentHashrate]);
+      setHistory(prev => {
+        const newPoint: HashrateDataPoint = { time: timeStr, timestamp: now, hashrate: value };
+        const updated = [...prev, newPoint];
+        return updated.length > MAX_HISTORY_POINTS ? updated.slice(-MAX_HISTORY_POINTS) : updated;
+      });
+    }, SAMPLE_INTERVAL_MS);
+
+    return () => clearInterval(interval);
+  }, []); // Run once on mount, clean up on unmount
 
   return history;
 }

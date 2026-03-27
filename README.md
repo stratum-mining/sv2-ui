@@ -11,7 +11,7 @@ docker run --rm \
   -e HOST_HOME=$HOME \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v sv2-config:/app/data/config \
-  stratumv2/sv2-ui:v0.3.1
+  stratumv2/sv2-ui:v0.1.0
 ```
 
 Then open **http://localhost:8080**. On first run, you'll be guided through the setup wizard.
@@ -31,7 +31,7 @@ docker run --rm --name sv2-ui -p 8080:8080 \
   -e HOST_HOME=$HOME \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v sv2-config:/app/data/config \
-  stratumv2/sv2-ui:v0.3.1
+  stratumv2/sv2-ui:v0.1.0
 ```
 
 ### macOS (Colima / OrbStack)
@@ -44,14 +44,14 @@ docker run --rm --name sv2-ui -p 8080:8080 \
   -e HOST_HOME=$HOME \
   -v $HOME/.colima/default/docker.sock:/var/run/docker.sock \
   -v sv2-config:/app/data/config \
-  stratumv2/sv2-ui:v0.3.1
+  stratumv2/sv2-ui:v0.1.0
 
 # OrbStack
 docker run --rm --name sv2-ui -p 8080:8080 \
   -e HOST_HOME=$HOME \
   -v $HOME/.orbstack/run/docker.sock:/var/run/docker.sock \
   -v sv2-config:/app/data/config \
-  stratumv2/sv2-ui:v0.3.1
+  stratumv2/sv2-ui:v0.1.0
 ```
 
 ## Development

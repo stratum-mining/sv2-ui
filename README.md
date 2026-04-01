@@ -11,7 +11,7 @@ docker run --rm \
   -e HOST_HOME=$HOME \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v sv2-config:/app/data/config \
-  stratumv2/sv2-ui:main
+  stratumv2/sv2-ui:v0.1.1
 ```
 
 Then open **http://localhost:8080**. On first run, you'll be guided through the setup wizard.
@@ -31,7 +31,7 @@ docker run --rm --name sv2-ui -p 8080:8080 \
   -e HOST_HOME=$HOME \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v sv2-config:/app/data/config \
-  stratumv2/sv2-ui:main
+  stratumv2/sv2-ui:v0.1.1
 ```
 
 ### macOS (Colima / OrbStack)
@@ -44,14 +44,14 @@ docker run --rm --name sv2-ui -p 8080:8080 \
   -e HOST_HOME=$HOME \
   -v $HOME/.colima/default/docker.sock:/var/run/docker.sock \
   -v sv2-config:/app/data/config \
-  stratumv2/sv2-ui:main
+  stratumv2/sv2-ui:v0.1.1
 
 # OrbStack
 docker run --rm --name sv2-ui -p 8080:8080 \
   -e HOST_HOME=$HOME \
   -v $HOME/.orbstack/run/docker.sock:/var/run/docker.sock \
   -v sv2-config:/app/data/config \
-  stratumv2/sv2-ui:main
+  stratumv2/sv2-ui:v0.1.1
 ```
 
 ## Development
@@ -153,8 +153,8 @@ sv2-ui/
 
 ## Docker Images Used
 
-- `stratumv2/translator_sv2:main` - Translator Proxy
-- `stratumv2/jd_client_sv2:main` - JD Client
+- `stratumv2/translator_sv2:v0.3.2` - Translator Proxy
+- `stratumv2/jd_client_sv2:v0.3.2` - JD Client
 
 ## Ports
 

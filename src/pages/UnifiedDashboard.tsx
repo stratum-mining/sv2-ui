@@ -311,7 +311,7 @@ export function UnifiedDashboard() {
       <HashrateChart
         data={hashrateHistory}
         title="Hashrate History"
-        description="Real-time data collected since page load"
+        description="Real-time data sampled every 5 seconds"
         info={
           <InfoPopover>
             Estimated hashrate sampled every 5 seconds. May take a few minutes to reflect your miner's actual output.

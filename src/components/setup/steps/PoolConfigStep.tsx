@@ -56,9 +56,8 @@ const SOLO_POOLS: KnownPool[] = [
     name: 'Blitzpool',
     address: 'blitzpool.yourdevice.ch',
     port: 3333,
-    authority_public_key: '',
+    authority_public_key: '9bCoFxTszKCuffyywH5uS5o6WcU4vsjTH2axxc7wE86y2HhvULU',
     description: 'Solo mining pool by Blitzpool',
-    badge: 'coming-soon',
     logoUrl: '/blitzpool.svg',
   },
   {

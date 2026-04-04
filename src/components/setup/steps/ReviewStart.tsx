@@ -3,6 +3,7 @@ import { StepProps } from '../types';
 import { CheckCircle2, Loader2, AlertCircle } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { MinerConnectionInfo } from '../MinerConnectionInfo';
+import { formatHashrate } from '@/lib/utils';
 
 interface ReviewStartProps extends StepProps {
   onComplete: () => void;
@@ -16,6 +17,9 @@ export function ReviewStart({ data, onComplete }: ReviewStartProps) {
 
   const isJdMode = data.mode === 'jd';
   const isSoloMode = data.miningMode === 'solo';
+
+  let sectionCount = 0;
+  const nextSection = () => (++sectionCount).toString();
 
   const handleStart = async () => {
     setIsStarting(true);
@@ -112,13 +116,13 @@ export function ReviewStart({ data, onComplete }: ReviewStartProps) {
       {/* Summary */}
       <div className="space-y-px">
         <div className="p-5 rounded-t-xl border border-border bg-card">
-          <SectionLabel n="1" label="Mining Setup" />
+          <SectionLabel n={nextSection()} label="Mining Setup" />
           <p className="text-sm text-muted-foreground pl-7">{isSoloMode ? 'Solo Mining' : 'Pool Mining'}</p>
         </div>
 
         {!isSoloMode && (
           <div className="p-5 border-x border-b border-border bg-card">
-            <SectionLabel n="2" label="Block Templates" />
+            <SectionLabel n={nextSection()} label="Block Templates" />
             <p className="text-sm text-muted-foreground pl-7">
               {isJdMode ? 'Custom Templates (Job Declaration)' : 'Pool Templates'}
             </p>
@@ -127,7 +131,7 @@ export function ReviewStart({ data, onComplete }: ReviewStartProps) {
 
         {data.pool && (
           <div className="p-5 border-x border-b border-border bg-card">
-            <SectionLabel n={isSoloMode ? '2' : '3'} label={isSoloMode ? 'Solo Pool' : 'Pool'} />
+            <SectionLabel n={nextSection()} label={isSoloMode ? 'Solo Pool' : 'Pool'} />
             <div className="text-sm text-muted-foreground space-y-1 pl-7">
               <div><span className="text-foreground">{data.pool.name || 'Custom'}</span></div>
               <div className="font-mono text-xs">{data.pool.address}:{data.pool.port}</div>
@@ -138,7 +142,7 @@ export function ReviewStart({ data, onComplete }: ReviewStartProps) {
 
         {isJdMode && !isSoloMode && data.bitcoin && (
           <div className="p-5 border-x border-b border-border bg-card">
-            <SectionLabel n="4" label="Bitcoin Core" />
+            <SectionLabel n={nextSection()} label="Bitcoin Core" />
             <div className="text-sm text-muted-foreground space-y-1 pl-7">
               <div>{data.bitcoin.network}</div>
               <div className="font-mono text-xs truncate">{data.bitcoin.socket_path}</div>
@@ -146,8 +150,18 @@ export function ReviewStart({ data, onComplete }: ReviewStartProps) {
           </div>
         )}
 
+        {data.translator?.min_hashrate && (
+          <div className="p-5 border-x border-b border-border bg-card">
+            <SectionLabel n={nextSection()} label="Expected Hashrate" />
+            <div className="text-sm text-muted-foreground space-y-1 pl-7">
+              <div className="font-semibold text-primary">{formatHashrate(data.translator.min_hashrate)}</div>
+              <div className="text-xs">Initial mining difficulty will be based on this value.</div>
+            </div>
+          </div>
+        )}
+
         <div className="p-5 rounded-b-xl border-x border-b border-border bg-card">
-          <SectionLabel n={isSoloMode ? '3' : (isJdMode ? '5' : '4')} label="Mining Identity" />
+          <SectionLabel n={nextSection()} label="Mining Identity" />
           <div className="text-sm text-muted-foreground space-y-1 pl-7">
             {(() => {
               const identity = data.translator?.user_identity ?? data.jdc?.user_identity ?? '';

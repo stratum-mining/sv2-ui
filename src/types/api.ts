@@ -183,6 +183,14 @@ export interface ClientChannelsResponse {
   standard_channels: StandardChannelInfo[];
 }
 
+/**
+ * Sv2 client metadata plus all of its downstream channels.
+ */
+export interface ClientWithChannels extends ClientMetadata {
+  extended_channels: ExtendedChannelInfo[];
+  standard_channels: StandardChannelInfo[];
+}
+
 // ============================================================================
 // SV1 Client Types (Translator only)
 // ============================================================================

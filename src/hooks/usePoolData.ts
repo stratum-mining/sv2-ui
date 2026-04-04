@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import type { 
   GlobalInfo, 
@@ -5,6 +6,7 @@ import type {
   Sv1ClientsResponse,
   ClientsResponse,
   ClientChannelsResponse,
+  ClientWithChannels,
   ExtendedChannelInfo,
   StandardChannelInfo,
 } from '@/types/api';
@@ -81,48 +83,54 @@ function templateModeToInternalMode(templateMode: TemplateMode): 'jdc' | 'transl
 }
 
 /**
- * Fetch all client channels by first getting client list, then fetching each client's channels.
- * Aggregates all channels into a single response.
+ * Collapse detailed Sv2 client data into a single channel aggregate.
  */
-async function fetchAllClientChannels(baseUrl: string): Promise<AggregatedClientChannels> {
-  // First, get the list of clients
-  const clientsResponse = await fetchWithTimeout<ClientsResponse>(`${baseUrl}/clients?offset=0&limit=100`);
-  
-  if (clientsResponse.items.length === 0) {
-    return {
-      total_extended: 0,
-      total_standard: 0,
-      extended_channels: [],
-      standard_channels: [],
-    };
-  }
-  
-  // Fetch channels for each client in parallel
-  const channelPromises = clientsResponse.items.map(client =>
-    fetchWithTimeout<ClientChannelsResponse>(`${baseUrl}/clients/${client.client_id}/channels?offset=0&limit=100`)
-      .catch(() => null) // Handle individual client failures gracefully
-  );
-  
-  const channelResults = await Promise.all(channelPromises);
-  
-  // Aggregate all channels
-  const aggregated: AggregatedClientChannels = {
+function aggregateSv2ClientChannels(clients: ClientWithChannels[]): AggregatedClientChannels {
+  return clients.reduce<AggregatedClientChannels>((aggregated, client) => {
+    aggregated.total_extended += client.extended_channels.length;
+    aggregated.total_standard += client.standard_channels.length;
+    aggregated.extended_channels.push(...client.extended_channels);
+    aggregated.standard_channels.push(...client.standard_channels);
+    return aggregated;
+  }, {
     total_extended: 0,
     total_standard: 0,
     extended_channels: [],
     standard_channels: [],
-  };
+  });
+}
+
+/**
+ * Fetch all Sv2 clients plus their channels.
+ */
+async function fetchAllSv2Clients(baseUrl: string): Promise<ClientWithChannels[]> {
+  const clientsResponse = await fetchWithTimeout<ClientsResponse>(`${baseUrl}/clients?offset=0&limit=100`);
   
-  for (const result of channelResults) {
-    if (result) {
-      aggregated.total_extended += result.total_extended;
-      aggregated.total_standard += result.total_standard;
-      aggregated.extended_channels.push(...result.extended_channels);
-      aggregated.standard_channels.push(...result.standard_channels);
-    }
+  if (clientsResponse.items.length === 0) {
+    return [];
   }
   
-  return aggregated;
+  const clientsWithChannels = await Promise.all(clientsResponse.items.map(async (client) => {
+    try {
+      const channels = await fetchWithTimeout<ClientChannelsResponse>(
+        `${baseUrl}/clients/${client.client_id}/channels?offset=0&limit=100`
+      );
+
+      return {
+        ...client,
+        extended_channels: channels.extended_channels,
+        standard_channels: channels.standard_channels,
+      };
+    } catch {
+      return {
+        ...client,
+        extended_channels: [],
+        standard_channels: [],
+      };
+    }
+  }));
+
+  return clientsWithChannels;
 }
 
 /**
@@ -133,7 +141,8 @@ async function fetchAllClientChannels(baseUrl: string): Promise<AggregatedClient
  * 
  * Returns both:
  * - serverChannels: upstream connection to Pool (shares, best diff)
- * - clientChannels: downstream clients connecting to JDC/Translator (for Dashboard)
+ * - clientChannels: downstream JDC client channels (for Dashboard in JD mode)
+ * - sv2Clients: downstream JDC clients with grouped channels (for JD mode worker table)
  */
 export function usePoolData(templateMode: TemplateMode = null) {
   const endpoints = getEndpointsCached();
@@ -154,23 +163,31 @@ export function usePoolData(templateMode: TemplateMode = null) {
     queryFn: () => fetchWithTimeout<ServerChannelsResponse>(`${baseUrl}/server/channels?offset=0&limit=100`),
     refetchInterval: 3000,
   });
-  
-  // Fetch downstream client channels (clients connecting to JDC/Translator - for Dashboard)
-  const clientChannelsQuery = useQuery({
-    queryKey: ['client-channels', mode],
-    queryFn: () => fetchAllClientChannels(baseUrl),
+
+  // Fetch downstream Sv2 clients (for JD mode worker list and best-diff stats)
+  const sv2ClientsQuery = useQuery({
+    queryKey: ['sv2-clients', mode],
+    queryFn: () => fetchAllSv2Clients(baseUrl),
     refetchInterval: 3000,
+    enabled: mode === 'jdc',
   });
+
+  const clientChannels = useMemo(
+    () => (sv2ClientsQuery.data ? aggregateSv2ClientChannels(sv2ClientsQuery.data) : undefined),
+    [sv2ClientsQuery.data]
+  );
   
   return {
     mode,
     modeLabel: mode === 'jdc' ? endpoints.jdc.label : endpoints.translator.label,
     isJdMode: mode === 'jdc',
     global: globalQuery.data,
+    sv2Clients: sv2ClientsQuery.data,
+    isSv2ClientsLoading: sv2ClientsQuery.isLoading,
     // Server channels = upstream Pool connection
     serverChannels: serverChannelsQuery.data,
-    // Client channels = downstream clients (for Dashboard)
-    clientChannels: clientChannelsQuery.data,
+    // Client channels = downstream JDC channels (for Dashboard)
+    clientChannels,
     // Keep 'channels' as alias for serverChannels for backward compatibility
     channels: serverChannelsQuery.data,
     isLoading: globalQuery.isLoading,
@@ -183,7 +200,7 @@ export function usePoolData(templateMode: TemplateMode = null) {
  * Hook to fetch SV1 clients data.
  * Always fetches from Translator (the only app with SV1 clients).
  */
-export function useSv1ClientsData(offset = 0, limit = 25) {
+export function useSv1ClientsData(offset = 0, limit = 25, enabled = true) {
   const endpoints = getEndpointsCached();
   
   return useQuery({
@@ -199,6 +216,23 @@ export function useSv1ClientsData(offset = 0, limit = 25) {
       return response.json() as Promise<Sv1ClientsResponse>;
     },
     refetchInterval: 3000,
+    enabled,
+  });
+}
+
+/**
+ * Hook to fetch Translator upstream channels.
+ * In JD mode this lets the UI identify which downstream worker channels are
+ * coming through SV1 translation.
+ */
+export function useTranslatorServerChannels(enabled = true) {
+  const endpoints = getEndpointsCached();
+
+  return useQuery({
+    queryKey: ['translator-server-channels'],
+    queryFn: () => fetchWithTimeout<ServerChannelsResponse>(`${endpoints.translator.base}/server/channels?offset=0&limit=100`),
+    refetchInterval: enabled ? 3000 : false,
+    enabled,
   });
 }
 

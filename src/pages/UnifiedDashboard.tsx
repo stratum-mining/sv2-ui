@@ -1,17 +1,33 @@
-import { useState, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, Search, Play } from 'lucide-react';
 import { InfoPopover } from '@/components/ui/info-popover';
 import { MinerConnectionInfo } from '@/components/setup/MinerConnectionInfo';
 import { Shell } from '@/components/layout/Shell';
 import { StatCard } from '@/components/data/StatCard';
 import { HashrateChart } from '@/components/data/HashrateChart';
-import { Sv1ClientTable, type SortKey } from '@/components/data/Sv1ClientTable';
-import { usePoolData, useSv1ClientsData, useTranslatorHealth, useJdcHealth } from '@/hooks/usePoolData';
+import {
+  DownstreamWorkerTable,
+  type ChannelType,
+  type DownstreamWorkerRow,
+  type DownstreamWorkerSortKey,
+} from '@/components/data/DownstreamWorkerTable';
+import {
+  usePoolData,
+  useSv1ClientsData,
+  useTranslatorHealth,
+  useJdcHealth,
+  useTranslatorServerChannels,
+} from '@/hooks/usePoolData';
 import { useHashrateHistory } from '@/hooks/useHashrateHistory';
 import { useSetupStatus } from '@/hooks/useSetupStatus';
 import { useConnectionStatus } from '@/hooks/useConnectionStatus';
 import { formatHashrate, formatDifficulty } from '@/lib/utils';
 import type { Sv1ClientInfo } from '@/types/api';
+
+function normalizeUserIdentity(userIdentity: string) {
+  return userIdentity.trim().toLowerCase();
+}
+
 /**
  * Unified Dashboard for the SV2 Mining Stack.
  * 
@@ -23,12 +39,17 @@ import type { Sv1ClientInfo } from '@/types/api';
  * - JDC's upstream (if JD mode)
  * - Translator's upstream (if non-JD mode)
  * 
- * SV1 Clients always come from Translator.
+ * Worker data source depends on deployment mode, but all modes render the same
+ * downstream worker table shape:
+ * - Connection Id
+ * - Channel Id
+ * - Channel Type
+ * - User Identity
  */
 export function UnifiedDashboard() {
   const [searchTerm, setSearchTerm] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
-  const [sortKey, setSortKey] = useState<SortKey>('client_id');
+  const [sortKey, setSortKey] = useState<DownstreamWorkerSortKey>('connection_id');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
   const itemsPerPage = 15;
 
@@ -42,6 +63,8 @@ export function UnifiedDashboard() {
   const {
     isJdMode,
     global: poolGlobal,
+    sv2Clients,
+    isSv2ClientsLoading,
     clientChannels,  // Downstream client channels (for hashrate, best diff)
     serverChannels,  // Upstream server channels (for shares to Pool)
     isLoading: poolLoading,
@@ -52,7 +75,9 @@ export function UnifiedDashboard() {
   const {
     data: sv1Data,
     isLoading: sv1Loading,
-  } = useSv1ClientsData(0, 1000); // Fetch all for client-side filtering
+  } = useSv1ClientsData(0, 1000, !isJdMode); // Translator-only rows for the shared worker table
+
+  const { data: translatorServerChannels } = useTranslatorServerChannels(isJdMode);
 
   // Health checks for the error banner (React Query deduplicates the API calls)
   const { data: translatorOk, isLoading: translatorHealthLoading, isError: translatorHealthError } = useTranslatorHealth();
@@ -81,16 +106,101 @@ export function UnifiedDashboard() {
     }
   };
 
-  // SV1 client stats (from Translator)
-  const allClients = useMemo(() => sv1Data?.items || [], [sv1Data?.items]);
-  const activeClients = useMemo(() => allClients.filter((c: Sv1ClientInfo) => c.hashrate !== null), [allClients]);
-  const totalClients = sv1Data?.total || 0;
-  const activeCount = activeClients.length;
+  // Translator SV1 worker stats
+  const allSv1Clients = useMemo(() => sv1Data?.items || [], [sv1Data?.items]);
+  const activeSv1Clients = useMemo(
+    () => allSv1Clients.filter((client: Sv1ClientInfo) => client.hashrate !== null),
+    [allSv1Clients]
+  );
+  const sv1TotalClients = sv1Data?.total || 0;
+  const sv1ActiveCount = activeSv1Clients.length;
 
   // Calculate total hashrate from SV1 clients
   const sv1TotalHashrate = useMemo(() => {
-    return allClients.reduce((sum, c) => sum + (c.hashrate || 0), 0);
-  }, [allClients]);
+    return allSv1Clients.reduce((sum, client) => sum + (client.hashrate || 0), 0);
+  }, [allSv1Clients]);
+
+  const translatedUserIdentities = useMemo(
+    () => new Set(
+      translatorServerChannels?.extended_channels
+        .map((channel) => normalizeUserIdentity(channel.user_identity))
+        .filter(Boolean) || []
+    ),
+    [translatorServerChannels]
+  );
+
+  const translatedConnectionIds = useMemo(() => {
+    if (!isJdMode || !sv2Clients || translatedUserIdentities.size === 0) {
+      return new Set<number>();
+    }
+
+    const candidates = sv2Clients
+      .map((client) => {
+        const matchedExtendedChannels = client.extended_channels.filter((channel) =>
+          translatedUserIdentities.has(normalizeUserIdentity(channel.user_identity))
+        ).length;
+
+        return {
+          client_id: client.client_id,
+          matchedExtendedChannels,
+          totalExtendedChannels: client.extended_channels.length,
+        };
+      })
+      .filter((client) => client.matchedExtendedChannels > 0)
+      .sort((a, b) =>
+        b.matchedExtendedChannels - a.matchedExtendedChannels ||
+        b.totalExtendedChannels - a.totalExtendedChannels
+      );
+
+    if (candidates.length === 0) {
+      return new Set<number>();
+    }
+
+    if (candidates.length > 1) {
+      const [best, second] = candidates;
+      const ambiguous =
+        best.matchedExtendedChannels === second.matchedExtendedChannels &&
+        best.totalExtendedChannels === second.totalExtendedChannels;
+
+      if (ambiguous) {
+        return new Set<number>();
+      }
+    }
+
+    return new Set<number>([candidates[0].client_id]);
+  }, [isJdMode, sv2Clients, translatedUserIdentities]);
+
+  // All worker flows are normalized into the shared downstream worker table.
+  const downstreamWorkers = useMemo<DownstreamWorkerRow[]>(() => {
+    if (!sv2Clients) return [];
+
+    return sv2Clients.flatMap((client) => [
+      ...client.extended_channels.map((channel) => ({
+        connection_id: client.client_id,
+        channel_id: channel.channel_id,
+        channel_type: translatedConnectionIds.has(client.client_id)
+          ? 'sv1' as const
+          : 'sv2_extended' as const,
+        user_identity: channel.user_identity,
+        estimated_hashrate: channel.nominal_hashrate,
+        best_diff: channel.best_diff,
+      })),
+      ...client.standard_channels.map((channel) => ({
+        connection_id: client.client_id,
+        channel_id: channel.channel_id,
+        channel_type: 'sv2_standard' as const,
+        user_identity: channel.user_identity,
+        estimated_hashrate: channel.nominal_hashrate,
+        best_diff: channel.best_diff,
+      })),
+    ]);
+  }, [sv2Clients, translatedConnectionIds]);
+
+  const downstreamWorkerCount = poolGlobal?.sv2_clients?.total_channels || downstreamWorkers.length;
+  const downstreamConnectionCount = poolGlobal?.sv2_clients?.total_clients || sv2Clients?.length || 0;
+  const totalWorkers = isJdMode ? downstreamWorkerCount : sv1TotalClients;
+  const activeWorkers = isJdMode ? downstreamWorkerCount : sv1ActiveCount;
+  const workerTableLoading = isJdMode ? isSv2ClientsLoading : sv1Loading;
 
   // Total hashrate:
   // - JD mode: from SV2 client channels (poolGlobal.sv2_clients.total_hashrate)
@@ -100,8 +210,8 @@ export function UnifiedDashboard() {
     : (poolGlobal?.sv1_clients?.total_hashrate || sv1TotalHashrate);
 
   const totalClientChannels = isJdMode 
-    ? (poolGlobal?.sv2_clients?.total_channels || 0)
-    : activeCount;
+    ? downstreamWorkerCount
+    : sv1ActiveCount;
 
   // Scope hashrate history to the active pool + mode so stale samples from a
   // previous configuration are never shown after a reconfigure.
@@ -160,35 +270,75 @@ export function UnifiedDashboard() {
   
   // Number of client channels (for best diff subtitle)
   const clientChannelCount = isJdMode 
-    ? (clientChannels?.total_extended || 0) + (clientChannels?.total_standard || 0)
-    : activeCount;
-  
-  // Filter and sort clients
-  const filteredClients = useMemo(() => {
-    let list = allClients;
+    ? downstreamWorkerCount
+    : sv1ActiveCount;
+
+  type DashboardWorkerRow = DownstreamWorkerRow & { search_text: string };
+
+  const dashboardWorkers = useMemo<DashboardWorkerRow[]>(() => {
+    if (isJdMode) {
+      return downstreamWorkers.map((worker) => ({
+        ...worker,
+        search_text: [
+          worker.user_identity,
+          worker.connection_id.toString(),
+          worker.channel_id?.toString() || '',
+          worker.channel_type,
+        ].join(' ').toLowerCase(),
+      }));
+    }
+
+    return allSv1Clients.map((client) => ({
+      connection_id: client.client_id,
+      channel_id: client.channel_id,
+      channel_type: 'sv1' as ChannelType,
+      user_identity: client.user_identity,
+      estimated_hashrate: client.hashrate,
+      best_diff: null,
+      search_text: [
+        client.authorized_worker_name || '',
+        client.user_identity,
+        client.client_id.toString(),
+        client.channel_id?.toString() || '',
+        'sv1',
+      ].join(' ').toLowerCase(),
+    }));
+  }, [isJdMode, downstreamWorkers, allSv1Clients]);
+
+  const filteredWorkers = useMemo(() => {
+    let list = dashboardWorkers;
     if (searchTerm) {
       const term = searchTerm.toLowerCase();
-      list = allClients.filter((c: Sv1ClientInfo) =>
-        c.authorized_worker_name?.toLowerCase().includes(term) ||
-        c.user_identity?.toLowerCase().includes(term)
-      );
+      list = dashboardWorkers.filter((worker) => worker.search_text.includes(term));
     }
+
     const nullLast = sortDir === 'asc' ? Infinity : -Infinity;
     return [...list].sort((a, b) => {
       const av = a[sortKey] ?? nullLast;
       const bv = b[sortKey] ?? nullLast;
+      if (typeof av === 'string' && typeof bv === 'string') {
+        return sortDir === 'asc' ? av.localeCompare(bv) : bv.localeCompare(av);
+      }
       if (av < bv) return sortDir === 'asc' ? -1 : 1;
       if (av > bv) return sortDir === 'asc' ? 1 : -1;
       return 0;
     });
-  }, [allClients, searchTerm, sortKey, sortDir]);
+  }, [dashboardWorkers, searchTerm, sortKey, sortDir]);
+
+  const filteredCount = filteredWorkers.length;
+  const totalPages = Math.max(1, Math.ceil(filteredCount / itemsPerPage));
+
+  useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(totalPages);
+    }
+  }, [currentPage, totalPages]);
 
   // Pagination
-  const totalPages = Math.ceil(filteredClients.length / itemsPerPage);
-  const paginatedClients = useMemo(() => {
+  const paginatedWorkers = useMemo(() => {
     const start = (currentPage - 1) * itemsPerPage;
-    return filteredClients.slice(start, start + itemsPerPage);
-  }, [filteredClients, currentPage, itemsPerPage]);
+    return filteredWorkers.slice(start, start + itemsPerPage);
+  }, [filteredWorkers, currentPage, itemsPerPage]);
 
   return (
     <Shell
@@ -246,13 +396,21 @@ export function UnifiedDashboard() {
         />
 
         <StatCard
-          title="Active Workers"
+          title={isJdMode ? 'Connected Workers' : 'Active Workers'}
           value={
-            <span>
-              {activeCount} <span className="text-muted-foreground text-lg">/ {totalClients}</span>
-            </span>
+            isJdMode ? (
+              activeWorkers.toLocaleString()
+            ) : (
+              <span>
+                {activeWorkers} <span className="text-muted-foreground text-lg">/ {totalWorkers}</span>
+              </span>
+            )
           }
-          subtitle={`${totalClients - activeCount} offline workers`}
+          subtitle={
+            isJdMode
+              ? `${downstreamConnectionCount} downstream connection(s)`
+              : `${totalWorkers - activeWorkers} offline workers`
+          }
         />
 
         <StatCard
@@ -339,7 +497,7 @@ export function UnifiedDashboard() {
             <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
             <input
               type="text"
-              placeholder="Search workers..."
+              placeholder="Search workers or connections..."
               className="w-full pl-9 h-9 bg-muted/30 border border-border/50 focus:bg-background transition-all rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary/20"
               value={searchTerm}
               onChange={(e) => {
@@ -354,23 +512,28 @@ export function UnifiedDashboard() {
       {/* Workers Table */}
       {!poolLoading && (
         <>
-          <Sv1ClientTable
-            clients={paginatedClients}
-            isLoading={sv1Loading}
+          <div className="rounded-xl border border-border/40 bg-card/20 px-4 py-3 text-sm text-muted-foreground">
+            Workers are grouped by downstream connection. Rows sharing the same connection ID
+            belong to the same miner or proxy connection.
+          </div>
+
+          <DownstreamWorkerTable
+            workers={paginatedWorkers}
+            isLoading={workerTableLoading}
             sortKey={sortKey}
             sortDir={sortDir}
             onSort={(key) => {
-              if (key === sortKey) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
+              if (key === sortKey) setSortDir((dir) => dir === 'asc' ? 'desc' : 'asc');
               else { setSortKey(key); setSortDir('asc'); }
               setCurrentPage(1);
             }}
           />
 
           {/* Pagination Footer */}
-          {filteredClients.length > itemsPerPage && (
+          {filteredCount > itemsPerPage && (
             <div className="flex items-center justify-between mt-4">
               <div className="text-sm text-muted-foreground">
-                Showing {paginatedClients.length} of {filteredClients.length} workers
+                Showing {paginatedWorkers.length} of {filteredCount} workers
               </div>
               <div className="flex gap-2">
                 <button

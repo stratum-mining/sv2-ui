@@ -529,11 +529,6 @@ export function UnifiedDashboard() {
       {/* Workers Table */}
       {!poolLoading && (
         <>
-          <div className="rounded-xl border border-border/40 bg-card/20 px-4 py-3 text-sm text-muted-foreground">
-            Workers are grouped by downstream connection. Rows sharing the same connection ID
-            belong to the same miner or proxy connection.
-          </div>
-
           <DownstreamWorkerTable
             workers={paginatedWorkers}
             isLoading={workerTableLoading}

@@ -50,6 +50,49 @@ export function HashrateStep({ data, updateData, onNext }: StepProps) {
 
   const [selectedPreset, setSelectedPreset] = useState(getInitialPreset());
   const [rawHashrate, setRawHashrate] = useState(existingHashrate > 0 ? existingHashrate : 100_000_000_000_000);
+  const [customInputValue, setCustomInputValue] = useState(() => {
+    const initial = existingHashrate > 0 ? existingHashrate : 100_000_000_000_000;
+    const { multiplier } = getAutoUnit(initial);
+    return (initial / multiplier).toPrecision(6).replace(/\.?0+$/, '');
+  });
+  const [inputError, setInputError] = useState<string | null>(null);
+
+  const syncCustomInputToRaw = (raw: number) => {
+    const { multiplier } = getAutoUnit(raw);
+    setCustomInputValue((raw / multiplier).toPrecision(6).replace(/\.?0+$/, ''));
+  };
+
+  const handlePresetChange = (presetId: string) => {
+    setSelectedPreset(presetId);
+    if (presetId !== 'custom') {
+      const preset = HASHRATE_PRESETS.find(p => p.id === presetId);
+      if (preset) {
+        setRawHashrate(preset.hashrate);
+        syncCustomInputToRaw(preset.hashrate);
+      }
+    }
+  };
+
+  const handleSliderChange = (value: number) => {
+    const raw = sliderToRaw(value);
+    setRawHashrate(raw);
+    syncCustomInputToRaw(raw);
+  };
+
+  const handleInputChange = (value: string) => {
+    const cleaned = value.replace(/e/i, '');
+    setCustomInputValue(cleaned);
+
+    const numValue = Number(cleaned);
+    if (cleaned === '' || isNaN(numValue) || numValue < 0) {
+      setInputError(cleaned === '' ? 'Required' : 'Invalid hashrate');
+    } else {
+      setInputError(null);
+      const unit = getAutoUnit(rawHashrate);
+      const newRaw = Math.round(numValue * unit.multiplier);
+      setRawHashrate(newRaw);
+    }
+  };
 
   const getHashrateValue = () =>
     selectedPreset === 'custom' ? rawHashrate : (HASHRATE_PRESETS.find(p => p.id === selectedPreset)?.hashrate || 0);
@@ -66,7 +109,9 @@ export function HashrateStep({ data, updateData, onNext }: StepProps) {
         min_hashrate: hashrate,
       },
     });
-  }, [hashrate, data.translator, updateData]);
+  // intentionally excluded: data.translator and updateData cause infinite loop when included
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+}, [hashrate]);
 
   return (
     <div className="space-y-8">
@@ -91,7 +136,7 @@ export function HashrateStep({ data, updateData, onNext }: StepProps) {
             <button
               key={preset.id}
               type="button"
-              onClick={() => setSelectedPreset(preset.id)}
+              onClick={() => handlePresetChange(preset.id)}
               aria-pressed={active}
               className={`relative p-4 rounded-xl border transition-all text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 ${
                 active ? 'border-primary bg-primary/[0.04]' : 'border-border bg-card hover:border-primary/45 hover:bg-primary/[0.02]'
@@ -108,7 +153,7 @@ export function HashrateStep({ data, updateData, onNext }: StepProps) {
       </div>
 
       {selectedPreset === 'custom' && (() => {
-        const { label, multiplier } = getAutoUnit(rawHashrate);
+        const { label } = getAutoUnit(rawHashrate);
         return (
           <div className="p-4 rounded-xl bg-muted/40 space-y-3">
             <div className="flex items-center gap-2">
@@ -117,19 +162,22 @@ export function HashrateStep({ data, updateData, onNext }: StepProps) {
                 id="custom-hashrate"
                 type="number"
                 min="0"
-                value={parseFloat((rawHashrate / multiplier).toPrecision(6))}
-                onChange={(e) => { const v = Number(e.target.value); if (v >= 0) setRawHashrate(v * multiplier); }}
-                aria-describedby="hashrate-unit"
+                value={customInputValue}
+                onChange={(e) => handleInputChange(e.target.value)}
+                aria-describedby="hashrate-unit hashrare-error"
                 className="flex-1 h-10 px-3 rounded-lg border border-input bg-background text-sm focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/15 outline-none transition-all"
               />
               <span id="hashrate-unit" className="text-sm font-medium text-muted-foreground w-12 text-right" aria-live="polite">{label}</span>
             </div>
+            {inputError && (
+              <div id="hashrare-error" className="text-xs text-destructive">{inputError}</div>
+            )}
             <input
               type="range"
               min={0}
               max={SLIDER_STEPS}
               value={rawToSlider(rawHashrate)}
-              onChange={(e) => setRawHashrate(sliderToRaw(Number(e.target.value)))}
+              onChange={(e) => handleSliderChange(Number(e.target.value))}
               aria-label={`Hashrate: ${formatHashrateDisplay(rawHashrate)}`}
               aria-valuemin={0}
               aria-valuemax={SLIDER_STEPS}
@@ -137,18 +185,21 @@ export function HashrateStep({ data, updateData, onNext }: StepProps) {
               className="w-full accent-primary"
             />
             <div className="flex justify-between text-xs text-muted-foreground select-none">
-              <span>1 GH/s</span><span>1 TH/s</span><span>100 TH/s</span><span>1 PH/s</span><span>10 PH/s</span>
+              <span>1 GH/s</span><span>8 GH/s</span><span>56 GH/s</span><span>420 GH/s</span><span>3 TH/s</span><span>24 TH/s</span><span>180 TH/s</span><span>1 PH/s</span><span>10 PH/s</span>
             </div>
           </div>
         );
       })()}
 
-      {hashrate > 0 && (
-        <div className="p-4 rounded-xl bg-primary/[0.08] text-center">
-          <div className="text-sm text-muted-foreground mb-1">Starting difficulty for</div>
-          <div className="text-2xl font-semibold text-primary">{formatHashrateDisplay(hashrate)}</div>
-        </div>
-      )}
+      {hashrate > 0 && (() => {
+        const display = formatHashrateDisplay(hashrate);
+        return (
+          <div className="p-4 rounded-xl bg-primary/[0.08] text-center">
+            <div className="text-sm text-muted-foreground mb-1">Starting difficulty for</div>
+            <div className="text-2xl font-semibold text-primary">{display}</div>
+          </div>
+        );
+      })()}
 
       <div className="flex justify-center">
         <button

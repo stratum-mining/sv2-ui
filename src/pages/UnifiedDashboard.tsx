@@ -213,7 +213,27 @@ export function UnifiedDashboard() {
   }, [sv2Clients, translatedConnectionIds]);
 
   const downstreamWorkerCount = poolGlobal?.sv2_clients?.total_channels || downstreamWorkers.length;
-  const downstreamConnectionCount = poolGlobal?.sv2_clients?.total_clients || sv2Clients?.length || 0;
+  // Hide the internal Translator->JDC hop by counting translated rows as user-facing
+  // worker connections and direct SV2 clients by unique downstream connection ID.
+  const userFacingDownstreamConnectionCount = useMemo(() => {
+    if (!isJdMode) {
+      return 0;
+    }
+
+    const directSv2ConnectionIds = new Set<number>();
+    let translatedWorkerConnections = 0;
+
+    downstreamWorkers.forEach((worker) => {
+      if (worker.channel_type === 'sv1') {
+        translatedWorkerConnections += 1;
+        return;
+      }
+
+      directSv2ConnectionIds.add(worker.connection_id);
+    });
+
+    return directSv2ConnectionIds.size + translatedWorkerConnections;
+  }, [downstreamWorkers, isJdMode]);
   const totalWorkers = isJdMode ? downstreamWorkerCount : sv1TotalClients;
   const activeWorkers = isJdMode ? downstreamWorkerCount : sv1ActiveCount;
   const workerTableLoading = isJdMode ? isSv2ClientsLoading : sv1Loading;
@@ -434,7 +454,7 @@ export function UnifiedDashboard() {
           }
           subtitle={
             isJdMode
-              ? `${downstreamConnectionCount} downstream connection(s)`
+              ? `${userFacingDownstreamConnectionCount} downstream connection(s)`
               : `${totalWorkers - activeWorkers} offline workers`
           }
         />

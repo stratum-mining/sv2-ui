@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { StepProps } from '../types';
-import { Info } from 'lucide-react';
+import { AlertCircle, Info } from 'lucide-react';
+import { shouldAggregateTranslatorChannels } from '../poolRules';
 import { isValidBitcoinAddress, getBitcoinAddressError } from '@/lib/utils';
 
 const SRI_POOL_AUTHORITY_KEY = '9auqWEzQDVyd2oe1JVGFLMLHZtCo2FFqZwtKA5gd9xbuEu7PH72';
@@ -69,6 +70,7 @@ export function MiningIdentityStep({ data, updateData, onNext }: StepProps) {
   const isSriPool = data.pool?.authority_public_key === SRI_POOL_AUTHORITY_KEY;
   const isSovereignSolo = isSoloMode && isJdMode;
   const useSriConventions = isSoloMode && !isJdMode && isSriPool;
+  const isBraiinsPoolFlow = !isSoloMode && shouldAggregateTranslatorChannels(data.pool);
 
   const existingIdentity = data.translator?.user_identity || data.jdc?.user_identity || '';
   const parsed = useSriConventions ? parseSriIdentity(existingIdentity) : { address: '', workerName: '', donationPercent: 0 };
@@ -237,27 +239,39 @@ export function MiningIdentityStep({ data, updateData, onNext }: StepProps) {
           )}
         </>
       ) : (
-        <div>
-          <label htmlFor="user-identity" className="block text-sm font-medium mb-2">
-            {identityLabel} <span className="text-primary" aria-hidden="true">*</span>
-            <span className="sr-only">(required)</span>
-          </label>
-          <input
-            id="user-identity"
-            type="text"
-            value={userIdentity}
-            onChange={(e) => setUserIdentity(e.target.value)}
-            placeholder={identityPlaceholder}
-            aria-required="true"
-            autoComplete="off"
-            className="w-full h-10 px-3 rounded-lg border border-input bg-background focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/15 outline-none transition-all font-mono text-sm"
-          />
-          {requiresAddressIdentity && getBitcoinAddressError(userIdentity, network) && (
-            <p className="text-xs text-destructive mt-1">{getBitcoinAddressError(userIdentity, network)}</p>
+        <div className="space-y-3">
+          {isBraiinsPoolFlow && (
+            <div className="p-4 rounded-xl bg-warning/[0.08] text-sm text-warning flex gap-3" role="alert">
+              <AlertCircle className="h-4 w-4 flex-shrink-0 mt-0.5" aria-hidden="true" />
+              <p>
+                Use the exact username from your Braiins Pool account. If this value does not match an existing
+                Braiins account, the pool connection will not be established properly.
+              </p>
+            </div>
           )}
-          <p className="text-xs text-muted-foreground mt-2">
-            {identityHelpText}
-          </p>
+
+          <div>
+            <label htmlFor="user-identity" className="block text-sm font-medium mb-2">
+              {identityLabel} <span className="text-primary" aria-hidden="true">*</span>
+              <span className="sr-only">(required)</span>
+            </label>
+            <input
+              id="user-identity"
+              type="text"
+              value={userIdentity}
+              onChange={(e) => setUserIdentity(e.target.value)}
+              placeholder={identityPlaceholder}
+              aria-required="true"
+              autoComplete="off"
+              className="w-full h-10 px-3 rounded-lg border border-input bg-background focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/15 outline-none transition-all font-mono text-sm"
+            />
+            {requiresAddressIdentity && getBitcoinAddressError(userIdentity, network) && (
+              <p className="text-xs text-destructive mt-1">{getBitcoinAddressError(userIdentity, network)}</p>
+            )}
+            <p className="text-xs text-muted-foreground mt-2">
+              {identityHelpText}
+            </p>
+          </div>
         </div>
       )}
 

@@ -54,6 +54,25 @@ docker run --rm --name sv2-ui -p 8080:8080 \
   stratumv2/sv2-ui:main
 ```
 
+### Windows (Docker Desktop)
+
+Enable Docker Desktop TCP access for local development:
+
+1. Docker Desktop > Settings > General
+2. Enable Expose daemon on tcp://localhost:2375 without TLS
+3. Apply and restart Docker Desktop
+
+Then start development with DOCKER_HOST set:
+
+PowerShell:
+$env:DOCKER_HOST="tcp://localhost:2375"
+npm run dev
+
+Git Bash:
+export DOCKER_HOST=tcp://localhost:2375
+npm run dev
+
+   
 ## Development
 
 ```bash

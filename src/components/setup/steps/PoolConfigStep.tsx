@@ -26,6 +26,15 @@ const POOL_MINING_NO_JD: KnownPool[] = [
     logoUrl: '/braiins.svg',
     logoOnDark: true,
   },
+  {
+    id: 'dmnd',
+    name: 'DMND Pool',
+    address: '',
+    port: 3333,
+    authority_public_key: '9c44K6QVizyPWb9xfeqhckFRosxWwB3EfytGa4CfTdD526qb2QV',
+    description: 'Production SV2 pool by DMND',
+    logoUrl: '/dmnd.svg',
+  },
 ];
 
 const POOL_MINING_JD: KnownPool[] = [
@@ -38,6 +47,15 @@ const POOL_MINING_JD: KnownPool[] = [
     description: 'Community testing pool. Payouts go to SRI development.',
     badge: 'testing',
     logoUrl: '/sri-logo.png',
+  },
+  {
+    id: 'dmnd',
+    name: 'DMND Pool',
+    address: '',
+    port: 3333,
+    authority_public_key: '9c44K6QVizyPWb9xfeqhckFRosxWwB3EfytGa4CfTdD526qb2QV',
+    description: 'Production SV2 pool by DMND',
+    logoUrl: '/dmnd.svg',
   },
 ];
 
@@ -77,11 +95,13 @@ export function PoolConfigStep({ data, updateData, onNext }: StepProps) {
 
   const pools = isSoloMode ? SOLO_POOLS : (isJdMode ? POOL_MINING_JD : POOL_MINING_NO_JD);
 
-  const defaultPool = pools.find(p => p.badge !== 'coming-soon') ?? null;
+  const defaultPool = pools.find(p => p.badge !== 'coming-soon' && p.address) ?? null;
 
   const [isCustom, setIsCustom] = useState(false);
   const [selectedPoolId, setSelectedPoolId] = useState<string | null>(() => {
-    if (data.pool?.address) return null; // already has a value from back-navigation
+    // Restore DMND selection on back-navigation when endpoint was previously discovered
+    if (data.pool?.token && data.pool?.address) return 'dmnd';
+    if (data.pool?.address) return null; // other pool from back-navigation
     if (defaultPool) {
       // pre-populate data so Continue is enabled immediately
       setTimeout(() => updateData({ pool: { name: defaultPool.name, address: defaultPool.address, port: defaultPool.port, authority_public_key: defaultPool.authority_public_key } }), 0);
@@ -89,6 +109,9 @@ export function PoolConfigStep({ data, updateData, onNext }: StepProps) {
     }
     return null;
   });
+  const [dmndToken, setDmndToken] = useState(data.pool?.token ?? '');
+  const [isDiscovering, setIsDiscovering] = useState(false);
+  const [discoveryError, setDiscoveryError] = useState('');
   const [customPool, setCustomPool] = useState<PoolConfig>({
     name: 'Custom Pool',
     address: '',
@@ -96,11 +119,24 @@ export function PoolConfigStep({ data, updateData, onNext }: StepProps) {
     authority_public_key: '',
   });
 
+  const selectedPool = pools.find(p => p.id === selectedPoolId);
+  const isDmndSelected = selectedPoolId === 'dmnd' && !isCustom;
+
   const handleSelectPool = (pool: KnownPool) => {
     if (pool.badge === 'coming-soon') return;
     setSelectedPoolId(pool.id);
-    updateData({ pool: { name: pool.name, address: pool.address, port: pool.port, authority_public_key: pool.authority_public_key } });
     setIsCustom(false);
+    setDiscoveryError('');
+    if (pool.address) {
+      updateData({ pool: { name: pool.name, address: pool.address, port: pool.port, authority_public_key: pool.authority_public_key } });
+    } else {
+      // Preserve token and discovered address from back-navigation
+      if (data.pool?.token && data.pool?.address) {
+        setDmndToken(data.pool.token);
+      } else {
+        updateData({ pool: { name: pool.name, address: '', port: pool.port, authority_public_key: pool.authority_public_key } });
+      }
+    }
   };
 
   const handleCustomChange = (field: keyof PoolConfig, value: string | number) => {
@@ -109,9 +145,41 @@ export function PoolConfigStep({ data, updateData, onNext }: StepProps) {
     updateData({ pool: updated });
   };
 
+  const handleDmndDiscover = async () => {
+    if (!dmndToken.trim() || !selectedPool) return;
+    setIsDiscovering(true);
+    setDiscoveryError('');
+    try {
+      const res = await fetch('/api/dmnd/discover', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: dmndToken.trim() }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: 'Discovery failed' }));
+        throw new Error(err.error || `HTTP ${res.status}`);
+      }
+      const { host, port } = await res.json();
+      updateData({
+        pool: {
+          name: selectedPool.name,
+          address: host,
+          port: port ?? selectedPool.port,
+          authority_public_key: selectedPool.authority_public_key,
+          token: dmndToken.trim(),
+        }
+      });
+    } catch (err) {
+      setDiscoveryError(err instanceof Error ? err.message : 'Endpoint discovery failed');
+    } finally {
+      setIsDiscovering(false);
+    }
+  };
+
   const handleEnableCustom = () => {
     setIsCustom(true);
     setSelectedPoolId(null);
+    setDiscoveryError('');
     updateData({ pool: customPool });
   };
 
@@ -176,6 +244,53 @@ export function PoolConfigStep({ data, updateData, onNext }: StepProps) {
             </button>
           );
         })}
+
+        {isDmndSelected && selectedPool && (
+          <div className="space-y-4 p-5 rounded-xl border border-primary/30 bg-primary/[0.02]">
+            <p className="text-sm text-muted-foreground">
+              Enter your DMND authentication token.
+              {' '}Sign up at{' '}
+              <a href="https://onboarding.dmnd.work" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
+                onboarding.dmnd.work
+              </a>
+              {' '}to get one.
+            </p>
+            <div>
+              <label htmlFor="dmnd-token" className="block text-sm font-medium mb-2">
+                Token <span className="text-primary" aria-hidden="true">*</span>
+                <span className="sr-only">(required)</span>
+              </label>
+              <div className="flex gap-3">
+                <input
+                  id="dmnd-token"
+                  type="text"
+                  value={dmndToken}
+                  onChange={(e) => { setDmndToken(e.target.value); setDiscoveryError(''); }}
+                  placeholder="Enter your DMND token"
+                  aria-required="true"
+                  autoComplete="off"
+                  className="flex-1 h-10 px-3 rounded-lg border border-input bg-background font-mono text-sm focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/15 outline-none transition-all"
+                />
+                <button
+                  type="button"
+                  onClick={handleDmndDiscover}
+                  disabled={!dmndToken.trim() || isDiscovering}
+                  className="h-10 px-4 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors whitespace-nowrap"
+                >
+                  {isDiscovering ? 'Discovering\u2026' : 'Discover Endpoint'}
+                </button>
+              </div>
+            </div>
+            {discoveryError && (
+              <p className="text-sm text-destructive">{discoveryError}</p>
+            )}
+            {data.pool?.address && (
+              <p className="text-sm text-muted-foreground">
+                Resolved endpoint: <span className="font-mono">{data.pool.address}:{data.pool.port}</span>
+              </p>
+            )}
+          </div>
+        )}
 
         <button
             type="button"

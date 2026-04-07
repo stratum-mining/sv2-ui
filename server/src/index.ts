@@ -77,6 +77,54 @@ app.get('/api/health', async (_req, res) => {
   });
 });
 
+const DMND_API_BASE = 'https://production-user-dashboard-server.dmnd.work';
+
+/**
+ * POST /api/dmnd/discover - Discover DMND pool endpoint using KYB token
+ */
+app.post('/api/dmnd/discover', async (req, res) => {
+  const { token } = req.body;
+
+  if (!token || typeof token !== 'string') {
+    return res.status(400).json({ error: 'Token is required' });
+  }
+
+  try {
+    const response = await fetch(`${DMND_API_BASE}/api/pool/urls`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token }),
+    });
+
+    if (!response.ok) {
+      const text = await response.text().catch(() => '');
+      return res.status(502).json({
+        error: `DMND API returned ${response.status}${text ? `: ${text}` : ''}`,
+      });
+    }
+
+    const endpoints: { host: string; port: number }[] = await response.json();
+
+    if (!Array.isArray(endpoints) || endpoints.length === 0) {
+      return res.status(502).json({ error: 'No endpoints returned from DMND' });
+    }
+
+    // Simplified heuristic: pick the first available endpoint.
+    // dmnd-client does full latency benchmarking across SV2 message paths,
+    // but that complexity is unnecessary for sv2-ui.
+    const selected = endpoints[0];
+
+    if (!selected.host || typeof selected.host !== 'string') {
+      return res.status(502).json({ error: 'Invalid endpoint format from DMND API' });
+    }
+
+    res.json({ host: selected.host, port: selected.port });
+  } catch (error) {
+    console.error('DMND discover error:', error);
+    res.status(502).json({ error: 'Failed to reach DMND endpoint discovery API' });
+  }
+});
+
 /**
  * GET /api/status - Get current stack status
  */

@@ -10,6 +10,7 @@ export interface PoolConfig {
   address: string;
   port: number;
   authority_public_key: string;
+  token?: string;
 }
 
 export type OperatingSystem = 'linux' | 'macos';

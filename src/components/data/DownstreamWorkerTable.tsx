@@ -35,6 +35,7 @@ interface DownstreamWorkerTableProps {
   sortKey: DownstreamWorkerSortKey;
   sortDir: 'asc' | 'desc';
   onSort: (key: DownstreamWorkerSortKey) => void;
+  showBestDiff?: boolean;
 }
 
 function SortIcon({
@@ -83,6 +84,7 @@ export function DownstreamWorkerTable({
   sortKey,
   sortDir,
   onSort,
+  showBestDiff = true,
 }: DownstreamWorkerTableProps) {
   if (isLoading) {
     return (
@@ -143,14 +145,16 @@ export function DownstreamWorkerTable({
                   </InfoPopover>
                 </span>
               </TableHead>
-              <TableHead
-                className="hidden lg:table-cell text-right cursor-pointer select-none"
-                onClick={() => onSort('best_diff')}
-              >
-                <span className="flex items-center justify-end gap-1 hover:text-foreground transition-colors">
-                  Best Diff <SortIcon column="best_diff" sortKey={sortKey} sortDir={sortDir} />
-                </span>
-              </TableHead>
+              {showBestDiff && (
+                <TableHead
+                  className="hidden lg:table-cell text-right cursor-pointer select-none"
+                  onClick={() => onSort('best_diff')}
+                >
+                  <span className="flex items-center justify-end gap-1 hover:text-foreground transition-colors">
+                    Best Diff <SortIcon column="best_diff" sortKey={sortKey} sortDir={sortDir} />
+                  </span>
+                </TableHead>
+              )}
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -178,9 +182,11 @@ export function DownstreamWorkerTable({
                 <TableCell className="text-right font-mono font-medium">
                   {worker.estimated_hashrate !== null ? `~${formatHashrate(worker.estimated_hashrate)}` : '-'}
                 </TableCell>
-                <TableCell className="hidden lg:table-cell text-right font-mono text-muted-foreground">
-                  {worker.best_diff !== null && worker.best_diff > 0 ? formatDifficulty(worker.best_diff) : '-'}
-                </TableCell>
+                {showBestDiff && (
+                  <TableCell className="hidden lg:table-cell text-right font-mono text-muted-foreground">
+                    {worker.best_diff !== null && worker.best_diff > 0 ? formatDifficulty(worker.best_diff) : '-'}
+                  </TableCell>
+                )}
               </TableRow>
             ))}
           </TableBody>

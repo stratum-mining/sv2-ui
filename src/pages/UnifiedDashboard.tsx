@@ -23,6 +23,7 @@ import {
   usePersistentBestDifficulty,
   usePersistentBlocksFound,
 } from '@/hooks/usePersistentBlocksFound';
+import { isAggregatedTproxyPoolName } from '@/components/setup/poolRules';
 import { useSetupStatus } from '@/hooks/useSetupStatus';
 import { useConnectionStatus } from '@/hooks/useConnectionStatus';
 import { formatHashrate, formatDifficulty } from '@/lib/utils';
@@ -89,6 +90,7 @@ export function UnifiedDashboard() {
     isLoading: poolLoading,
     isError: poolError,
   } = usePoolData(templateMode);
+  const isAggregatedTproxy = !isJdMode && isAggregatedTproxyPoolName(configPoolName);
 
   // SV1 clients (always from Translator)
   const {
@@ -367,6 +369,13 @@ export function UnifiedDashboard() {
 
   const hasBestDiffSource = isJdMode ? !!sv2Clients : !!serverChannels;
 
+  useEffect(() => {
+    if (isAggregatedTproxy && sortKey === 'best_diff') {
+      setSortKey('connection_id');
+      setSortDir('asc');
+    }
+  }, [isAggregatedTproxy, sortKey]);
+
   type DashboardWorkerRow = DownstreamWorkerRow & { search_text: string };
 
   const dashboardWorkers = useMemo<DashboardWorkerRow[]>(() => {
@@ -613,6 +622,7 @@ export function UnifiedDashboard() {
               else { setSortKey(key); setSortDir('asc'); }
               setCurrentPage(1);
             }}
+            showBestDiff={!isAggregatedTproxy}
           />
 
           {/* Pagination Footer */}

@@ -70,7 +70,7 @@ export function MiningIdentityStep({ data, updateData, onNext }: StepProps) {
   const isSriPool = data.pool?.authority_public_key === SRI_POOL_AUTHORITY_KEY;
   const isSovereignSolo = isSoloMode && isJdMode;
   const useSriConventions = isSoloMode && !isJdMode && isSriPool;
-  const isBraiinsPoolFlow = !isSoloMode && shouldAggregateTranslatorChannels(data.pool);
+  const isAggregatedTproxy = !isSoloMode && shouldAggregateTranslatorChannels(data.pool);
 
   const existingIdentity = data.translator?.user_identity || data.jdc?.user_identity || '';
   const parsed = useSriConventions ? parseSriIdentity(existingIdentity) : { address: '', workerName: '', donationPercent: 0 };
@@ -240,7 +240,7 @@ export function MiningIdentityStep({ data, updateData, onNext }: StepProps) {
         </>
       ) : (
         <div className="space-y-3">
-          {isBraiinsPoolFlow && (
+          {isAggregatedTproxy && (
             <div className="p-4 rounded-xl bg-warning/[0.08] text-sm text-warning flex gap-3" role="alert">
               <AlertCircle className="h-4 w-4 flex-shrink-0 mt-0.5" aria-hidden="true" />
               <p>

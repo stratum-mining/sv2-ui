@@ -29,7 +29,7 @@ export function ReviewStart({ data, onComplete }: ReviewStartProps) {
     : isJdMode
       ? "Custom Templates (Job Declaration)"
       : "Pool Templates";
-  const isBraiinsAggregatedFlow =
+  const isAggregatedTproxy =
     !isSoloMode && shouldAggregateTranslatorChannels(data.pool);
 
   let sectionCount = 0;
@@ -204,7 +204,7 @@ export function ReviewStart({ data, onComplete }: ReviewStartProps) {
               <div className="font-mono text-xs truncate text-muted-foreground/70">
                 {data.pool.authority_public_key}
               </div>
-              {isBraiinsAggregatedFlow && (
+              {isAggregatedTproxy && (
                 <div className="mt-2 rounded-lg bg-warning/[0.08] px-3 py-2 text-xs leading-relaxed">
                   Translator aggregation is enabled for Braiins compatibility.
                   The Translator Proxy will aggregate all SV1 workers into one

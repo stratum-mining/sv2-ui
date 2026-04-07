@@ -11,7 +11,7 @@ import fs from 'fs/promises';
 import { fileURLToPath } from 'url';
 
 import type { SetupData, StatusResponse, SetupResponse } from './types.js';
-import { generateTranslatorConfig, generateJdcConfig } from './config-generator.js';
+import { generateTranslatorConfig, generateJdcConfig, normalizeSetupData } from './config-generator.js';
 import {
   startStack,
   stopStack,
@@ -129,7 +129,7 @@ app.get('/api/config', async (_req, res) => {
  */
 app.post('/api/setup', async (req, res) => {
   try {
-    const data: SetupData = req.body;
+    const data = normalizeSetupData(req.body as SetupData);
     const requiresPool = !(data.miningMode === 'solo' && data.mode === 'jd');
 
     // Validate required fields

@@ -2,6 +2,7 @@ import { useState, useCallback, useEffect, useRef } from 'react';
 import { useLocation } from 'wouter';
 import { ArrowLeft, AlertCircle, Sun, Moon } from 'lucide-react';
 import { SetupStep, SetupData, initialSetupData } from './types';
+import { shouldAggregateTranslatorChannels } from './poolRules';
 
 function useTheme() {
   const [isDark, setIsDark] = useState(() => {
@@ -98,6 +99,12 @@ export function SetupWizard() {
 
   const updateData = useCallback((updates: Partial<SetupData>) => {
     const newData = { ...dataRef.current, ...updates };
+    if (newData.translator) {
+      newData.translator = {
+        ...newData.translator,
+        aggregate_channels: shouldAggregateTranslatorChannels(newData.pool),
+      };
+    }
     dataRef.current = newData;
     setData(newData);
   }, []);

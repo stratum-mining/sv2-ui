@@ -9,6 +9,8 @@ import { fileURLToPath } from 'url';
 import type { SetupData } from './types.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+const BRAIINS_POOL_AUTHORITY_KEY = '9awtMD5KQgvRUh2yFbjVeT7b6hjipWcAsQHd6wEhgtDT9soosna';
+const BRAIINS_POOL_ADDRESS = 'stratum.braiins.com';
 
 interface PortsConfig {
   TRANSLATOR_PORT: number;
@@ -38,11 +40,31 @@ export const TRANSLATOR_PORT = ports.TRANSLATOR_PORT;
 export const JDC_PORT = ports.JDC_PORT;
 export const JDC_AUTHORITY_PUBLIC_KEY = ports.JDC_AUTHORITY_PUBLIC_KEY;
 
+function shouldAggregateTranslatorChannels(data: SetupData): boolean {
+  if (!data.pool) return false;
+
+  return data.pool.authority_public_key === BRAIINS_POOL_AUTHORITY_KEY
+    || data.pool.address.toLowerCase() === BRAIINS_POOL_ADDRESS;
+}
+
+export function normalizeSetupData(data: SetupData): SetupData {
+  if (!data.translator) return data;
+
+  return {
+    ...data,
+    translator: {
+      ...data.translator,
+      aggregate_channels: shouldAggregateTranslatorChannels(data),
+    },
+  };
+}
+
 /**
  * Generate Translator Proxy config (tproxy-config.toml)
  */
 export function generateTranslatorConfig(data: SetupData): string {
-  const { pool, translator, mode } = data;
+  const normalizedData = normalizeSetupData(data);
+  const { pool, translator, mode } = normalizedData;
   const isJdMode = mode === 'jd';
   
   if (!translator || (!isJdMode && !pool)) {

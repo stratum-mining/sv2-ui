@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useLocation } from 'wouter';
+import { useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -14,16 +15,56 @@ import {
   Trash2,
 } from 'lucide-react';
 
+function clearPersistedDashboardState() {
+  if (typeof window === 'undefined') return;
+
+  const prefixes = [
+    'sv2_hashrate_history:',
+    'sv2_blocks_found:',
+    'sv2_best_diff:',
+  ];
+
+  const keysToRemove: string[] = [];
+
+  for (let i = 0; i < window.localStorage.length; i += 1) {
+    const key = window.localStorage.key(i);
+    if (key && prefixes.some((prefix) => key.startsWith(prefix))) {
+      keysToRemove.push(key);
+    }
+  }
+
+  keysToRemove.forEach((key) => {
+    window.localStorage.removeItem(key);
+  });
+}
+
 /**
  * Configuration tab for Settings page.
  * Shows current setup and allows reconfiguration.
  */
 export function ConfigurationTab() {
   const [, navigate] = useLocation();
+  const queryClient = useQueryClient();
   const [config, setConfig] = useState<SetupData | null>(null);
   const [loading, setLoading] = useState(true);
   const { isOrchestrated, isConfigured, isRunning, miningMode, mode } = useSetupStatus();
   const { stop, restart, isStoppingOrRestarting, stopError, restartError } = useControlApi();
+
+  const clearDashboardClientState = () => {
+    clearPersistedDashboardState();
+
+    [
+      ['pool-global'],
+      ['server-channels'],
+      ['sv2-clients'],
+      ['sv1-clients'],
+      ['translator-server-channels'],
+      ['translator-health'],
+      ['jdc-health'],
+    ].forEach((queryKey) => {
+      queryClient.removeQueries({ queryKey });
+    });
+  };
 
   useEffect(() => {
     if (isOrchestrated && isConfigured) {
@@ -37,6 +78,7 @@ export function ConfigurationTab() {
   }, [isOrchestrated, isConfigured]);
 
   const handleReconfigure = () => {
+    clearDashboardClientState();
     navigate('/setup');
   };
 
@@ -57,6 +99,7 @@ export function ConfigurationTab() {
       try {
         const response = await fetch('/api/reset', { method: 'POST' });
         if (response.ok) {
+          clearDashboardClientState();
           window.location.href = '/setup';
         }
       } catch (error) {

@@ -19,6 +19,10 @@ import {
   useTranslatorServerChannels,
 } from '@/hooks/usePoolData';
 import { useHashrateHistory } from '@/hooks/useHashrateHistory';
+import {
+  usePersistentBestDifficulty,
+  usePersistentBlocksFound,
+} from '@/hooks/usePersistentBlocksFound';
 import { useSetupStatus } from '@/hooks/useSetupStatus';
 import { useConnectionStatus } from '@/hooks/useConnectionStatus';
 import { formatHashrate, formatDifficulty } from '@/lib/utils';
@@ -81,7 +85,6 @@ export function UnifiedDashboard() {
     global: poolGlobal,
     sv2Clients,
     isSv2ClientsLoading,
-    clientChannels,  // Downstream client channels (for hashrate, best diff)
     serverChannels,  // Upstream server channels (for shares to Pool)
     isLoading: poolLoading,
     isError: poolError,
@@ -267,6 +270,66 @@ export function UnifiedDashboard() {
     return hashrateHistory.filter(p => p.timestamp > cutoff);
   }, [hashrateHistory, timeRange]);
 
+  const blocksFoundEntries = useMemo(() => {
+    if (isJdMode) {
+      if (!sv2Clients) return [];
+
+      return sv2Clients.flatMap((client) => [
+        ...client.extended_channels.map((channel) => ({
+          key: `jdc:${client.client_id}:extended:${channel.channel_id}:${channel.user_identity}`,
+          value: channel.blocks_found,
+        })),
+        ...client.standard_channels.map((channel) => ({
+          key: `jdc:${client.client_id}:standard:${channel.channel_id}:${channel.user_identity}`,
+          value: channel.blocks_found,
+        })),
+      ]);
+    }
+
+    if (!serverChannels) return [];
+
+    return [
+      ...serverChannels.extended_channels.map((channel) => ({
+        key: `translator:server:extended:${channel.channel_id}:${channel.user_identity}`,
+        value: channel.blocks_found,
+      })),
+      ...serverChannels.standard_channels.map((channel) => ({
+        key: `translator:server:standard:${channel.channel_id}:${channel.user_identity}`,
+        value: channel.blocks_found,
+      })),
+    ];
+  }, [isJdMode, serverChannels, sv2Clients]);
+
+  const bestDiffEntries = useMemo(() => {
+    if (isJdMode) {
+      if (!sv2Clients) return [];
+
+      return sv2Clients.flatMap((client) => [
+        ...client.extended_channels.map((channel) => ({
+          key: `jdc:${client.client_id}:extended:${channel.channel_id}:${channel.user_identity}`,
+          value: channel.best_diff,
+        })),
+        ...client.standard_channels.map((channel) => ({
+          key: `jdc:${client.client_id}:standard:${channel.channel_id}:${channel.user_identity}`,
+          value: channel.best_diff,
+        })),
+      ]);
+    }
+
+    if (!serverChannels) return [];
+
+    return [
+      ...serverChannels.extended_channels.map((channel) => ({
+        key: `translator:server:extended:${channel.channel_id}:${channel.user_identity}`,
+        value: channel.best_diff,
+      })),
+      ...serverChannels.standard_channels.map((channel) => ({
+        key: `translator:server:standard:${channel.channel_id}:${channel.user_identity}`,
+        value: channel.best_diff,
+      })),
+    ];
+  }, [isJdMode, serverChannels, sv2Clients]);
+
   // Shares data from upstream SERVER channels (shares sent TO the Pool)
   const shareStats = useMemo(() => {
     if (!serverChannels) {
@@ -288,27 +351,8 @@ export function UnifiedDashboard() {
       rejected: extRejected + stdRejected,
     };
   }, [serverChannels]);
-
-  // Best difficulty:
-  // - JD mode: from SV2 client channels
-  // - Translator-only mode: not available from SV1 clients API (no best_diff field)
-  const bestDiff = useMemo(() => {
-    if (!isJdMode) {
-      // Translator doesn't expose best_diff for SV1 clients
-      // We could potentially get it from server channels instead
-      if (!serverChannels) return 0;
-      const extBest = Math.max(...serverChannels.extended_channels.map(ch => ch.best_diff), 0);
-      const stdBest = Math.max(...serverChannels.standard_channels.map(ch => ch.best_diff), 0);
-      return Math.max(extBest, stdBest);
-    }
-    
-    if (!clientChannels) return 0;
-    
-    const extBest = Math.max(...clientChannels.extended_channels.map(ch => ch.best_diff), 0);
-    const stdBest = Math.max(...clientChannels.standard_channels.map(ch => ch.best_diff), 0);
-    
-    return Math.max(extBest, stdBest);
-  }, [isJdMode, clientChannels, serverChannels]);
+  const blocksFound = usePersistentBlocksFound(blocksFoundEntries, historyConfigKey);
+  const bestDiff = usePersistentBestDifficulty(bestDiffEntries, historyConfigKey);
 
   // Number of upstream pool channels (for shares subtitle)
   const poolChannelCount = (serverChannels?.total_extended || 0) + (serverChannels?.total_standard || 0);
@@ -317,6 +361,9 @@ export function UnifiedDashboard() {
   const clientChannelCount = isJdMode 
     ? downstreamWorkerCount
     : sv1ActiveCount;
+  const bestDiffSubtitle = clientChannelCount > 0
+    ? `from ${clientChannelCount} client channel(s)`
+    : undefined;
 
   type DashboardWorkerRow = DownstreamWorkerRow & { search_text: string };
 
@@ -429,7 +476,7 @@ export function UnifiedDashboard() {
       )}
 
       {/* Hero Stats Section */}
-      <div className={isSovereignSolo ? 'grid gap-4 md:grid-cols-2 lg:grid-cols-3' : 'grid gap-4 md:grid-cols-2 lg:grid-cols-4'}>
+      <div className={isSovereignSolo ? 'grid gap-4 md:grid-cols-2 lg:grid-cols-4' : 'grid gap-4 md:grid-cols-2 lg:grid-cols-5'}>
         <StatCard
           title="Total Estimated Hashrate"
           value={formatHashrate(totalHashrate)}
@@ -457,6 +504,11 @@ export function UnifiedDashboard() {
               ? `${userFacingDownstreamConnectionCount} downstream connection(s)`
               : `${totalWorkers - activeWorkers} offline workers`
           }
+        />
+
+        <StatCard
+          title="Blocks Found"
+          value={blocksFound.toLocaleString()}
         />
 
         {!isSovereignSolo && (
@@ -496,7 +548,7 @@ export function UnifiedDashboard() {
         <StatCard
           title="Best Difficulty"
           value={bestDiff > 0 ? formatDifficulty(bestDiff) : '-'}
-          subtitle={`from ${clientChannelCount} client channel(s)`}
+          subtitle={bestDiffSubtitle}
         />
       </div>
 

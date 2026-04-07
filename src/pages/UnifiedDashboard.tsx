@@ -365,7 +365,7 @@ export function UnifiedDashboard() {
     ? `from ${clientChannelCount} client channel(s)`
     : undefined;
 
-  const hasBestDiffSource = isJdMode ? !!clientChannels : !!serverChannels;
+  const hasBestDiffSource = isJdMode ? !!sv2Clients : !!serverChannels;
 
   type DashboardWorkerRow = DownstreamWorkerRow & { search_text: string };
 

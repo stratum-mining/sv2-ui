@@ -5,6 +5,7 @@ import { queryClient } from '@/lib/queryClient';
 import { UnifiedDashboard } from '@/pages/UnifiedDashboard';
 import { Settings } from '@/pages/Settings';
 import { Setup } from '@/pages/Setup';
+import { FAQ } from '@/pages/FAQ';
 import { useSetupStatus } from '@/hooks/useSetupStatus';
 
 /**
@@ -58,6 +59,9 @@ function Router() {
       </Route>
       <Route path="/settings">
         <Settings />
+      </Route>
+      <Route path="/faq">
+        <FAQ />
       </Route>
       {/* Fallback to dashboard */}
       <Route>

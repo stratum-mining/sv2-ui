@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link, useLocation } from 'wouter';
-import { Sun, Moon, Menu, X, LayoutDashboard, Settings } from 'lucide-react';
+import { Sun, Moon, Menu, X, LayoutDashboard, Settings, HelpCircle } from 'lucide-react';
 import { cn, formatUptime } from '@/lib/utils';
 import type { AppMode, AppFeatures } from '@/types/api';
 import { getAppFeatures } from '@/types/api';
@@ -37,6 +37,7 @@ interface NavItem {
 function getNavItems(_features: AppFeatures, _appMode: AppMode): NavItem[] {
   return [
     { icon: LayoutDashboard, label: 'Dashboard', href: '/' },
+    { icon: HelpCircle, label: 'Support', href: '/faq' },
     { icon: Settings, label: 'Settings', href: '/settings' },
   ];
 }

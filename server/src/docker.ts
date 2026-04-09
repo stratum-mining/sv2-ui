@@ -208,6 +208,8 @@ function splitLogLines(
     .split(/\r?\n/)
     .filter((line) => line.length > 0)
     .map((raw) => {
+      // Dockerode prefixes lines with an RFC 3339 timestamp when
+      // `timestamps: true` is enabled, so we split it from the log message.
       const match = raw.match(/^(\d{4}-\d{2}-\d{2}T\S+?)\s(.*)$/);
 
       return {

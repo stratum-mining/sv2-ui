@@ -6,6 +6,7 @@ import fs from 'fs';
 import Docker from 'dockerode';
 import os from 'os';
 import type { SetupData, ContainerStatus, HealthStatus } from './types.js';
+import type { ContainerLogLine, LogContainerRole, LogOutputStream } from './logs/types.js';
 
 /**
  * Expand ~ to home directory in a path.
@@ -146,6 +147,7 @@ const TRANSLATOR_CONTAINER = 'sv2-translator';
 const JDC_CONTAINER = 'sv2-jdc';
 const TRANSLATOR_IMAGE = 'stratumv2/translator_sv2:main';
 const JDC_IMAGE = 'stratumv2/jd_client_sv2:main';
+const DOCKER_LOG_HEADER_SIZE = 8;
 
 /**
  * Detect if we're running inside a Docker container.
@@ -156,6 +158,93 @@ const isRunningInDocker = fs.existsSync('/.dockerenv');
 export function getDockerConnectionInfo(): DockerConnectionConfig {
   refreshDockerConnection();
   return dockerConnection;
+}
+
+const LOG_CONTAINER_NAMES: Record<LogContainerRole, string> = {
+  translator: TRANSLATOR_CONTAINER,
+  jdc: JDC_CONTAINER,
+};
+
+type DockerLogChunk = {
+  stream: LogOutputStream;
+  payload: string;
+};
+
+function demuxDockerLogBuffer(buffer: Buffer): DockerLogChunk[] {
+  const chunks: DockerLogChunk[] = [];
+  let offset = 0;
+
+  while (offset + DOCKER_LOG_HEADER_SIZE <= buffer.length) {
+    const streamType = buffer.readUInt8(offset);
+    const payloadLength = buffer.readUInt32BE(offset + 4);
+    const payloadStart = offset + DOCKER_LOG_HEADER_SIZE;
+    const payloadEnd = payloadStart + payloadLength;
+
+    if (payloadEnd > buffer.length) {
+      break;
+    }
+
+    chunks.push({
+      stream: streamType === 2 ? 'stderr' : 'stdout',
+      payload: buffer.subarray(payloadStart, payloadEnd).toString('utf-8'),
+    });
+
+    offset = payloadEnd;
+  }
+
+  if (chunks.length === 0 && buffer.length > 0) {
+    return [{ stream: 'stdout', payload: buffer.toString('utf-8') }];
+  }
+
+  return chunks;
+}
+
+function splitLogLines(
+  container: LogContainerRole,
+  stream: LogOutputStream,
+  payload: string
+): ContainerLogLine[] {
+  return payload
+    .split(/\r?\n/)
+    .filter((line) => line.length > 0)
+    .map((raw) => {
+      const match = raw.match(/^(\d{4}-\d{2}-\d{2}T\S+?)\s(.*)$/);
+
+      return {
+        container,
+        stream,
+        timestamp: match ? match[1] : null,
+        message: match ? match[2] : raw,
+        raw,
+      };
+    });
+}
+
+export async function readContainerLogs(
+  container: LogContainerRole,
+  options: { tail?: number } = {}
+): Promise<ContainerLogLine[]> {
+  refreshDockerConnection();
+
+  try {
+    const dockerContainer = docker.getContainer(LOG_CONTAINER_NAMES[container]);
+    const info = await dockerContainer.inspect();
+    const logBuffer = await dockerContainer.logs({
+      stdout: true,
+      stderr: true,
+      timestamps: true,
+      tail: options.tail,
+      abortSignal: AbortSignal.timeout(2000),
+    });
+
+    const chunks = info.Config?.Tty
+      ? [{ stream: 'stdout' as const, payload: logBuffer.toString('utf-8') }]
+      : demuxDockerLogBuffer(logBuffer);
+
+    return chunks.flatMap((chunk) => splitLogLines(container, chunk.stream, chunk.payload));
+  } catch {
+    return [];
+  }
 }
 
 /**

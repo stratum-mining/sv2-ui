@@ -20,6 +20,7 @@ import {
   ensureDockerAvailable,
   getDockerConnectionInfo,
 } from './docker.js';
+import { getLogDiagnostics } from './logs/diagnostics.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -121,6 +122,20 @@ app.get('/api/config', async (_req, res) => {
   } catch (error) {
     console.error('Config error:', error);
     res.status(500).json({ error: 'Failed to get config' });
+  }
+});
+
+/**
+ * GET /api/logs/diagnostics - Get collated log diagnostics for the deployed stack
+ */
+app.get('/api/logs/diagnostics', async (_req, res) => {
+  try {
+    const state = await loadState();
+    const response = await getLogDiagnostics(state.mode, state.configured);
+    res.json(response);
+  } catch (error) {
+    console.error('Log diagnostics error:', error);
+    res.status(500).json({ error: 'Failed to get log diagnostics' });
   }
 });
 

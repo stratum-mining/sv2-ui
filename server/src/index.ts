@@ -126,6 +126,95 @@ app.get('/api/config', async (_req, res) => {
 });
 
 /**
+ * PUT /api/config - Update configuration and restart with new values
+ */
+app.put('/api/config', async (req, res) => {
+  try {
+    const state = await loadState();
+
+    if (!state.configured || !state.data) {
+      return res.status(400).json({ success: false, error: 'No configuration to update' });
+    }
+
+    const updates = req.body as Partial<SetupData>;
+    const currentData = state.data;
+    const newData: SetupData = {
+      ...currentData,
+      ...updates,
+      mode: updates.mode ?? currentData.mode,
+      miningMode: updates.miningMode ?? currentData.miningMode,
+      pool: updates.pool ?? currentData.pool,
+      bitcoin: updates.bitcoin ?? currentData.bitcoin,
+      jdc: updates.jdc ?? currentData.jdc,
+      translator: updates.translator ?? currentData.translator,
+    };
+
+    const requiresPool = !(newData.miningMode === 'solo' && newData.mode === 'jd');
+
+    if (!newData.mode || !newData.translator || (requiresPool && !newData.pool)) {
+      return res.status(400).json({ success: false, error: 'Missing required configuration' });
+    }
+
+    if (newData.mode === 'jd' && (!newData.jdc || !newData.bitcoin)) {
+      return res.status(400).json({ success: false, error: 'JD mode requires JDC and Bitcoin configuration' });
+    }
+
+    await ensureDockerAvailable();
+
+    await fs.mkdir(CONFIG_DIR, { recursive: true });
+
+    const translatorPath = path.join(CONFIG_DIR, 'translator.toml');
+    const jdcPath = path.join(CONFIG_DIR, 'jdc.toml');
+
+    try {
+      const translatorStat = await fs.stat(translatorPath);
+      if (translatorStat.isDirectory()) {
+        await fs.rm(translatorPath, { recursive: true });
+      }
+    } catch {
+      // translatorPath doesn't exist or isn't a directory, ignore
+    }
+
+    try {
+      const jdcStat = await fs.stat(jdcPath);
+      if (jdcStat.isDirectory()) {
+        await fs.rm(jdcPath, { recursive: true });
+      }
+    } catch {
+      // jdcPath doesn't exist or isn't a directory, ignore
+    }
+
+    const translatorConfig = generateTranslatorConfig(newData);
+    await fs.writeFile(translatorPath, translatorConfig);
+    console.log('Updated translator.toml');
+
+    if (newData.mode === 'jd') {
+      const jdcConfig = generateJdcConfig(newData);
+      if (jdcConfig) {
+        await fs.writeFile(jdcPath, jdcConfig);
+        console.log('Updated jdc.toml');
+      }
+    }
+
+    await saveState(newData);
+
+    await stopStack();
+
+    await startStack(newData, CONFIG_DIR);
+
+    const response: SetupResponse = { success: true };
+    res.json(response);
+  } catch (error) {
+    console.error('Config update error:', error);
+    const response: SetupResponse = {
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to update config',
+    };
+    res.status(500).json(response);
+  }
+});
+
+/**
  * GET /api/logs/diagnostics - Get collated log diagnostics for the deployed stack
  */
 app.get('/api/logs/diagnostics', async (_req, res) => {

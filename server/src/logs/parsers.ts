@@ -1,8 +1,52 @@
-import type { ContainerLogLine, LogDiagnostic, LogParser } from './types.js';
+import type {
+  ContainerLogLine,
+  DiagnosticEvidence,
+  DiagnosticSeverity,
+  LogDiagnostic,
+  LogParser,
+} from './types.js';
+
+const UNKNOWN_USER_REGEX =
+  /OpenMiningChannelError\(request_id: \d+, error_code: unknown-user\)/;
+
+function unknownUserParser(lines: ContainerLogLine[]): LogDiagnostic | null {
+  const matches = lines.filter(
+    ({ container, message }) =>
+      container === 'translator' && UNKNOWN_USER_REGEX.test(message)
+  );
+
+  if (matches.length === 0) {
+    return null;
+  }
+
+  const evidence: DiagnosticEvidence[] = matches.map(
+    ({ container, stream, timestamp, raw }) => ({
+      container,
+      stream,
+      timestamp,
+      line: raw,
+    })
+  );
+
+  return {
+    code: 'unknown-user',
+    severity: 'warning' as DiagnosticSeverity,
+    title: 'Invalid Braiins username',
+    message: 'The Braiins username is not recognized by the pool.',
+    recommendation:
+      'Verify the Braiins username in your settings matches the pool account exactly.',
+    streamId: 'mining-services',
+    containers: ['translator'],
+    detectedAt: matches[0].timestamp,
+    evidence,
+  };
+}
 
 // Central registry for scenario-specific parsers. New log-derived diagnostics
 // should be added here without changing the collection pipeline.
-export const logParsers: LogParser[] = [];
+export const logParsers: LogParser[] = [
+  { code: 'unknown-user', match: unknownUserParser },
+];
 
 function toDiagnosticsArray(
   diagnostic: LogDiagnostic | LogDiagnostic[] | null

@@ -227,7 +227,7 @@ export function Shell({
             menuOpen ? 'max-h-48 opacity-100' : 'max-h-0 opacity-0'
           )}
         >
-          <nav className="px-4 pb-3 pt-1 flex flex-col gap-0.5 border-t border-border/40">
+          <nav className="px-4 pb-3 pt-1 flex flex-col gap-0.5 border-t border-border/60">
             {navItems.map((item) => {
               const isActive =
                 location === item.href ||

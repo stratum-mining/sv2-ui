@@ -39,33 +39,56 @@ function saveConfig(config: UiConfig) {
   window.localStorage.setItem(STORAGE_KEY, JSON.stringify(config));
 }
 
+/**
+ * Clamp a primary color's lightness so it has enough contrast against
+ * the page background in both light and dark mode.
+ */
+function contrastSafeHsl(h: string, s: string, lVal: number, isDark: boolean): { hsl: string; fgIsWhite: boolean } {
+  let l = lVal;
+  if (isDark) {
+    // Too dark on a black background — boost lightness
+    if (l < 30) l = 30;
+  } else {
+    // Too light on a white background — darken
+    if (l > 60) l = 60;
+  }
+  // Foreground: white for dark primaries, black for light ones
+  const fgIsWhite = l < 55;
+  return { hsl: `${h} ${s} ${l}%`, fgIsWhite };
+}
+
 // Apply runtime CSS variable overrides based on config.
-// Slightly boosts lightness for dark mode primary (+5% L).
+// Adjusts lightness for both light and dark mode to keep contrast safe.
 function applyCssVariables(config: UiConfig) {
   if (typeof document === 'undefined') return;
   const root = document.documentElement;
   const p = config.primaryColor;
 
-  // Parse HSL to compute a slightly lighter dark-mode variant
   const parts = p.split(' ');
   if (parts.length < 3) return; // malformed value — CSS sheet defaults remain in effect
   const h = parts[0];
   const s = parts[1];
   const lVal = parseFloat(parts[2]);
-  const lDark = Math.min(lVal + 5, 100);
-  const pDark = `${h} ${s} ${lDark}%`;
 
-  // Override the CSS variables that carry the primary/accent cyan
-  // Using !important-style inline styles on :root (inline > stylesheet)
-  root.style.setProperty('--primary', p);
-  root.style.setProperty('--ring', p);
-  root.style.setProperty('--sidebar-primary', p);
-  root.style.setProperty('--sidebar-ring', p);
-  root.style.setProperty('--chart-1', p);
-  root.style.setProperty('--cyan-500', p);
+  const isDark = root.classList.contains('dark');
+  const { hsl: safePrimary, fgIsWhite } = contrastSafeHsl(h, s, lVal, isDark);
+  const primaryFg = fgIsWhite ? '0 0% 100%' : '0 0% 0%';
+
+  // Dark mode variant: slightly lighter for better visibility
+  const lDark = Math.min(lVal + 5, 100);
+  const { hsl: safePrimaryDark, fgIsWhite: fgIsWhiteDark } = contrastSafeHsl(h, s, lDark, true);
+  const primaryFgDark = fgIsWhiteDark ? '0 0% 100%' : '0 0% 0%';
+
+  // Override the CSS variables that carry the primary/accent color
+  root.style.setProperty('--primary', safePrimary);
+  root.style.setProperty('--primary-foreground', primaryFg);
+  root.style.setProperty('--ring', safePrimary);
+  root.style.setProperty('--sidebar-primary', safePrimary);
+  root.style.setProperty('--sidebar-ring', safePrimary);
+  root.style.setProperty('--chart-1', safePrimary);
+  root.style.setProperty('--cyan-500', safePrimary);
 
   // For dark mode we inject a <style> that overrides .dark with the boosted lightness.
-  // We key the element by id so we only ever have one.
   const styleId = 'sv2-primary-dark-override';
   let styleEl = document.getElementById(styleId) as HTMLStyleElement | null;
   if (!styleEl) {
@@ -73,16 +96,29 @@ function applyCssVariables(config: UiConfig) {
     styleEl.id = styleId;
     document.head.appendChild(styleEl);
   }
-  styleEl.textContent = `.dark { --primary: ${pDark}; --ring: ${pDark}; --sidebar-primary: ${pDark}; --sidebar-ring: ${pDark}; --chart-1: ${pDark}; --cyan-500: ${pDark}; }`;
+  styleEl.textContent = `.dark { --primary: ${safePrimaryDark}; --primary-foreground: ${primaryFgDark}; --ring: ${safePrimaryDark}; --sidebar-primary: ${safePrimaryDark}; --sidebar-ring: ${safePrimaryDark}; --chart-1: ${safePrimaryDark}; --cyan-500: ${safePrimaryDark}; }`;
 }
 
 export function useUiConfig() {
   const [config, setConfig] = useState<UiConfig>(() => loadConfig());
+  const [isDark, setIsDark] = useState(() =>
+    typeof document !== 'undefined' && document.documentElement.classList.contains('dark')
+  );
+
+  // Re-apply CSS variables when theme toggles so contrast clamping updates
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    const obs = new MutationObserver(() => {
+      setIsDark(document.documentElement.classList.contains('dark'));
+    });
+    obs.observe(document.documentElement, { attributeFilter: ['class'] });
+    return () => obs.disconnect();
+  }, []);
 
   useEffect(() => {
     applyCssVariables(config);
     saveConfig(config);
-  }, [config]);
+  }, [config, isDark]);
 
   const updateConfig = (partial: Partial<UiConfig>) => {
     setConfig((prev) => ({ ...prev, ...partial }));

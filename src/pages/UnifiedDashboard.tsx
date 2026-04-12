@@ -585,7 +585,7 @@ export function UnifiedDashboard() {
 
       {/* Loading State */}
       {poolLoading && (
-        <div className="rounded-xl border border-border/40 bg-card/40 backdrop-blur-sm p-8 text-center text-muted-foreground">
+        <div className="rounded-xl border border-border/60 bg-card/60 backdrop-blur-sm p-8 text-center text-muted-foreground">
           Connecting to monitoring API...
         </div>
       )}
@@ -598,7 +598,7 @@ export function UnifiedDashboard() {
             <input
               type="text"
               placeholder="Search workers or connections..."
-              className="w-full pl-9 h-9 bg-muted/30 border border-border/50 focus:bg-background transition-all rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary/20"
+              className="w-full pl-9 h-9 bg-muted/40 border border-border/60 focus:bg-background transition-all rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary/20"
               value={searchTerm}
               onChange={(e) => {
                 setSearchTerm(e.target.value);

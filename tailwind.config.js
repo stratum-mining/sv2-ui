@@ -75,6 +75,9 @@ export default {
           500: 'hsl(var(--cyan-500))',
           600: 'hsl(var(--cyan-600))',
         },
+        'sv2-green': 'hsl(var(--success))',
+        'sv2-yellow': 'hsl(var(--warning))',
+        'sv2-red': 'hsl(var(--destructive))',
       },
       borderRadius: {
         lg: 'var(--radius)',

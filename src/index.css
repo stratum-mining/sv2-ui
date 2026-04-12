@@ -11,7 +11,7 @@
   --background: 0 0% 100%;
   --foreground: 0 0% 9%;
 
-  --card: 0 0% 100%;
+  --card: 0 0% 99%;
   --card-foreground: 0 0% 9%;
 
   --popover: 0 0% 100%;
@@ -23,7 +23,7 @@
   --secondary: 0 0% 96%;
   --secondary-foreground: 0 0% 9%;
 
-  --muted: 0 0% 96%;
+  --muted: 0 0% 94%;
   --muted-foreground: 0 0% 45%;
 
   --accent: 190 100% 96%;
@@ -41,8 +41,8 @@
   --warning: 38 92% 50%;
   --warning-foreground: 0 0% 100%;
 
-  --border: 0 0% 92%;
-  --input: 0 0% 92%;
+  --border: 0 0% 88%;
+  --input: 0 0% 88%;
   --ring: 190 100% 45%;
 
   --radius: 0.75rem;
@@ -54,7 +54,7 @@
   --sidebar-primary-foreground: 0 0% 100%;
   --sidebar-accent: 190 100% 96%;
   --sidebar-accent-foreground: 190 100% 30%;
-  --sidebar-border: 0 0% 92%;
+  --sidebar-border: 0 0% 88%;
   --sidebar-ring: 190 100% 45%;
 
   /* Chart colors */

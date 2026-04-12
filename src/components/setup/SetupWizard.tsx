@@ -202,7 +202,7 @@ export function SetupWizard() {
     <>
     <div className="min-h-screen bg-background flex flex-col">
       {/* Header */}
-      <div className="flex items-center px-6 md:px-10 h-14 border-b border-border/40 flex-shrink-0">
+      <div className="flex items-center px-6 md:px-10 h-14 border-b border-border/60 flex-shrink-0">
         <button
           type="button"
           onClick={handleBack}

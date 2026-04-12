@@ -61,7 +61,7 @@ export function FAQ() {
           </div>
         </div>
 
-        <Card className="border-none shadow-md bg-gradient-to-br from-[#5865F2]/10 to-[#5865F2]/5 border-[#5865F2]/30">
+        <Card className="shadow-md bg-gradient-to-br from-[#5865F2]/10 to-[#5865F2]/5 border-[#5865F2]/30">
           <CardContent className="pt-6">
             <div className="flex flex-col sm:flex-row items-center gap-4">
               <div className="p-3 bg-[#5865F2]/10 rounded-full">
@@ -85,7 +85,7 @@ export function FAQ() {
           </CardContent>
         </Card>
 
-        <Card className="border-none shadow-md bg-card/40">
+        <Card className="shadow-md bg-card/60">
           <CardContent className="pt-6 space-y-3">
             {faqData.map((item, index) => (
               <FaqAccordionItem

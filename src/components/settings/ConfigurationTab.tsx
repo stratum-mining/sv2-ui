@@ -261,7 +261,7 @@ export function ConfigurationTab() {
         </CardHeader>
         <CardContent className="space-y-4">
           {/* Mining Mode */}
-          <div className="flex items-center justify-between p-4 rounded-lg border border-border/50 bg-muted/20">
+          <div className="flex items-center justify-between p-4 rounded-lg border border-border/60 bg-muted/40">
             <div>
               <p className="font-medium">Mining Mode</p>
               <p className="text-sm text-muted-foreground">
@@ -274,14 +274,14 @@ export function ConfigurationTab() {
             </Badge>
           </div>
 
-          <div className="p-4 rounded-lg border border-border/50 bg-muted/20">
+          <div className="p-4 rounded-lg border border-border/60 bg-muted/40">
             <p className="font-medium mb-1">Block Templates</p>
             <p className="text-sm text-muted-foreground">{templateModeLabel}</p>
           </div>
 
           {/* Pool */}
           {!isSovereignSolo && config.pool && (
-            <div className="p-4 rounded-lg border border-border/50 bg-muted/20">
+            <div className="p-4 rounded-lg border border-border/60 bg-muted/40">
               <p className="font-medium">{config.pool.name}</p>
               <p className="text-muted-foreground font-mono text-xs">
                 {config.pool.address}:{config.pool.port}
@@ -321,7 +321,7 @@ export function ConfigurationTab() {
               }
 
               return (
-                <div className="p-4 rounded-lg border border-border/50 bg-muted/20 space-y-2">
+                <div className="p-4 rounded-lg border border-border/60 bg-muted/40 space-y-2">
                   {addr && (
                     <div>
                       <p className="font-medium mb-1">Payout Address</p>
@@ -347,7 +347,7 @@ export function ConfigurationTab() {
             }
 
             return (
-              <div className="p-4 rounded-lg border border-border/50 bg-muted/20">
+              <div className="p-4 rounded-lg border border-border/60 bg-muted/40">
                 <p className="font-medium mb-1">
                   {isSovereignSolo ? 'Miner Identity' : isSoloMode ? 'Bitcoin Address' : 'Pool Username'}
                 </p>
@@ -358,7 +358,7 @@ export function ConfigurationTab() {
 
           {/* Bitcoin Core (JD mode) */}
           {isJdMode && config.bitcoin && (
-            <div className="p-4 rounded-lg border border-border/50 bg-muted/20 space-y-2">
+            <div className="p-4 rounded-lg border border-border/60 bg-muted/40 space-y-2">
               <div className="flex items-center gap-2">
                 <p className="font-medium">Bitcoin Core</p>
                 <Badge variant="outline" className="text-xs">{config.bitcoin.network}</Badge>
@@ -371,7 +371,7 @@ export function ConfigurationTab() {
 
           {/* Fallback Address (JD mode) */}
           {isJdMode && config.jdc?.coinbase_reward_address && (
-            <div className="p-4 rounded-lg border border-border/50 bg-muted/20">
+            <div className="p-4 rounded-lg border border-border/60 bg-muted/40">
               <p className="font-medium mb-1">{isSovereignSolo ? 'Block Reward Address' : 'Fallback Address'}</p>
               <p className="text-muted-foreground font-mono text-xs truncate">
                 {config.jdc.coinbase_reward_address}

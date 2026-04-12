@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { StepProps } from '../types';
 import { AlertCircle, Info } from 'lucide-react';
 import { shouldAggregateTranslatorChannels } from '../poolRules';
-import { isValidBitcoinAddress, getBitcoinAddressError } from '@/lib/utils';
+import { isValidBitcoinAddress, getBitcoinAddressError, getBitcoinAddressPlaceholder } from '@/lib/utils';
 
 const SRI_POOL_AUTHORITY_KEY = '9auqWEzQDVyd2oe1JVGFLMLHZtCo2FFqZwtKA5gd9xbuEu7PH72';
 
@@ -99,6 +99,7 @@ export function MiningIdentityStep({ data, updateData, onNext }: StepProps) {
   }, [finalIdentity, coinbaseAddress, isJdMode, jdcSignature, data.translator, updateData]);
 
   const network = data.bitcoin?.network ?? 'mainnet';
+  const bitcoinAddressPlaceholder = getBitcoinAddressPlaceholder(network);
   const needsAddress = donationPercent < 100;
   const requiresAddressIdentity = isSoloMode && !isJdMode;
   const identityLabel = isSoloMode
@@ -109,7 +110,7 @@ export function MiningIdentityStep({ data, updateData, onNext }: StepProps) {
   const identityPlaceholder = isSoloMode
     ? isSovereignSolo
       ? 'solo_miner'
-      : 'bc1q...'
+      : bitcoinAddressPlaceholder
     : 'username.worker1';
   const identityHelpText = isSoloMode
     ? isSovereignSolo
@@ -156,7 +157,7 @@ export function MiningIdentityStep({ data, updateData, onNext }: StepProps) {
                 type="text"
                 value={payoutAddress}
                 onChange={(e) => setPayoutAddress(e.target.value)}
-                placeholder="bc1q..."
+                placeholder={bitcoinAddressPlaceholder}
                 aria-required="true"
                 autoComplete="off"
                 className="w-full h-10 px-3 rounded-lg border border-input bg-background focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/15 outline-none transition-all font-mono text-sm"
@@ -294,7 +295,7 @@ export function MiningIdentityStep({ data, updateData, onNext }: StepProps) {
             type="text"
             value={coinbaseAddress}
             onChange={(e) => setCoinbaseAddress(e.target.value)}
-            placeholder="bc1q..."
+            placeholder={bitcoinAddressPlaceholder}
             aria-required="true"
             autoComplete="off"
             className="w-full h-10 px-3 rounded-lg border border-input bg-background focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/15 outline-none transition-all font-mono text-sm"

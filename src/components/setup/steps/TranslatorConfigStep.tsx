@@ -3,7 +3,7 @@ import { StepProps, TranslatorConfig } from '../types';
 import { Switch } from '@/components/ui/switch';
 import { Info } from 'lucide-react';
 import { TRANSLATOR_PORT } from '@/lib/ports';
-import { isValidBitcoinAddress, getBitcoinAddressError } from '@/lib/utils';
+import { isValidBitcoinAddress, getBitcoinAddressError, getBitcoinAddressPlaceholder } from '@/lib/utils';
 
 export function TranslatorConfigStep({ data, updateData, onNext }: StepProps) {
   const isSoloMode = data.miningMode === 'solo';
@@ -26,6 +26,7 @@ export function TranslatorConfigStep({ data, updateData, onNext }: StepProps) {
   };
 
   const network = data.bitcoin?.network ?? 'mainnet';
+  const bitcoinAddressPlaceholder = getBitcoinAddressPlaceholder(network);
 
   const isValid = isSoloMode
     ? isValidBitcoinAddress(config.user_identity, network)
@@ -40,7 +41,7 @@ export function TranslatorConfigStep({ data, updateData, onNext }: StepProps) {
 
   const getUserIdentityPlaceholder = () => {
     if (isSoloMode) {
-      return 'bc1q...';
+      return bitcoinAddressPlaceholder;
     }
     return 'username.worker1';
   };

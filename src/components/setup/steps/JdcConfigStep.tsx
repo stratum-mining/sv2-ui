@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { StepProps, JdcConfig } from '../types';
 import { Info } from 'lucide-react';
-import { isValidBitcoinAddress, getBitcoinAddressError } from '@/lib/utils';
+import { isValidBitcoinAddress, getBitcoinAddressError, getBitcoinAddressPlaceholder } from '@/lib/utils';
 
 export function JdcConfigStep({ data, updateData, onNext }: StepProps) {
   const [config, setConfig] = useState<JdcConfig>(
@@ -21,6 +21,7 @@ export function JdcConfigStep({ data, updateData, onNext }: StepProps) {
   };
 
   const network = data.bitcoin?.network ?? 'mainnet';
+  const bitcoinAddressPlaceholder = getBitcoinAddressPlaceholder(network);
 
   const isValid =
     config.user_identity.length > 0 &&
@@ -80,7 +81,7 @@ export function JdcConfigStep({ data, updateData, onNext }: StepProps) {
             type="text"
             value={config.coinbase_reward_address}
             onChange={(e) => handleChange('coinbase_reward_address', e.target.value)}
-            placeholder="bc1q..."
+            placeholder={bitcoinAddressPlaceholder}
             aria-required="true"
             autoComplete="off"
             className="w-full h-10 px-3 rounded-lg border border-input bg-background font-mono text-sm focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/15 outline-none transition-all"

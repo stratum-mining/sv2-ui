@@ -109,3 +109,10 @@ export function getBitcoinAddressError(addr: string, network: 'mainnet' | 'testn
   const otherNetwork = network === 'mainnet' ? 'testnet4' : 'mainnet';
   return isValidBitcoinAddress(addr, otherNetwork) ? 'Wrong network' : 'Invalid Bitcoin address';
 }
+
+/**
+ * Returns a network-specific address placeholder for form hints.
+ */
+export function getBitcoinAddressPlaceholder(network: 'mainnet' | 'testnet4'): string {
+  return network === 'mainnet' ? 'bc1q...' : 'tb1q...';
+}

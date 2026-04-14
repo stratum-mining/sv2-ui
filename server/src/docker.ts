@@ -145,8 +145,8 @@ const NETWORK_NAME = 'sv2-network';
 const CONFIG_VOLUME = 'sv2-config';
 const TRANSLATOR_CONTAINER = 'sv2-translator';
 const JDC_CONTAINER = 'sv2-jdc';
-const TRANSLATOR_IMAGE = 'stratumv2/translator_sv2:main';
-const JDC_IMAGE = 'stratumv2/jd_client_sv2:main';
+const TRANSLATOR_IMAGE = 'stratumv2/translator_sv2:v0.3.4';
+const JDC_IMAGE = 'stratumv2/jd_client_sv2:v0.3.4';
 const DOCKER_LOG_HEADER_SIZE = 8;
 
 /**

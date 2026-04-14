@@ -235,9 +235,10 @@ export async function readContainerLogs(
     const info = await dockerContainer.inspect();
     const startTime = info.State?.StartedAt;
 
-    const logOptions: Docker.LogsOptions = {
+    const logOptions: Docker.ContainerLogsOptions & { follow: false } = {
       stdout: true,
       stderr: true,
+      follow: false,
       timestamps: true,
       tail: options.tail ?? 200,
       abortSignal: AbortSignal.timeout(2000),

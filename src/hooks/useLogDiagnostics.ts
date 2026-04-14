@@ -21,7 +21,7 @@ export function useLogDiagnostics(enabled = true) {
   return useQuery({
     queryKey: ['log-diagnostics'],
     queryFn: fetchLogDiagnostics,
-    refetchInterval: enabled ? 10000 : false,
+    refetchInterval: enabled ? 3000 : false,
     retry: false,
     enabled,
   });

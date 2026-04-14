@@ -59,8 +59,8 @@ export function useControlApi() {
   const stopMutation = useMutation({
     mutationFn: stopServices,
     onSuccess: () => {
-      // Invalidate status queries
       queryClient.invalidateQueries({ queryKey: ['setup-status'] });
+      queryClient.invalidateQueries({ queryKey: ['log-diagnostics'] });
     },
   });
 
@@ -68,6 +68,7 @@ export function useControlApi() {
     mutationFn: restartServices,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['setup-status'] });
+      queryClient.invalidateQueries({ queryKey: ['log-diagnostics'] });
     },
   });
 
@@ -75,6 +76,7 @@ export function useControlApi() {
     mutationFn: setupServices,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['setup-status'] });
+      queryClient.invalidateQueries({ queryKey: ['log-diagnostics'] });
     },
   });
 
@@ -82,6 +84,7 @@ export function useControlApi() {
     mutationFn: updateConfigService,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['setup-status'] });
+      queryClient.invalidateQueries({ queryKey: ['log-diagnostics'] });
     },
   });
 

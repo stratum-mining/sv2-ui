@@ -59,3 +59,13 @@ jobs:
 
       - name: Build
         run: npm run build:all
+
+  docker-build:
+    name: Docker Build
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build Docker image
+        run: docker build -f Dockerfile .

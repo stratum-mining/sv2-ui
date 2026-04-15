@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { StepProps } from "../types";
-import { CheckCircle2, Loader2, AlertCircle } from "lucide-react";
+import { Loader2, AlertCircle } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { MinerConnectionInfo } from "../MinerConnectionInfo";
 import { shouldAggregateTranslatorChannels } from "../poolRules";
@@ -337,19 +337,6 @@ export function ReviewStart({ data, onComplete }: ReviewStartProps) {
               </div>
             )}
           </div>
-        </div>
-      </div>
-
-      <div className="p-4 rounded-xl bg-primary/[0.08] flex gap-3">
-        <CheckCircle2 className="h-5 w-5 text-primary flex-shrink-0 mt-0.5" />
-        <div className="text-sm">
-          <p className="font-medium text-primary mb-1">Ready to start</p>
-          <ul className="text-muted-foreground text-xs space-y-0.5 list-disc list-inside">
-            {isJdMode && <li>{isSovereignSolo ? 'Start the JD Client in sovereign solo mode' : 'Start the JD Client container'}</li>}
-            <li>Start the Translator Proxy container</li>
-            <li>{isSovereignSolo ? 'Wire the Translator to your local JDC instance' : 'Configure networking between services'}</li>
-            <li>Redirect to the monitoring dashboard</li>
-          </ul>
         </div>
       </div>
 

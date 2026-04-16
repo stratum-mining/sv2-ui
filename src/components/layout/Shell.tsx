@@ -141,7 +141,7 @@ export function Shell({
 
           {/* Desktop: nav */}
           <nav className="hidden sm:flex items-stretch h-14 gap-0 ml-2">
-            {navItems.map((item) => {
+            {navItems.filter(item => item.href !== '/faq').map((item) => {
               const isActive =
                 location === item.href ||
                 (item.href !== '/' && location.startsWith(item.href));
@@ -195,8 +195,23 @@ export function Shell({
               </>
             )}
 
-            {/* Theme toggle — desktop only (mobile: in hamburger) */}
-            <span className="hidden sm:block shrink-0"><ThemeBtn /></span>
+            {/* Support + Theme toggle — desktop only (mobile: in hamburger) */}
+            <span className="hidden sm:flex items-center gap-0.5 shrink-0">
+              <Link href="/faq">
+                <button
+                  aria-label="Support & FAQ"
+                  className={cn(
+                    'relative flex items-center justify-center rounded-full transition-all duration-150 w-7 h-7',
+                    location === '/faq' || location.startsWith('/faq')
+                      ? 'text-foreground'
+                      : 'text-muted-foreground hover:text-foreground hover:bg-foreground/8'
+                  )}
+                >
+                  <HelpCircle className="h-[14px] w-[14px]" />
+                </button>
+              </Link>
+              <ThemeBtn />
+            </span>
 
             {/* Hamburger — mobile only */}
             <button

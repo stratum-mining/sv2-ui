@@ -3,7 +3,7 @@ import { Shell } from '@/components/layout/Shell';
 import { Card, CardContent } from '@/components/ui/card';
 import { useConnectionStatus } from '@/hooks/useConnectionStatus';
 import { faqData, type FaqItem } from '@/data/faq-data';
-import { ChevronDown, ChevronUp, HelpCircle, MessageCircle } from 'lucide-react';
+import { ChevronDown, ChevronUp } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 function FaqAccordionItem({ item, isOpen, onToggle }: { item: FaqItem; isOpen: boolean; onToggle: () => void }) {
@@ -37,7 +37,7 @@ function FaqAccordionItem({ item, isOpen, onToggle }: { item: FaqItem; isOpen: b
 
 export function FAQ() {
   const { status: connectionStatus, statusLabel: connectionLabel, poolName, uptime } = useConnectionStatus();
-  const [openIndex, setOpenIndex] = useState<number | null>(0);
+  const [openIndex, setOpenIndex] = useState<number | null>(null);
 
   const handleToggle = (index: number) => {
     setOpenIndex(openIndex === index ? null : index);
@@ -51,22 +51,16 @@ export function FAQ() {
       uptime={uptime}
     >
         <div className="space-y-6 max-w-3xl">
-        <div className="flex items-center gap-3">
-          <HelpCircle className="h-8 w-8 text-primary" />
-          <div>
-            <h2 className="text-2xl font-bold tracking-tight">Support & FAQ</h2>
-            <p className="text-muted-foreground">
-              Common questions about the SV2 mining stack.
-            </p>
-          </div>
+        <div>
+          <h2 className="text-2xl font-bold tracking-tight">Support & FAQ</h2>
+          <p className="text-muted-foreground">
+            Common questions about the SV2 UI.
+          </p>
         </div>
 
         <Card className="border-none shadow-md bg-gradient-to-br from-[#5865F2]/10 to-[#5865F2]/5 border-[#5865F2]/30">
           <CardContent className="pt-6">
             <div className="flex flex-col sm:flex-row items-center gap-4">
-              <div className="p-3 bg-[#5865F2]/10 rounded-full">
-                <MessageCircle className="h-8 w-8 text-[#5865F2]" />
-              </div>
               <div className="flex-1 text-center sm:text-left">
                 <h3 className="font-semibold text-lg text-foreground">Join our Community</h3>
                 <p className="text-sm text-muted-foreground">
@@ -98,17 +92,6 @@ export function FAQ() {
           </CardContent>
         </Card>
 
-        <p className="text-center text-sm text-muted-foreground">
-          Don't see your question answered?{' '}
-          <a
-            href="https://discord.com/invite/fsEW23wFYs"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-[#5865F2] hover:underline font-medium"
-          >
-            Reach out on Discord
-          </a>
-        </p>
       </div>
     </Shell>
   );

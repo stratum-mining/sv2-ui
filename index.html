@@ -1,11 +1,23 @@
 <!doctype html>
-<html lang="en" class="dark">
+<html lang="en">
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/png" href="/favicon.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="description" content="Stratum V2 Mining Client" />
     <title>Stratum V2 Client</title>
+    <script>
+      (function () {
+        try {
+          var saved = localStorage.getItem('theme');
+          var mode = (saved === 'light' || saved === 'dark')
+            ? saved
+            : (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+          if (mode === 'dark') document.documentElement.classList.add('dark');
+          else document.documentElement.classList.remove('dark');
+        } catch (_) {}
+      })();
+    </script>
     <!-- Preload fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />

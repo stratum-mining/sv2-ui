@@ -3,21 +3,8 @@ import { useLocation } from 'wouter';
 import { ArrowLeft, AlertCircle, Sun, Moon } from 'lucide-react';
 import { SetupStep, SetupData, initialSetupData } from './types';
 import { shouldAggregateTranslatorChannels } from './poolRules';
+import { useTheme } from '@/theme/theme';
 
-function useTheme() {
-  const [isDark, setIsDark] = useState(() => {
-    if (typeof window === 'undefined') return true;
-    const saved = localStorage.getItem('theme');
-    if (saved) return saved === 'dark';
-    return window.matchMedia('(prefers-color-scheme: dark)').matches;
-  });
-  useEffect(() => {
-    const root = window.document.documentElement;
-    if (isDark) { root.classList.add('dark'); localStorage.setItem('theme', 'dark'); }
-    else { root.classList.remove('dark'); localStorage.setItem('theme', 'light'); }
-  }, [isDark]);
-  return { isDark, toggle: () => setIsDark(d => !d) };
-}
 import { MiningModeSelection } from './steps/MiningModeSelection';
 import { TemplateModeSelection } from './steps/TemplateModeSelection';
 import { PoolConfigStep } from './steps/PoolConfigStep';

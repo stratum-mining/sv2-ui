@@ -9,6 +9,9 @@ import type {
 const UNKNOWN_USER_REGEX =
   /OpenMiningChannelError\(request_id: \d+, error_code: unknown-user\)/;
 
+const JDC_BITCOIN_CORE_DISCONNECTED_REGEX =
+  /Failed to (create BitcoinCoreToSv2|get response): (CannotConnectToUnixSocket|CapnpError\(Error \{ kind: Disconnected|Disconnected: Peer disconnected)/;
+
 function unknownUserParser(lines: ContainerLogLine[]): LogDiagnostic | null {
   const matches = lines.filter(
     ({ container, message }) =>
@@ -42,10 +45,46 @@ function unknownUserParser(lines: ContainerLogLine[]): LogDiagnostic | null {
   };
 }
 
+function jdcBitcoinCoreDisconnectedParser(
+  lines: ContainerLogLine[]
+): LogDiagnostic | null {
+  const matches = lines.filter(
+    ({ container, message }) =>
+      container === 'jdc' && JDC_BITCOIN_CORE_DISCONNECTED_REGEX.test(message)
+  );
+
+  if (matches.length === 0) {
+    return null;
+  }
+
+  const evidence: DiagnosticEvidence[] = matches.map(
+    ({ container, stream, timestamp, raw }) => ({
+      container,
+      stream,
+      timestamp,
+      line: raw,
+    })
+  );
+
+  return {
+    code: 'jdc-bitcoin-core-disconnected',
+    severity: 'error' as DiagnosticSeverity,
+    title: 'Bitcoin Core stopped running',
+    message: 'We lost connection with your Bitcoin Core node.',
+    recommendation:
+      'Make sure your Bitcoin Core node is up and running on the same computer where you’re running the sv2-ui app.',
+    streamId: 'mining-services',
+    containers: ['jdc'],
+    detectedAt: matches[0].timestamp,
+    evidence,
+  };
+}
+
 // Central registry for scenario-specific parsers. New log-derived diagnostics
 // should be added here without changing the collection pipeline.
 export const logParsers: LogParser[] = [
   { code: 'unknown-user', match: unknownUserParser },
+  { code: 'jdc-bitcoin-core-disconnected', match: jdcBitcoinCoreDisconnectedParser },
 ];
 
 function toDiagnosticsArray(

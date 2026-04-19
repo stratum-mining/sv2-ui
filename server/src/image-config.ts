@@ -9,6 +9,8 @@ export interface ResolvedImageConfig {
   pullPolicy: ImagePullPolicy;
 }
 
+export type ImageFetchAction = 'pull' | 'use-local' | 'error-missing-local';
+
 interface ResolveRuntimeImagesOptions {
   env?: NodeJS.ProcessEnv;
   logger?: Pick<Console, 'warn'>;
@@ -51,6 +53,13 @@ export function normalizeImagePullPolicy(
 
 function resolveImageRef(explicitRef: string | null | undefined, envRef: string | null | undefined, fallback: string): string {
   return cleanString(explicitRef) || cleanString(envRef) || fallback;
+}
+
+export function resolveImageFetchAction(pullPolicy: ImagePullPolicy, hasLocalImage: boolean): ImageFetchAction {
+  if (pullPolicy === 'always') return 'pull';
+  if (hasLocalImage) return 'use-local';
+  if (pullPolicy === 'never') return 'error-missing-local';
+  return 'pull';
 }
 
 export function resolveRuntimeImages(

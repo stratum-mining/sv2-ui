@@ -11,6 +11,7 @@ import {
   resolveRuntimeImages,
   DEFAULT_TRANSLATOR_IMAGE,
   DEFAULT_JDC_IMAGE,
+  resolveImageFetchAction,
 } from './image-config.js';
 
 /**
@@ -362,19 +363,15 @@ async function imageExists(imageName: string): Promise<boolean> {
 }
 
 async function ensureImageAvailable(imageName: string, pullPolicy: ImagePullPolicy): Promise<void> {
-  if (pullPolicy === 'always') {
-    await pullImage(imageName);
-    return;
-  }
+  const hasLocalImage = pullPolicy === 'always' ? false : await imageExists(imageName);
+  const action = resolveImageFetchAction(pullPolicy, hasLocalImage);
 
-  const existsLocally = await imageExists(imageName);
-
-  if (existsLocally) {
+  if (action === 'use-local') {
     console.log(`Using local image ${imageName}`);
     return;
   }
 
-  if (pullPolicy === 'never') {
+  if (action === 'error-missing-local') {
     throw new Error(
       `Docker image ${imageName} is not available locally and pull policy is "never". ` +
       'Build or load this image first, or set SV2_IMAGE_PULL_POLICY=if-not-present or always.'

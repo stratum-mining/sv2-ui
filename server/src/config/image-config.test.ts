@@ -5,6 +5,7 @@ import {
   DEFAULT_JDC_IMAGE,
   DEFAULT_TRANSLATOR_IMAGE,
   normalizeImagePullPolicy,
+  resolveImageFetchAction,
   resolveRuntimeImages,
 } from '../image-config.js';
 
@@ -74,4 +75,12 @@ test('resolveRuntimeImages applies defaults when both config and env are missing
   assert.equal(resolved.translatorImage, DEFAULT_TRANSLATOR_IMAGE);
   assert.equal(resolved.jdcImage, DEFAULT_JDC_IMAGE);
   assert.equal(resolved.pullPolicy, 'always');
+});
+
+test('resolveImageFetchAction enforces pull policy when local image is missing', () => {
+  assert.equal(resolveImageFetchAction('always', false), 'pull');
+  assert.equal(resolveImageFetchAction('if-not-present', true), 'use-local');
+  assert.equal(resolveImageFetchAction('if-not-present', false), 'pull');
+  assert.equal(resolveImageFetchAction('never', true), 'use-local');
+  assert.equal(resolveImageFetchAction('never', false), 'error-missing-local');
 });

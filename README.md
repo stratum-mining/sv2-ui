@@ -22,6 +22,14 @@ Then open **http://localhost:8080**. On first run, you'll be guided through the 
 - `-v /var/run/docker.sock:...` lets sv2-ui manage Translator and JDC containers
 - `-v sv2-config:/app/data/config` persists your configuration across restarts
 
+### Environment Variables
+
+You can customize the Docker images used by the sv2-ui for the Translator and Job Declaration Client (JDC) containers, as well as the pull policy for these images:
+
+- `TRANSLATOR_IMAGE`: The Docker image for the Stratum V2 Translator. (Default: `stratumv2/translator_sv2:main`)
+- `JDC_IMAGE`: The Docker image for the Stratum V2 Job Declaration Client. (Default: `stratumv2/jd_client_sv2:main`)
+- `SV2_IMAGE_PULL_POLICY`: The policy determining when SV2 images are pulled. Options are `always`, `if-not-present`, and `never`. (Default: `always`)
+
 Stopping with **Ctrl+C** will also stop the Translator and JDC containers automatically.
 
 ### macOS (Docker Desktop)

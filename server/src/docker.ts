@@ -5,8 +5,13 @@
 import fs from 'fs';
 import Docker from 'dockerode';
 import os from 'os';
-import type { SetupData, ContainerStatus, HealthStatus } from './types.js';
+import type { SetupData, ContainerStatus, HealthStatus, ImagePullPolicy } from './types.js';
 import type { ContainerLogLine, LogContainerRole, LogOutputStream } from './logs/types.js';
+import {
+  resolveRuntimeImages,
+  DEFAULT_TRANSLATOR_IMAGE,
+  DEFAULT_JDC_IMAGE,
+} from './image-config.js';
 
 /**
  * Expand ~ to home directory in a path.
@@ -145,8 +150,6 @@ const NETWORK_NAME = 'sv2-network';
 const CONFIG_VOLUME = 'sv2-config';
 const TRANSLATOR_CONTAINER = 'sv2-translator';
 const JDC_CONTAINER = 'sv2-jdc';
-const TRANSLATOR_IMAGE = 'stratumv2/translator_sv2:main';
-const JDC_IMAGE = 'stratumv2/jd_client_sv2:main';
 const DOCKER_LOG_HEADER_SIZE = 8;
 
 /**
@@ -330,6 +333,57 @@ async function pullImage(imageName: string): Promise<void> {
   });
 }
 
+function isDockerNotFoundError(error: unknown): boolean {
+  if (typeof error !== 'object' || error === null) {
+    return false;
+  }
+
+  if ('statusCode' in error && (error as { statusCode?: number }).statusCode === 404) {
+    return true;
+  }
+
+  if ('reason' in error && typeof (error as { reason?: string }).reason === 'string') {
+    return (error as { reason: string }).reason.includes('No such image');
+  }
+
+  return false;
+}
+
+async function imageExists(imageName: string): Promise<boolean> {
+  try {
+    await docker.getImage(imageName).inspect();
+    return true;
+  } catch (error) {
+    if (isDockerNotFoundError(error)) {
+      return false;
+    }
+    throw error;
+  }
+}
+
+async function ensureImageAvailable(imageName: string, pullPolicy: ImagePullPolicy): Promise<void> {
+  if (pullPolicy === 'always') {
+    await pullImage(imageName);
+    return;
+  }
+
+  const existsLocally = await imageExists(imageName);
+
+  if (existsLocally) {
+    console.log(`Using local image ${imageName}`);
+    return;
+  }
+
+  if (pullPolicy === 'never') {
+    throw new Error(
+      `Docker image ${imageName} is not available locally and pull policy is "never". ` +
+      'Build or load this image first, or set SV2_IMAGE_PULL_POLICY=if-not-present or always.'
+    );
+  }
+
+  await pullImage(imageName);
+}
+
 /**
  * Remove a container if it exists
  */
@@ -385,7 +439,7 @@ async function getContainerStatus(name: string): Promise<ContainerStatus | null>
  * - In Docker: uses shared volume (sv2-config) for config
  * - In dev: bind-mounts config file from host filesystem
  */
-async function startTranslator(configPath: string): Promise<void> {
+async function startTranslator(configPath: string, imageName: string): Promise<void> {
   await removeContainer(TRANSLATOR_CONTAINER);
 
   const binds = isRunningInDocker
@@ -393,7 +447,7 @@ async function startTranslator(configPath: string): Promise<void> {
     : [`${configPath}:/config/translator.toml:ro`];
 
   const container = await docker.createContainer({
-    Image: TRANSLATOR_IMAGE,
+    Image: imageName,
     name: TRANSLATOR_CONTAINER,
     Entrypoint: ['/app/translator_sv2'],
     Cmd: ['-c', '/config/translator.toml'],
@@ -425,7 +479,8 @@ async function startTranslator(configPath: string): Promise<void> {
 async function startJdc(
   configPath: string,
   bitcoinSocketPath: string,
-  network: string
+  network: string,
+  imageName: string
 ): Promise<void> {
   await removeContainer(JDC_CONTAINER);
 
@@ -447,7 +502,7 @@ async function startJdc(
     ];
 
   const container = await docker.createContainer({
-    Image: JDC_IMAGE,
+    Image: imageName,
     name: JDC_CONTAINER,
     Entrypoint: ['/app/jd_client_sv2'],
     Cmd: ['-c', '/config/jdc.toml'],
@@ -480,28 +535,35 @@ export async function startStack(
   configDir: string
 ): Promise<void> {
   await ensureDockerAvailable();
+  const images = resolveRuntimeImages(data.images);
+
+  console.log(`Translator image: ${images.translatorImage}${images.translatorImage === DEFAULT_TRANSLATOR_IMAGE ? ' (default)' : ''}`);
+  if (data.mode === 'jd') {
+    console.log(`JDC image: ${images.jdcImage}${images.jdcImage === DEFAULT_JDC_IMAGE ? ' (default)' : ''}`);
+  }
+  console.log(`Image pull policy: ${images.pullPolicy}`);
 
   // Ensure network exists
   await ensureNetwork();
   // Connect sv2-ui to the network so it can proxy API requests
   await connectSv2UiToNetwork();
 
-  // Pull latest images from Docker Hub
-  await pullImage(TRANSLATOR_IMAGE);
+  // Ensure images are available according to configured pull policy
+  await ensureImageAvailable(images.translatorImage, images.pullPolicy);
   if (data.mode === 'jd') {
-    await pullImage(JDC_IMAGE);
+    await ensureImageAvailable(images.jdcImage, images.pullPolicy);
   }
 
   // Start JDC first if in JD mode (Translator connects to JDC)
   if (data.mode === 'jd' && data.bitcoin) {
     const socketPath = expandHomePath(data.bitcoin.socket_path);
-    await startJdc(`${configDir}/jdc.toml`, socketPath, data.bitcoin.network);
+    await startJdc(`${configDir}/jdc.toml`, socketPath, data.bitcoin.network, images.jdcImage);
     console.log('Waiting for JDC to initialize...');
     await new Promise(resolve => setTimeout(resolve, 3000));
   }
 
   // Start Translator
-  await startTranslator(`${configDir}/translator.toml`);
+  await startTranslator(`${configDir}/translator.toml`, images.translatorImage);
 }
 
 /**

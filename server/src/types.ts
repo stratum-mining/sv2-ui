@@ -4,6 +4,7 @@
 
 export type MiningMode = 'solo' | 'pool';
 export type SetupMode = 'jd' | 'no-jd';
+export type ImagePullPolicy = 'always' | 'if-not-present' | 'never';
 
 export interface PoolConfig {
   name: string;
@@ -34,6 +35,12 @@ export interface TranslatorConfig {
   min_hashrate: number;
 }
 
+export interface ImageConfig {
+  translator_image?: string;
+  jdc_image?: string;
+  pull_policy?: ImagePullPolicy;
+}
+
 export interface SetupData {
   miningMode: MiningMode;
   mode: SetupMode;
@@ -41,6 +48,7 @@ export interface SetupData {
   bitcoin: BitcoinConfig | null;
   jdc: JdcConfig | null;
   translator: TranslatorConfig;
+  images?: ImageConfig | null;
 }
 
 export type HealthStatus = 'healthy' | 'unhealthy' | 'starting' | 'stopped';

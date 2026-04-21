@@ -6,6 +6,7 @@
 
 import express from 'express';
 import cors from 'cors';
+import net from 'net';
 import path from 'path';
 import fs from 'fs/promises';
 import { fileURLToPath } from 'url';
@@ -19,6 +20,7 @@ import {
   isDockerAvailable,
   ensureDockerAvailable,
   getDockerConnectionInfo,
+  expandHomePath,
 } from './docker.js';
 import { getLogDiagnostics } from './logs/diagnostics.js';
 
@@ -123,6 +125,63 @@ app.get('/api/config', async (_req, res) => {
     console.error('Config error:', error);
     res.status(500).json({ error: 'Failed to get config' });
   }
+});
+
+/**
+ * Try to open the Unix socket to confirm something is actually listening.
+ * Filesystem checks are not enough — Bitcoin Core leaves its socket file on
+ * disk after a crash, so stat() would return a stale "valid" result.
+ */
+function probeUnixSocket(socketPath: string, timeoutMs = 1000): Promise<{ valid: true } | { valid: false; error: string }> {
+  return new Promise((resolve) => {
+    const socket = net.createConnection({ path: socketPath });
+    let settled = false;
+    const finish = (result: { valid: true } | { valid: false; error: string }) => {
+      if (settled) return;
+      settled = true;
+      socket.destroy();
+      resolve(result);
+    };
+
+    socket.setTimeout(timeoutMs);
+    socket.once('connect', () => finish({ valid: true }));
+    socket.once('timeout', () => finish({
+      valid: false,
+      error: `Socket did not respond within ${timeoutMs}ms. Bitcoin Core may be unresponsive.`,
+    }));
+    socket.once('error', (err: NodeJS.ErrnoException) => {
+      switch (err.code) {
+        case 'ENOENT':
+          finish({ valid: false, error: `Socket not found at ${socketPath}. Make sure Bitcoin Core is running with IPC enabled.` });
+          break;
+        case 'ECONNREFUSED':
+          finish({ valid: false, error: `Socket file exists at ${socketPath} but nothing is listening. Bitcoin Core may have crashed or been stopped.` });
+          break;
+        case 'EACCES':
+          finish({ valid: false, error: `Permission denied for ${socketPath}. Check that the sv2-ui process can read this file.` });
+          break;
+        case 'ENOTSOCK':
+          finish({ valid: false, error: `Path ${socketPath} is not a Unix socket.` });
+          break;
+        default:
+          finish({ valid: false, error: err.message || 'Unknown error connecting to socket' });
+      }
+    });
+  });
+}
+
+/**
+ * POST /api/validate/bitcoin-socket - Check if a Bitcoin Core IPC socket is listening
+ */
+app.post('/api/validate/bitcoin-socket', async (req, res) => {
+  const { socket_path } = req.body;
+  if (!socket_path || typeof socket_path !== 'string') {
+    return res.status(400).json({ valid: false, error: 'socket_path is required' });
+  }
+
+  const resolved = expandHomePath(socket_path);
+  const result = await probeUnixSocket(resolved);
+  return res.json(result);
 });
 
 /**

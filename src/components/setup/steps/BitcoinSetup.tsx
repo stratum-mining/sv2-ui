@@ -1,11 +1,15 @@
 import { useState, useEffect } from 'react';
 import { StepProps, BitcoinConfig, OperatingSystem } from '../types';
-import { Bitcoin, Apple, Terminal, Pencil, Check } from 'lucide-react';
+import { Bitcoin, Apple, Terminal, Pencil, Check, Loader2, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { useBitcoinSocketValidation } from '@/hooks/useBitcoinSocketValidation';
 
 function getDefaultDataDir(os: OperatingSystem): string {
   return os === 'linux' ? '~/.bitcoin' : '~/Library/Application Support/Bitcoin';
 }
 
+// Bitcoin Core places its IPC socket under the data directory: mainnet at the
+// datadir root, other networks under a <network>/ subdirectory. Validation is
+// network-agnostic — only the default path differs.
 function computeSocketPath(os: OperatingSystem, network: 'mainnet' | 'testnet4', customDataDir: string): string {
   const dataDir = customDataDir.trim() || getDefaultDataDir(os);
   return network === 'mainnet' ? `${dataDir}/node.sock` : `${dataDir}/testnet4/node.sock`;
@@ -23,6 +27,8 @@ export function BitcoinSetup({ data, updateData, onNext }: StepProps) {
   useEffect(() => {
     updateData({ bitcoin: { os, network, customDataDir, socket_path: socketPath } as BitcoinConfig });
   }, [os, network, customDataDir, socketPath, updateData]);
+
+  const { isChecking, isValid, error: socketError } = useBitcoinSocketValidation(socketPath);
 
   const resetPath = () => { setManualSocketPath(''); setIsEditingPath(false); };
 
@@ -151,13 +157,45 @@ export function BitcoinSetup({ data, updateData, onNext }: StepProps) {
           </button>
         )}
         <p id="socket-path-hint" className="text-xs text-muted-foreground mt-2">Click to edit if your socket is in a different location.</p>
+
+        {isChecking && (
+          <div
+            className="mt-3 p-3 rounded-lg bg-muted/50 text-sm text-muted-foreground flex gap-3 items-center"
+            role="status"
+            aria-live="polite"
+          >
+            <Loader2 className="h-4 w-4 animate-spin flex-shrink-0" aria-hidden="true" />
+            <span>Checking socket path...</span>
+          </div>
+        )}
+        {!isChecking && isValid && (
+          <div
+            className="mt-3 p-3 rounded-lg bg-success/10 border border-success/20 text-sm text-success flex gap-3 items-center"
+            role="status"
+            aria-live="polite"
+          >
+            <CheckCircle2 className="h-4 w-4 flex-shrink-0" aria-hidden="true" />
+            <span>Socket is listening</span>
+          </div>
+        )}
+        {!isChecking && socketError && (
+          <div
+            className="mt-3 p-3 rounded-lg bg-destructive/[0.08] text-sm text-destructive flex gap-3 items-start"
+            role="alert"
+            aria-live="assertive"
+          >
+            <AlertCircle className="h-4 w-4 flex-shrink-0 mt-0.5" aria-hidden="true" />
+            <span>{socketError}</span>
+          </div>
+        )}
       </div>
 
       <div className="flex justify-center">
         <button
           type="button"
           onClick={onNext}
-          className="h-11 px-10 rounded-full bg-primary text-primary-foreground hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 transition-colors font-medium"
+          disabled={!isChecking && !!socketError}
+          className="h-11 px-10 rounded-full bg-primary text-primary-foreground hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
         >
           Continue
         </button>

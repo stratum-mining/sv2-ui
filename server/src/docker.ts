@@ -13,7 +13,7 @@ import type { ContainerLogLine, LogContainerRole, LogOutputStream } from './logs
  * Uses HOST_HOME env var (passed from docker run) if available,
  * otherwise falls back to os.homedir() (works in development).
  */
-function expandHomePath(inputPath: string): string {
+export function expandHomePath(inputPath: string): string {
   if (inputPath.startsWith('~')) {
     const home = process.env.HOST_HOME || os.homedir();
     return inputPath.replace('~', home);

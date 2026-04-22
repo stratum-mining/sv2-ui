@@ -12,6 +12,9 @@ const UNKNOWN_USER_REGEX =
 const JDC_BITCOIN_CORE_DISCONNECTED_REGEX =
   /Failed to (create BitcoinCoreToSv2|get response): (CannotConnectToUnixSocket|CapnpError\(Error \{ kind: Disconnected|Disconnected: Peer disconnected)/;
 
+const INVALID_CERTIFICATE_REGEX =
+  /(InvalidCertificate|Invalid Certificate).*SignatureNoiseMessage \{ version: \d+, valid_from: (\d+), not_valid_after: (\d+),/;
+
 export function unknownUserParser(lines: ContainerLogLine[]): LogDiagnostic | null {
   const matches = lines.filter(
     ({ container, message }) =>
@@ -72,9 +75,43 @@ export function jdcBitcoinCoreDisconnectedParser(
     title: 'Bitcoin Core stopped running',
     message: 'We lost connection with your Bitcoin Core node.',
     recommendation:
-      'Make sure your Bitcoin Core node is up and running on the same computer where you’re running the sv2-ui app.',
+      "Make sure your Bitcoin Core node is up and running on the same computer where you're running the sv2-ui app.",
     streamId: 'mining-services',
     containers: ['jdc'],
+    detectedAt: matches[0].timestamp,
+    evidence,
+  };
+}
+
+function invalidCertificateParser(lines: ContainerLogLine[]): LogDiagnostic | null {
+  const matches = lines.filter(
+    ({ container, message }) =>
+      (container === 'translator' || container === 'jdc') &&
+      INVALID_CERTIFICATE_REGEX.test(message)
+  );
+
+  if (matches.length === 0) {
+    return null;
+  }
+
+  const evidence: DiagnosticEvidence[] = matches.map(
+    ({ container, stream, timestamp, raw }) => ({
+      container,
+      stream,
+      timestamp,
+      line: raw,
+    })
+  );
+
+  return {
+    code: 'invalid-certificate',
+    severity: 'error' as DiagnosticSeverity,
+    title: 'Invalid Server Certificate',
+    message:
+      'We were unable to stablish communication with the pool.',
+    recommendation: 'Check that your system clock is set correctly and synchronized with an NTP server.',
+    streamId: 'mining-services',
+    containers: ['translator', 'jdc'],
     detectedAt: matches[0].timestamp,
     evidence,
   };
@@ -85,6 +122,7 @@ export function jdcBitcoinCoreDisconnectedParser(
 export const logParsers: LogParser[] = [
   { code: 'unknown-user', match: unknownUserParser },
   { code: 'jdc-bitcoin-core-disconnected', match: jdcBitcoinCoreDisconnectedParser },
+  { code: 'invalid-certificate', match: invalidCertificateParser },
 ];
 
 function toDiagnosticsArray(

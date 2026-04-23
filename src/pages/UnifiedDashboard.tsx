@@ -611,7 +611,7 @@ export function UnifiedDashboard() {
 
       {/* Loading State */}
       {poolLoading && (
-        <div className="rounded-xl border border-border/40 bg-card/40 backdrop-blur-sm p-8 text-center text-muted-foreground">
+        <div className="glass-table shadow-sm p-8 text-center text-muted-foreground">
           Connecting to monitoring API...
         </div>
       )}
@@ -624,7 +624,7 @@ export function UnifiedDashboard() {
             <input
               type="text"
               placeholder="Search workers or connections..."
-              className="w-full pl-9 h-9 bg-muted/30 border border-border/50 focus:bg-background transition-all rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary/20"
+              className="w-full pl-9 h-9 rounded-lg border border-border bg-muted/50 text-sm outline-none transition-all focus:bg-background focus:ring-2 focus:ring-primary/20"
               value={searchTerm}
               onChange={(e) => {
                 setSearchTerm(e.target.value);
@@ -661,14 +661,14 @@ export function UnifiedDashboard() {
                 <button
                   onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
                   disabled={currentPage === 1}
-                  className="px-3 py-1.5 text-sm border border-border/50 rounded-lg hover:bg-muted/50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  className="px-3 py-1.5 text-sm rounded-lg border border-border hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50 transition-colors"
                 >
                   Previous
                 </button>
                 <button
                   onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
                   disabled={currentPage === totalPages}
-                  className="px-3 py-1.5 text-sm border border-border/50 rounded-lg hover:bg-muted/50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  className="px-3 py-1.5 text-sm rounded-lg border border-border hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50 transition-colors"
                 >
                   Next
                 </button>

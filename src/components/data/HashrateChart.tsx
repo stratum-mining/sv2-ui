@@ -119,7 +119,7 @@ export function HashrateChart({
   // Don't render chart if no data
   if (!data || data.length === 0) {
     return (
-      <Card className="glass-card border-none shadow-sm bg-card/40">
+      <Card className="glass-card shadow-sm">
         <CardHeader>
           <div className="flex items-center justify-between">
             <CardTitle className="text-base font-normal text-muted-foreground flex items-center gap-1.5">
@@ -142,7 +142,7 @@ export function HashrateChart({
   const { domain, ticks } = getNiceYAxisScale(data.map(d => d.hashrate));
 
   return (
-    <Card className="glass-card border-none shadow-sm bg-card/40">
+    <Card className="glass-card shadow-sm">
       <CardHeader>
         <div className="flex items-center justify-between">
           <CardTitle className="text-base font-normal text-muted-foreground flex items-center gap-1.5">

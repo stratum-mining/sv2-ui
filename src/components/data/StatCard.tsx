@@ -30,7 +30,7 @@ export function StatCard({
   className,
 }: StatCardProps) {
   return (
-    <Card className={cn('glass-card border-none shadow-md bg-card/40', className)}>
+    <Card className={cn('glass-card shadow-md', className)}>
       <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
         <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-1.5">
           {title}

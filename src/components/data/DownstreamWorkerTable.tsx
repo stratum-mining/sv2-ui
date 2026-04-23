@@ -38,6 +38,8 @@ interface DownstreamWorkerTableProps {
   showBestDiff?: boolean;
 }
 
+const TABLE_CONTAINER_CLASS_NAME = 'glass-table shadow-sm';
+
 function SortIcon({
   column,
   sortKey,
@@ -88,7 +90,7 @@ export function DownstreamWorkerTable({
 }: DownstreamWorkerTableProps) {
   if (isLoading) {
     return (
-      <div className="rounded-xl border border-border/40 bg-card/40 backdrop-blur-sm overflow-hidden shadow-sm">
+      <div className={TABLE_CONTAINER_CLASS_NAME}>
         <div className="p-8 text-center text-muted-foreground">
           Loading workers...
         </div>
@@ -97,7 +99,7 @@ export function DownstreamWorkerTable({
   }
 
   return (
-    <div className="rounded-xl border border-border/40 bg-card/40 backdrop-blur-sm overflow-hidden shadow-sm">
+    <div className={TABLE_CONTAINER_CLASS_NAME}>
       {workers.length === 0 ? (
         <div className="p-8 text-center text-muted-foreground">
           No workers connected
@@ -105,7 +107,7 @@ export function DownstreamWorkerTable({
       ) : (
         <Table>
           <TableHeader className="bg-muted/30">
-            <TableRow className="hover:bg-transparent border-border/40">
+            <TableRow className="hover:bg-transparent">
               <TableHead className="w-[132px] cursor-pointer select-none whitespace-nowrap" onClick={() => onSort('connection_id')}>
                 <span className="flex items-center gap-1 whitespace-nowrap hover:text-foreground transition-colors">
                   Connection Id
@@ -159,7 +161,7 @@ export function DownstreamWorkerTable({
           </TableHeader>
           <TableBody>
             {workers.map((worker) => (
-              <TableRow key={`${worker.connection_id}-${worker.channel_type}-${worker.channel_id ?? 'na'}-${worker.user_identity}`} className="hover:bg-muted/20 border-border/40 group">
+              <TableRow key={`${worker.connection_id}-${worker.channel_type}-${worker.channel_id ?? 'na'}-${worker.user_identity}`} className="hover:bg-muted/20 group">
                 <TableCell className="font-mono text-xs text-muted-foreground">
                   {worker.connection_id}
                 </TableCell>

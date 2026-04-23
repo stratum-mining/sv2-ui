@@ -76,7 +76,7 @@ export function Settings() {
 
           <TabsContent value="appearance">
             <div className="space-y-6 animate-in slide-in-from-bottom-2 duration-300">
-              <Card className="glass-card border-none shadow-md bg-card/40">
+              <Card className="glass-card shadow-md">
                 <CardHeader>
                   <CardTitle>Branding</CardTitle>
                   <CardDescription>
@@ -143,7 +143,7 @@ export function Settings() {
                     </p>
                   </div>
 
-                  <div className="flex items-center gap-4 pt-2 border-t border-border/40">
+                  <div className="flex items-center gap-4 pt-2 border-t border-border">
                     <Button
                       variant="outline"
                       size="sm"

@@ -15,6 +15,10 @@ const DEFAULT_CONFIG: UiConfig = {
   customLogoDataUrl: '',
 };
 
+const PRIMARY_FOREGROUND_LIGHTNESS_THRESHOLD = 60;
+const LIGHT_PRIMARY_FOREGROUND = '0 0% 100%';
+const DARK_PRIMARY_FOREGROUND = '0 0% 9%';
+
 function loadConfig(): UiConfig {
   if (typeof window === 'undefined') return DEFAULT_CONFIG;
   try {
@@ -39,8 +43,15 @@ function saveConfig(config: UiConfig) {
   window.localStorage.setItem(STORAGE_KEY, JSON.stringify(config));
 }
 
+function getPrimaryForeground(lightness: number): string {
+  return lightness >= PRIMARY_FOREGROUND_LIGHTNESS_THRESHOLD
+    ? DARK_PRIMARY_FOREGROUND
+    : LIGHT_PRIMARY_FOREGROUND;
+}
+
 // Apply runtime CSS variable overrides based on config.
-// Slightly boosts lightness for dark mode primary (+5% L).
+// Slightly boosts lightness for dark mode primary (+5% L) and
+// keeps foreground text readable for user-selected accent colors.
 function applyCssVariables(config: UiConfig) {
   if (typeof document === 'undefined') return;
   const root = document.documentElement;
@@ -52,14 +63,19 @@ function applyCssVariables(config: UiConfig) {
   const h = parts[0];
   const s = parts[1];
   const lVal = parseFloat(parts[2]);
+  if (Number.isNaN(lVal)) return;
   const lDark = Math.min(lVal + 5, 100);
   const pDark = `${h} ${s} ${lDark}%`;
+  const primaryForeground = getPrimaryForeground(lVal);
+  const primaryForegroundDark = getPrimaryForeground(lDark);
 
-  // Override the CSS variables that carry the primary/accent cyan
+  // Override the CSS variables that carry the user-selected primary color.
   // Using !important-style inline styles on :root (inline > stylesheet)
   root.style.setProperty('--primary', p);
+  root.style.setProperty('--primary-foreground', primaryForeground);
   root.style.setProperty('--ring', p);
   root.style.setProperty('--sidebar-primary', p);
+  root.style.setProperty('--sidebar-primary-foreground', primaryForeground);
   root.style.setProperty('--sidebar-ring', p);
   root.style.setProperty('--chart-1', p);
   root.style.setProperty('--cyan-500', p);
@@ -73,7 +89,7 @@ function applyCssVariables(config: UiConfig) {
     styleEl.id = styleId;
     document.head.appendChild(styleEl);
   }
-  styleEl.textContent = `.dark { --primary: ${pDark}; --ring: ${pDark}; --sidebar-primary: ${pDark}; --sidebar-ring: ${pDark}; --chart-1: ${pDark}; --cyan-500: ${pDark}; }`;
+  styleEl.textContent = `.dark { --primary: ${pDark}; --primary-foreground: ${primaryForegroundDark}; --ring: ${pDark}; --sidebar-primary: ${pDark}; --sidebar-primary-foreground: ${primaryForegroundDark}; --sidebar-ring: ${pDark}; --chart-1: ${pDark}; --cyan-500: ${pDark}; }`;
 }
 
 export function useUiConfig() {

@@ -15,6 +15,8 @@ interface UpstreamChannelTableProps {
   isLoading?: boolean;
 }
 
+const TABLE_CONTAINER_CLASS_NAME = 'glass-table shadow-sm';
+
 /**
  * Table component for displaying upstream connection channels.
  * Shows channels to the upstream server (Pool for JDC, Pool or JDC for Translator).
@@ -26,7 +28,7 @@ export function UpstreamChannelTable({
 }: UpstreamChannelTableProps) {
   if (isLoading) {
     return (
-      <div className="rounded-xl border border-border/40 bg-card/40 backdrop-blur-sm overflow-hidden shadow-sm">
+      <div className={TABLE_CONTAINER_CLASS_NAME}>
         <div className="p-8 text-center text-muted-foreground">
           Loading channels...
         </div>
@@ -41,7 +43,7 @@ export function UpstreamChannelTable({
 
   if (allChannels.length === 0) {
     return (
-      <div className="rounded-xl border border-border/40 bg-card/40 backdrop-blur-sm overflow-hidden shadow-sm">
+      <div className={TABLE_CONTAINER_CLASS_NAME}>
         <div className="p-8 text-center text-muted-foreground">
           No upstream channels
         </div>
@@ -50,10 +52,10 @@ export function UpstreamChannelTable({
   }
 
   return (
-    <div className="rounded-xl border border-border/40 bg-card/40 backdrop-blur-sm overflow-hidden shadow-sm">
+    <div className={TABLE_CONTAINER_CLASS_NAME}>
       <Table>
         <TableHeader className="bg-muted/30">
-          <TableRow className="hover:bg-transparent border-border/40">
+          <TableRow className="hover:bg-transparent">
             <TableHead className="w-[80px]">Channel</TableHead>
             <TableHead>Type</TableHead>
             <TableHead>User Identity</TableHead>
@@ -66,7 +68,7 @@ export function UpstreamChannelTable({
         </TableHeader>
         <TableBody>
           {allChannels.map((channel) => (
-            <TableRow key={`${channel.type}-${channel.channel_id}`} className="hover:bg-muted/20 border-border/40">
+            <TableRow key={`${channel.type}-${channel.channel_id}`} className="hover:bg-muted/20">
               <TableCell className="font-mono text-xs">
                 {channel.channel_id}
               </TableCell>

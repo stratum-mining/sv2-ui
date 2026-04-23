@@ -29,7 +29,7 @@ export function InfoPopover({ children }: InfoPopoverProps) {
           onMouseEnter={() => setOpen(true)}
           onMouseLeave={() => setOpen(false)}
           className={cn(
-            'z-50 w-72 rounded-xl border border-border/40 bg-card px-3 py-2 text-sm text-muted-foreground shadow-md',
+            'glass-overlay z-50 w-72 px-3 py-2 text-sm text-muted-foreground shadow-md',
             'animate-in fade-in-0 zoom-in-95',
             'data-[side=bottom]:slide-in-from-top-2 data-[side=top]:slide-in-from-bottom-2',
           )}

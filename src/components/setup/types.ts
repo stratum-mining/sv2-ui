@@ -40,6 +40,7 @@ export interface SetupData {
   miningMode: MiningMode | null;
   mode: SetupMode | null;
   pool: PoolConfig | null;
+  fallbackPools: PoolConfig[];
   bitcoin: BitcoinConfig | null;
   jdc: JdcConfig | null;
   translator: TranslatorConfig | null;
@@ -49,6 +50,7 @@ export const initialSetupData: SetupData = {
   miningMode: null,
   mode: null,
   pool: null,
+  fallbackPools: [],
   bitcoin: null,
   jdc: null,
   translator: null,

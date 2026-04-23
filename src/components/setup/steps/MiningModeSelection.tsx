@@ -18,7 +18,7 @@ export function MiningModeSelection({ updateData, onNext }: StepProps) {
   const handleSelect = (miningMode: MiningMode) => {
     if (phase !== 'idle') return;
     setSelectedMode(miningMode);
-    updateData({ miningMode, mode: null, pool: null, bitcoin: null, jdc: null, translator: null });
+    updateData({ miningMode, mode: null, pool: null, fallbackPools: [], bitcoin: null, jdc: null, translator: null });
     setPhase('arming');
   };
 

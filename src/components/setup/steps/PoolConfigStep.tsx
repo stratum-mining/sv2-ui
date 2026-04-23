@@ -1,69 +1,64 @@
-import { useState } from 'react';
+import { useEffect } from 'react';
 import { StepProps, PoolConfig } from '../types';
-import { Check } from 'lucide-react';
-import { PoolIcon } from '@/components/ui/pool-icon';
-import { POOL_MINING_NO_JD, POOL_MINING_JD, SOLO_POOLS, type KnownPool } from '@/lib/pools';
-import {
-  getPoolAuthorityPubkeyError,
-  isValidPoolAuthorityPubkey,
-  stripWrappingQuotes,
-} from '@/lib/utils';
+import { Plus, ArrowUp, ArrowDown, X } from 'lucide-react';
+import { POOL_MINING_NO_JD, POOL_MINING_JD, SOLO_POOLS } from '@/lib/pools';
+import { isValidPoolAuthorityPubkey } from '@/lib/utils';
+import { PoolPicker } from '../PoolPicker';
+
+const EMPTY_CUSTOM: PoolConfig = {
+  name: 'Custom Pool',
+  address: '',
+  port: 34254,
+  authority_public_key: '',
+};
+
+function isPoolValid(pool: PoolConfig): boolean {
+  return pool.address.length > 0 && isValidPoolAuthorityPubkey(pool.authority_public_key);
+}
 
 export function PoolConfigStep({ data, updateData, onNext }: StepProps) {
   const isSoloMode = data.miningMode === 'solo';
   const isJdMode = data.mode === 'jd';
-
   const pools = isSoloMode ? SOLO_POOLS : (isJdMode ? POOL_MINING_JD : POOL_MINING_NO_JD);
 
-  const defaultPool = pools.find(p => p.badge !== 'coming-soon') ?? null;
+  const first = pools.find((p) => p.badge !== 'coming-soon');
+  const defaultPrimary: PoolConfig = first
+    ? { name: first.name, address: first.address, port: first.port, authority_public_key: first.authority_public_key }
+    : EMPTY_CUSTOM;
 
-  const [isCustom, setIsCustom] = useState(false);
-  const [selectedPoolId, setSelectedPoolId] = useState<string | null>(() => {
-    if (data.pool?.address) return null; // already has a value from back-navigation
-    if (defaultPool) {
-      // pre-populate data so Continue is enabled immediately
-      setTimeout(() => updateData({ pool: { name: defaultPool.name, address: defaultPool.address, port: defaultPool.port, authority_public_key: defaultPool.authority_public_key } }), 0);
-      return defaultPool.id;
-    }
-    return null;
-  });
-  const [customPool, setCustomPool] = useState<PoolConfig>({
-    name: 'Custom Pool',
-    address: '',
-    port: 34254,
-    authority_public_key: '',
-  });
+  const primary: PoolConfig = data.pool ?? defaultPrimary;
+  useEffect(() => {
+    if (!data.pool) updateData({ pool: defaultPrimary });
+    // Pre-populate primary on first mount so Continue is enabled immediately.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-  const handleSelectPool = (pool: KnownPool) => {
-    if (pool.badge === 'coming-soon') return;
-    setSelectedPoolId(pool.id);
-    updateData({ pool: { name: pool.name, address: pool.address, port: pool.port, authority_public_key: pool.authority_public_key } });
-    setIsCustom(false);
+  const fallbacks = data.fallbackPools;
+
+  const setPrimary = (pool: PoolConfig) => updateData({ pool });
+
+  const setFallback = (index: number, pool: PoolConfig) => {
+    const next = fallbacks.map((f, i) => (i === index ? pool : f));
+    updateData({ fallbackPools: next });
   };
 
-  const handleCustomChange = (field: keyof PoolConfig, value: string | number) => {
-    // Normalize the stored pubkey so the TOML writer receives a clean value.
-    // isValidPoolAuthorityPubkey also strips internally for its own robustness,
-    // but the stored value has to be unquoted independently.
-    const normalized =
-      field === 'authority_public_key' && typeof value === 'string'
-        ? stripWrappingQuotes(value)
-        : value;
-    const updated = { ...customPool, [field]: normalized };
-    setCustomPool(updated);
-    updateData({ pool: updated });
+  const addFallback = () => {
+    updateData({ fallbackPools: [...fallbacks, { ...EMPTY_CUSTOM }] });
   };
 
-  const handleEnableCustom = () => {
-    setIsCustom(true);
-    setSelectedPoolId(null);
-    updateData({ pool: customPool });
+  const removeFallback = (index: number) => {
+    updateData({ fallbackPools: fallbacks.filter((_, i) => i !== index) });
   };
 
-  const isValid =
-    data.pool &&
-    data.pool.address &&
-    isValidPoolAuthorityPubkey(data.pool.authority_public_key);
+  const moveFallback = (index: number, direction: -1 | 1) => {
+    const target = index + direction;
+    if (target < 0 || target >= fallbacks.length) return;
+    const next = fallbacks.slice();
+    [next[index], next[target]] = [next[target], next[index]];
+    updateData({ fallbackPools: next });
+  };
+
+  const isValid = isPoolValid(primary) && fallbacks.every(isPoolValid);
 
   return (
     <div className="space-y-8">
@@ -72,138 +67,80 @@ export function PoolConfigStep({ data, updateData, onNext }: StepProps) {
           {isSoloMode ? 'Select Solo Pool' : 'Select Pool'}
         </h2>
         <p className="text-lg text-muted-foreground">
-          {isSoloMode ? 'Choose a solo mining pool to connect to' : isJdMode ? 'Choose a pool that supports Job Declaration' : 'Choose your mining pool'}
+          {isSoloMode
+            ? 'Choose a solo mining pool to connect to'
+            : isJdMode
+              ? 'Choose a pool that supports Job Declaration'
+              : 'Choose your mining pool'}
         </p>
       </div>
 
-      <div className="space-y-2">
-        {pools.map((pool) => {
-          const isSelected = selectedPoolId === pool.id;
-          const isDisabled = pool.badge === 'coming-soon';
-          return (
-            <button
-              key={pool.id}
-              type="button"
-              onClick={() => handleSelectPool(pool)}
-              disabled={isDisabled}
-              aria-pressed={isSelected}
-              className={`group w-full p-5 rounded-xl border transition-all text-left relative focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 ${
-                isDisabled
-                  ? 'border-border opacity-50 cursor-not-allowed bg-card'
-                  : isSelected
-                  ? 'border-primary bg-primary/[0.04]'
-                  : 'border-border bg-card hover:border-primary/45 hover:bg-primary/[0.02]'
-              }`}
-            >
-              {isSelected && (
-                <div className="absolute top-4 right-4 w-5 h-5 rounded-full bg-primary flex items-center justify-center" aria-hidden="true">
-                  <Check className="w-3 h-3 text-background" />
-                </div>
-              )}
-              {pool.badge && !isSelected && (
-                <div className="absolute top-4 right-4">
-                  <span className={`text-xs font-medium uppercase tracking-wider px-2 py-0.5 rounded-full ${
-                    pool.badge === 'testing'
-                      ? 'bg-warning/10 text-warning'
-                      : 'bg-muted text-muted-foreground'
-                  }`}>
-                    {pool.badge === 'testing' ? 'Testing' : 'Coming Soon'}
-                  </span>
-                </div>
-              )}
-              <div className="flex items-start gap-4">
-                <PoolIcon logoUrl={pool.logoUrl} logoOnDark={pool.logoOnDark} name={pool.name} />
-                <div className="flex-1 min-w-0 pr-8">
-                  <div className={`font-medium text-sm mb-1 ${isSelected ? 'text-primary' : ''}`}>{pool.name}</div>
-                  <div className="text-xs text-muted-foreground leading-relaxed">{pool.description}</div>
-                  {pool.address && (
-                    <div className="text-xs text-muted-foreground font-mono mt-1">{pool.address}:{pool.port}</div>
-                  )}
-                </div>
-              </div>
-            </button>
-          );
-        })}
+      <PoolPicker
+        pools={pools}
+        value={primary}
+        onChange={setPrimary}
+        formIdPrefix="primary-pool"
+      />
 
-        <button
-            type="button"
-            onClick={handleEnableCustom}
-            aria-pressed={isCustom}
-            aria-expanded={isCustom}
-            aria-controls="custom-pool-form"
-            className={`group w-full p-5 rounded-xl border transition-all text-left relative focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 ${
-              isCustom
-                ? 'border-primary bg-primary/[0.04]'
-                : 'border-border bg-card hover:border-primary/45 hover:bg-primary/[0.02]'
-            }`}
-          >
-            {isCustom && (
-              <div className="absolute top-4 right-4 w-5 h-5 rounded-full bg-primary flex items-center justify-center" aria-hidden="true">
-                <Check className="w-3 h-3 text-background" />
+      {!isSoloMode && (
+        <div className="space-y-4">
+          <div className="border-t border-border/60 pt-6">
+            <h3 className="text-lg font-semibold tracking-tight">Fallback Pools</h3>
+            <p className="text-sm text-muted-foreground mt-1">
+              Tried in priority order if the primary pool becomes unreachable.
+            </p>
+          </div>
+
+          {fallbacks.map((fp, index) => (
+            <div key={index} className="space-y-4 p-5 rounded-xl border border-border bg-muted/20">
+              <div className="flex items-center justify-between">
+                <p className="font-medium text-sm">Fallback {index + 1}</p>
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => moveFallback(index, -1)}
+                    disabled={index === 0}
+                    aria-label={`Move fallback ${index + 1} up`}
+                    className="w-7 h-7 rounded-md flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-accent disabled:opacity-30 disabled:cursor-not-allowed transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+                  >
+                    <ArrowUp className="w-4 h-4" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => moveFallback(index, 1)}
+                    disabled={index === fallbacks.length - 1}
+                    aria-label={`Move fallback ${index + 1} down`}
+                    className="w-7 h-7 rounded-md flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-accent disabled:opacity-30 disabled:cursor-not-allowed transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+                  >
+                    <ArrowDown className="w-4 h-4" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => removeFallback(index)}
+                    aria-label={`Remove fallback ${index + 1}`}
+                    className="w-7 h-7 rounded-md flex items-center justify-center text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-destructive/40"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
               </div>
-            )}
-            <div className="pr-8">
-              <div className={`font-medium text-sm mb-1 ${isCustom ? 'text-primary' : ''}`}>Custom Pool</div>
-              <div className="text-xs text-muted-foreground leading-relaxed">Configure your own pool connection</div>
+              <PoolPicker
+                pools={pools}
+                value={fp}
+                onChange={(pool) => setFallback(index, pool)}
+                formIdPrefix={`fallback-${index}`}
+              />
             </div>
-          </button>
-      </div>
+          ))}
 
-      {isCustom && (
-        <div id="custom-pool-form" className="space-y-4 p-5 rounded-xl border border-border bg-muted/30">
-          <div>
-            <label htmlFor="pool-address" className="block text-sm font-medium mb-2">
-              Pool Address <span className="text-primary" aria-hidden="true">*</span>
-              <span className="sr-only">(required)</span>
-            </label>
-            <input
-              id="pool-address"
-              type="text"
-              value={customPool.address}
-              onChange={(e) => handleCustomChange('address', e.target.value)}
-              placeholder="pool.example.com"
-              aria-required="true"
-              autoComplete="off"
-              className="w-full h-10 px-3 rounded-lg border border-input bg-background focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/15 outline-none transition-all"
-            />
-          </div>
-          <div>
-            <label htmlFor="pool-port" className="block text-sm font-medium mb-2">
-              Port <span className="text-primary" aria-hidden="true">*</span>
-              <span className="sr-only">(required)</span>
-            </label>
-            <input
-              id="pool-port"
-              type="number"
-              value={customPool.port}
-              onChange={(e) => handleCustomChange('port', parseInt(e.target.value) || 34254)}
-              aria-required="true"
-              className="w-full h-10 px-3 rounded-lg border border-input bg-background focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/15 outline-none transition-all"
-            />
-          </div>
-          <div>
-            <label htmlFor="pool-pubkey" className="block text-sm font-medium mb-2">
-              Authority Public Key <span className="text-primary" aria-hidden="true">*</span>
-              <span className="sr-only">(required)</span>
-            </label>
-            <input
-              id="pool-pubkey"
-              type="text"
-              value={customPool.authority_public_key}
-              onChange={(e) => handleCustomChange('authority_public_key', e.target.value)}
-              placeholder="Enter pool's authority public key"
-              aria-required="true"
-              aria-describedby="pool-pubkey-hint"
-              autoComplete="off"
-              className="w-full h-10 px-3 rounded-lg border border-input bg-background font-mono text-sm focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/15 outline-none transition-all"
-            />
-            {getPoolAuthorityPubkeyError(customPool.authority_public_key) && (
-              <p className="text-xs text-destructive mt-1">
-                {getPoolAuthorityPubkeyError(customPool.authority_public_key)}
-              </p>
-            )}
-            <p id="pool-pubkey-hint" className="text-xs text-muted-foreground mt-2">The pool's public key for Noise protocol authentication</p>
-          </div>
+          <button
+            type="button"
+            onClick={addFallback}
+            className="w-full flex items-center justify-center gap-2 h-11 rounded-xl border border-dashed border-border text-sm text-muted-foreground hover:text-foreground hover:border-primary/45 hover:bg-primary/[0.02] transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+          >
+            <Plus className="w-4 h-4" />
+            <span>Add fallback pool</span>
+          </button>
         </div>
       )}
 

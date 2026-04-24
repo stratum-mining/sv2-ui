@@ -5,6 +5,7 @@ import { MinerConnectionInfo } from '@/components/setup/MinerConnectionInfo';
 import { Shell } from '@/components/layout/Shell';
 import { StatCard } from '@/components/data/StatCard';
 import { HashrateChart, type TimeRange } from '@/components/data/HashrateChart';
+
 import {
   DownstreamWorkerTable,
   type ChannelType,
@@ -114,6 +115,7 @@ export function UnifiedDashboard() {
   // log-derived diagnostics from the API
   const { data: logDiagnostics } = useLogDiagnostics();
   const diagnostics = logDiagnostics?.diagnostics ?? [];
+
   const [isStarting, setIsStarting] = useState(false);
 
   const handleStartMining = async () => {

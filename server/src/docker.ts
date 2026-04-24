@@ -240,7 +240,7 @@ export async function readContainerLogs(
       stderr: true,
       follow: false,
       timestamps: true,
-      tail: options.tail ?? 200,
+      ...(options.tail !== undefined ? { tail: options.tail } : {}),
       abortSignal: AbortSignal.timeout(2000),
     };
 

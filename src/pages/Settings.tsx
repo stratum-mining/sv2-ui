@@ -6,6 +6,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Label } from '@/components/ui/label';
 import { useUiConfig } from '@/hooks/useUiConfig';
 import { useConnectionStatus } from '@/hooks/useConnectionStatus';
+import { useSetupStatus } from '@/hooks/useSetupStatus';
+import { useContainerLogs } from '@/hooks/useContainerLogs';
+import { ContainerLogsPanel } from '@/components/data/ContainerLogsPanel';
 import {
   CheckCircle2,
   RotateCcw,
@@ -19,6 +22,10 @@ import { ConfigurationTab } from '@/components/settings/ConfigurationTab';
 export function Settings() {
   const { config, updateConfig, resetConfig } = useUiConfig();
   const { status: connectionStatus, statusLabel: connectionLabel, poolName, uptime } = useConnectionStatus();
+  const { mode } = useSetupStatus();
+  const isJdMode = mode === 'jd';
+  const [activeTab, setActiveTab] = useState('configuration');
+  const { data: rawLogs, isLoading: logsLoading } = useContainerLogs(activeTab === 'logs');
   const logoInputRef = useRef<HTMLInputElement>(null);
 
   const [showSaved, setShowSaved] = useState(false);
@@ -64,14 +71,25 @@ export function Settings() {
           </div>
         </div>
 
-        <Tabs defaultValue="configuration" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-2 lg:w-[300px]">
+        <Tabs defaultValue="configuration" value={activeTab} onValueChange={setActiveTab} className="space-y-6">
+          <TabsList className="grid w-full grid-cols-3 lg:w-[450px]">
             <TabsTrigger value="configuration">Configuration</TabsTrigger>
+            <TabsTrigger value="logs">Logs</TabsTrigger>
             <TabsTrigger value="appearance">Appearance</TabsTrigger>
           </TabsList>
 
           <TabsContent value="configuration">
             <ConfigurationTab />
+          </TabsContent>
+
+          <TabsContent value="logs">
+            <div className="animate-in slide-in-from-bottom-2 duration-300">
+              <ContainerLogsPanel
+                lines={rawLogs?.lines ?? []}
+                isLoading={logsLoading}
+                isJdMode={isJdMode}
+              />
+            </div>
           </TabsContent>
 
           <TabsContent value="appearance">

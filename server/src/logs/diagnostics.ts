@@ -91,7 +91,7 @@ function sortLines(a: ContainerLogLine, b: ContainerLogLine): number {
   return a.raw.localeCompare(b.raw);
 }
 
-async function readCollatedLogLines(
+export async function readCollatedLogLines(
   mode: SetupMode | null,
   readLogs: LogProvider = readContainerLogs
 ): Promise<ContainerLogLine[]> {

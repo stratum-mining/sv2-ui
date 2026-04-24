@@ -3,6 +3,13 @@ export type LogOutputStream = 'stdout' | 'stderr';
 export type LogSourceKind = 'docker-container-logs' | 'container-log-file';
 export type SetupMode = 'jd' | 'no-jd';
 
+export interface ContainerLogLine {
+  container: LogContainerRole;
+  stream: LogOutputStream;
+  timestamp: string | null;
+  message: string;
+}
+
 export interface DiagnosticEvidence {
   container: LogContainerRole;
   stream: LogOutputStream;
@@ -36,4 +43,12 @@ export interface LogDiagnosticsResponse {
   generatedAt: string;
   streams: LogStreamDefinition[];
   diagnostics: LogDiagnostic[];
+}
+
+export interface ContainerLogsResponse {
+  configured: boolean;
+  mode: SetupMode | null;
+  generatedAt: string;
+  streams: LogStreamDefinition[];
+  lines: ContainerLogLine[];
 }

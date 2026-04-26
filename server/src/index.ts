@@ -7,12 +7,20 @@
 import express from 'express';
 import cors from 'cors';
 import net from 'net';
+import { networkInterfaces } from 'os';
 import path from 'path';
 import fs from 'fs/promises';
 import { fileURLToPath } from 'url';
 
 import type { SetupData, StatusResponse, SetupResponse } from './types.js';
-import { generateTranslatorConfig, generateJdcConfig, normalizeSetupData } from './config-generator.js';
+import {
+  generateTranslatorConfig,
+  generateJdcConfig,
+  normalizeSetupData,
+  TRANSLATOR_PORT,
+  JDC_PORT,
+  JDC_AUTHORITY_PUBLIC_KEY,
+} from './config-generator.js';
 import {
   startStack,
   stopStack,
@@ -78,6 +86,77 @@ app.get('/api/health', async (_req, res) => {
   res.json({
     status: 'ok',
     docker: dockerOk,
+  });
+});
+
+const LOCAL_HOSTNAMES = new Set(['localhost', '127.0.0.1', '0.0.0.0', '::1', '[::1]']);
+
+function isPrivateIpv4(address: string): boolean {
+  const parts = address.split('.').map(Number);
+  if (parts.length !== 4 || parts.some((part) => !Number.isInteger(part))) {
+    return false;
+  }
+
+  const [a, b] = parts;
+  return a === 10
+    || (a === 172 && b >= 16 && b <= 31)
+    || (a === 192 && b === 168);
+}
+
+function normalizeAdvertisedHost(value: string): string {
+  const trimmed = value.trim();
+  if (!trimmed) return '';
+
+  try {
+    return new URL(trimmed.includes('://') ? trimmed : `http://${trimmed}`).hostname;
+  } catch {
+    return trimmed.replace(/:\d+$/, '');
+  }
+}
+
+function configuredAdvertisedHost(): { host: string; source: string } | null {
+  for (const envName of ['SV2_UI_MINER_HOST', 'SV2_MINER_HOST']) {
+    const host = normalizeAdvertisedHost(process.env[envName] || '');
+    if (host && !LOCAL_HOSTNAMES.has(host.toLowerCase())) {
+      return { host, source: envName };
+    }
+  }
+
+  return null;
+}
+
+function lanAddressCandidates() {
+  return Object.entries(networkInterfaces())
+    .flatMap(([name, addresses]) => (addresses || []).map((address) => ({ name, address })))
+    .filter(({ address }) => address.family === 'IPv4' && !address.internal)
+    .map(({ name, address }) => ({
+      interface: name,
+      address: address.address,
+      private: isPrivateIpv4(address.address),
+    }))
+    .sort((a, b) => Number(b.private) - Number(a.private) || a.interface.localeCompare(b.interface));
+}
+
+/**
+ * GET /api/miner-connection - Miner-facing stack endpoints.
+ *
+ * The browser often runs on localhost, but ASICs must be configured with an
+ * address they can reach from the LAN. Prefer an explicit advertised host when
+ * set, otherwise use the first private IPv4 address on this machine.
+ */
+app.get('/api/miner-connection', (_req, res) => {
+  const configured = configuredAdvertisedHost();
+  const candidates = lanAddressCandidates();
+  const detectedHost = candidates[0]?.address ?? null;
+  const host = configured?.host ?? detectedHost;
+  const source = configured?.source ?? (detectedHost ? 'detected' : 'unavailable');
+
+  res.json({
+    host,
+    source,
+    candidates,
+    translator_url: host ? `stratum+tcp://${host}:${TRANSLATOR_PORT}` : null,
+    jdc_url: host ? `stratum2+tcp://${host}:${JDC_PORT}/${JDC_AUTHORITY_PUBLIC_KEY}` : null,
   });
 });
 
@@ -483,6 +562,71 @@ function getContainerUrl(containerName: string, port: number): string {
     : `http://localhost:${port}`;
 }
 
+const ASIC_SCAN_DEFAULT_HOST_TIMEOUT_MS = 3000;
+const ASIC_SCAN_DEFAULT_CONCURRENCY = 32;
+const ASIC_SCAN_TIMEOUT_OVERHEAD_MS = 15_000;
+const ASIC_SCAN_MAX_PROXY_TIMEOUT_MS = 10 * 60_000;
+
+function countScanTargets(targets: unknown): number | null {
+  if (!Array.isArray(targets)) {
+    return null;
+  }
+
+  let total = 0;
+  for (const rawTarget of targets) {
+    if (typeof rawTarget !== 'string') {
+      return null;
+    }
+
+    const target = rawTarget.trim();
+    if (!target) continue;
+
+    if (!target.includes('/')) {
+      total += 1;
+      continue;
+    }
+
+    const [address, prefixValue] = target.split('/');
+    if (!address || !prefixValue || !/^\d+$/.test(prefixValue)) {
+      return null;
+    }
+
+    const octets = address.split('.');
+    const prefix = Number(prefixValue);
+    if (
+      prefix < 0 ||
+      prefix > 32 ||
+      octets.length !== 4 ||
+      !octets.every((octet) => /^\d+$/.test(octet) && Number(octet) >= 0 && Number(octet) <= 255)
+    ) {
+      return null;
+    }
+
+    const hostCount = 2 ** (32 - prefix);
+    total += prefix <= 30 ? Math.max(0, hostCount - 2) : hostCount;
+  }
+
+  return total;
+}
+
+function numberFromBody(value: unknown, fallback: number): number {
+  return typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : fallback;
+}
+
+function asicScanProxyTimeoutMs(body: unknown): number {
+  const request = body && typeof body === 'object' ? body as Record<string, unknown> : {};
+  const targetCount = countScanTargets(request.targets);
+  if (targetCount == null) {
+    return 30_000;
+  }
+
+  const hostTimeoutMs = numberFromBody(request.timeout_ms, ASIC_SCAN_DEFAULT_HOST_TIMEOUT_MS);
+  const concurrency = Math.max(1, numberFromBody(request.concurrency, ASIC_SCAN_DEFAULT_CONCURRENCY));
+  const batches = Math.max(1, Math.ceil(targetCount / concurrency));
+  const estimated = batches * hostTimeoutMs + ASIC_SCAN_TIMEOUT_OVERHEAD_MS;
+  return Math.min(Math.max(30_000, estimated), ASIC_SCAN_MAX_PROXY_TIMEOUT_MS);
+}
+
 /**
  * Proxy requests to Translator monitoring API
  * This avoids CORS issues when the frontend is served from a different port
@@ -491,10 +635,17 @@ function getContainerUrl(containerName: string, port: number): string {
 app.use('/translator-api', async (req, res) => {
   const targetUrl = `${getContainerUrl('sv2-translator', 9092)}/api${req.url}`;
   try {
-    const response = await fetch(targetUrl, {
+    const timeoutMs = req.url.includes('/asic/scan') ? asicScanProxyTimeoutMs(req.body) : 15_000;
+    const init: RequestInit = {
       method: req.method,
       headers: { 'Content-Type': 'application/json' },
-      signal: AbortSignal.timeout(5000),
+      signal: AbortSignal.timeout(timeoutMs),
+    };
+    if (req.method !== 'GET' && req.method !== 'HEAD') {
+      init.body = JSON.stringify(req.body ?? {});
+    }
+    const response = await fetch(targetUrl, {
+      ...init,
     });
     const data = await response.text();
     res.status(response.status).set('Content-Type', response.headers.get('Content-Type') || 'application/json').send(data);
@@ -510,10 +661,16 @@ app.use('/translator-api', async (req, res) => {
 app.use('/jdc-api', async (req, res) => {
   const targetUrl = `${getContainerUrl('sv2-jdc', 9091)}/api${req.url}`;
   try {
-    const response = await fetch(targetUrl, {
+    const init: RequestInit = {
       method: req.method,
       headers: { 'Content-Type': 'application/json' },
-      signal: AbortSignal.timeout(5000),
+      signal: AbortSignal.timeout(15_000),
+    };
+    if (req.method !== 'GET' && req.method !== 'HEAD') {
+      init.body = JSON.stringify(req.body ?? {});
+    }
+    const response = await fetch(targetUrl, {
+      ...init,
     });
     const data = await response.text();
     res.status(response.status).set('Content-Type', response.headers.get('Content-Type') || 'application/json').send(data);

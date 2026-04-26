@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { Copy, Check } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 import { TRANSLATOR_PORT, JDC_PORT, JDC_AUTHORITY_PUBLIC_KEY } from '@/lib/ports';
+import { useMinerConnectionInfo } from '@/hooks/useMinerConnectionInfo';
 
 function CopyableAddress({ address }: { address: string }) {
   const [copied, setCopied] = useState(false);
@@ -28,25 +30,37 @@ function CopyableAddress({ address }: { address: string }) {
 interface MinerConnectionInfoProps {
   isJdMode: boolean;
   centered?: boolean;
+  onAddMiner?: () => void;
 }
 
-export function MinerConnectionInfo({ isJdMode, centered = false }: MinerConnectionInfoProps) {
-  const translatorUrl = `stratum+tcp://<your-machine-ip>:${TRANSLATOR_PORT}`;
-  const jdcUrl = `stratum2+tcp://<your-machine-ip>:${JDC_PORT}/${JDC_AUTHORITY_PUBLIC_KEY}`;
+export function MinerConnectionInfo({ isJdMode, centered = false, onAddMiner }: MinerConnectionInfoProps) {
+  const { data: minerConnection } = useMinerConnectionInfo();
+  const fallbackTranslatorUrl = `stratum+tcp://<your-machine-ip>:${TRANSLATOR_PORT}`;
+  const fallbackJdcUrl = `stratum2+tcp://<your-machine-ip>:${JDC_PORT}/${JDC_AUTHORITY_PUBLIC_KEY}`;
+  const translatorUrl = minerConnection?.translator_url || fallbackTranslatorUrl;
+  const jdcUrl = minerConnection?.jdc_url || fallbackJdcUrl;
+  const hasDetectedHost = Boolean(minerConnection?.host);
 
   const hint = (
     <p className="text-xs text-muted-foreground">
-      Replace <code className="font-mono bg-muted px-1 py-0.5 rounded text-foreground">&lt;your-machine-ip&gt;</code> with your local network IP (e.g. <code className="font-mono bg-muted px-1 py-0.5 rounded text-foreground">192.168.1.100</code>).
+      {hasDetectedHost ? (
+        <>
+          Use this miner-facing address if it is reachable from the same network as your miners.
+        </>
+      ) : (
+        <>
+          Replace <code className="font-mono bg-muted px-1 py-0.5 rounded text-foreground">&lt;your-machine-ip&gt;</code> with your local network IP (e.g. <code className="font-mono bg-muted px-1 py-0.5 rounded text-foreground">192.168.1.100</code>).
+        </>
+      )}
     </p>
   );
 
-  // When only one card is shown (SV1-only mode) it should stretch to full width.
-  // In JD mode two cards sit side-by-side on md+ screens.
-  const wrapperClass = centered
-    ? 'flex flex-wrap justify-center gap-3'
-    : isJdMode
-      ? 'grid gap-3 md:grid-cols-2'
-      : 'grid gap-3';
+  const wrapperClass = (() => {
+    if (centered) return 'flex flex-wrap justify-center gap-3';
+    if (onAddMiner && isJdMode) return 'grid gap-3 lg:grid-cols-3';
+    if (onAddMiner || isJdMode) return 'grid gap-3 md:grid-cols-2';
+    return 'grid gap-3';
+  })();
 
   return (
     <div className={wrapperClass}>
@@ -63,6 +77,20 @@ export function MinerConnectionInfo({ isJdMode, centered = false }: MinerConnect
           <div className="text-xs text-muted-foreground">Point directly to the JD Client</div>
           <CopyableAddress address={jdcUrl} />
           {hint}
+        </div>
+      )}
+
+      {onAddMiner && (
+        <div className={`flex flex-col justify-between gap-4 p-4 rounded-xl border border-dashed border-border bg-card${centered ? ' w-full max-w-sm' : ''}`}>
+          <div className="space-y-2">
+            <div className="font-semibold text-sm">Add a miner</div>
+            <div className="text-xs text-muted-foreground">
+              Automatically find compatible SV1 miners on your local network and point them to this dashboard.
+            </div>
+          </div>
+          <Button className="w-full" onClick={onAddMiner}>
+            Add miner
+          </Button>
         </div>
       )}
     </div>

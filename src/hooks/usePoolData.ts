@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQueries, useQuery } from '@tanstack/react-query';
 import type { 
   GlobalInfo, 
   ServerChannelsResponse, 
@@ -9,6 +9,9 @@ import type {
   ClientWithChannels,
   ExtendedChannelInfo,
   StandardChannelInfo,
+  AsicScanResponse,
+  AsicPoolGroupConfig,
+  AsicMinerTelemetry,
 } from '@/types/api';
 
 /**
@@ -68,7 +71,14 @@ async function fetchWithTimeout<T>(url: string, timeoutMs = 5000): Promise<T> {
     signal: AbortSignal.timeout(timeoutMs),
   });
   if (!response.ok) {
-    throw new Error(`HTTP ${response.status}`);
+    let message = `HTTP ${response.status}`;
+    try {
+      const body = await response.json() as { error?: string; message?: string };
+      message = body.error || body.message || message;
+    } catch {
+      // keep the HTTP status fallback
+    }
+    throw new Error(message);
   }
   return response.json();
 }
@@ -200,24 +210,164 @@ export function usePoolData(templateMode: TemplateMode = null) {
  * Hook to fetch SV1 clients data.
  * Always fetches from Translator (the only app with SV1 clients).
  */
-export function useSv1ClientsData(offset = 0, limit = 25, enabled = true) {
+export function useSv1ClientsData(
+  offset = 0,
+  limit = 25,
+  enabled = true,
+  includeAsic = false,
+  refetchInterval: number | false = 3000
+) {
   const endpoints = getEndpointsCached();
   
   return useQuery({
-    queryKey: ['sv1-clients', offset, limit],
+    queryKey: ['sv1-clients', offset, limit, includeAsic],
     queryFn: async () => {
+      const includeAsicParam = includeAsic ? '&include_asic=true' : '';
+      const timeoutMs = includeAsic ? 15_000 : 5000;
       const response = await fetch(
-        `${endpoints.translator.base}/sv1/clients?offset=${offset}&limit=${limit}`,
-        { signal: AbortSignal.timeout(5000) }
+        `${endpoints.translator.base}/sv1/clients?offset=${offset}&limit=${limit}${includeAsicParam}`,
+        { signal: AbortSignal.timeout(timeoutMs) }
       );
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}`);
       }
       return response.json() as Promise<Sv1ClientsResponse>;
     },
-    refetchInterval: 3000,
+    refetchInterval,
+    staleTime: includeAsic && typeof refetchInterval === 'number' ? refetchInterval : undefined,
     enabled,
   });
+}
+
+export function useSv1ClientAsicTelemetry(
+  clientIds: number[],
+  enabled = true,
+  refetchInterval: number | false = 30_000
+) {
+  const endpoints = getEndpointsCached();
+  const uniqueClientIds = useMemo(
+    () => Array.from(new Set(clientIds)),
+    [clientIds]
+  );
+
+  return useQueries({
+    queries: uniqueClientIds.map((clientId) => ({
+      queryKey: ['sv1-client-asic', clientId],
+      queryFn: () => fetchWithTimeout<AsicMinerTelemetry>(
+        `${endpoints.translator.base}/sv1/clients/${clientId}/asic`,
+        12_000
+      ),
+      enabled: enabled && uniqueClientIds.length > 0,
+      refetchInterval,
+      staleTime: typeof refetchInterval === 'number' ? refetchInterval : undefined,
+      retry: 1,
+    })),
+  });
+}
+
+async function parseControlResponse(response: Response) {
+  if (response.ok) return;
+  let message = `HTTP ${response.status}`;
+  try {
+    const body = await response.json() as { error?: string };
+    message = body.error || message;
+  } catch {
+    // keep the HTTP status fallback
+  }
+  throw new Error(message);
+}
+
+const ASIC_SCAN_HOST_TIMEOUT_MS = 3000;
+const ASIC_SCAN_CONCURRENCY = 32;
+const ASIC_SCAN_TIMEOUT_OVERHEAD_MS = 15_000;
+const ASIC_SCAN_MAX_CLIENT_TIMEOUT_MS = 10 * 60_000;
+
+function countScanTargets(targets: string[]) {
+  let total = 0;
+
+  for (const rawTarget of targets) {
+    const target = rawTarget.trim();
+    if (!target) continue;
+
+    if (!target.includes('/')) {
+      total += 1;
+      continue;
+    }
+
+    const [address, prefixValue] = target.split('/');
+    if (!address || !prefixValue || !/^\d+$/.test(prefixValue)) {
+      return null;
+    }
+
+    const octets = address.split('.');
+    const prefix = Number(prefixValue);
+    if (
+      prefix < 0 ||
+      prefix > 32 ||
+      octets.length !== 4 ||
+      !octets.every((octet) => /^\d+$/.test(octet) && Number(octet) >= 0 && Number(octet) <= 255)
+    ) {
+      return null;
+    }
+
+    const hostCount = 2 ** (32 - prefix);
+    total += prefix <= 30 ? Math.max(0, hostCount - 2) : hostCount;
+  }
+
+  return total;
+}
+
+function scanRequestTimeoutMs(targets: string[]) {
+  const targetCount = countScanTargets(targets);
+  if (targetCount == null) {
+    return 30_000;
+  }
+
+  const batches = Math.max(1, Math.ceil(targetCount / ASIC_SCAN_CONCURRENCY));
+  const estimated = batches * ASIC_SCAN_HOST_TIMEOUT_MS + ASIC_SCAN_TIMEOUT_OVERHEAD_MS;
+  return Math.min(Math.max(30_000, estimated), ASIC_SCAN_MAX_CLIENT_TIMEOUT_MS);
+}
+
+export async function scanAsicNetwork(targets: string[]): Promise<AsicScanResponse> {
+  const endpoints = getEndpointsCached();
+  const response = await fetch(`${endpoints.translator.base}/asic/scan`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    signal: AbortSignal.timeout(scanRequestTimeoutMs(targets)),
+    body: JSON.stringify({
+      targets,
+      timeout_ms: ASIC_SCAN_HOST_TIMEOUT_MS,
+      concurrency: ASIC_SCAN_CONCURRENCY,
+    }),
+  });
+  await parseControlResponse(response);
+  return response.json() as Promise<AsicScanResponse>;
+}
+
+export async function runAsicAction(
+  clientId: number,
+  action: 'blink' | 'reboot' | 'pause' | 'resume'
+): Promise<void> {
+  const endpoints = getEndpointsCached();
+  const response = await fetch(`${endpoints.translator.base}/sv1/clients/${clientId}/actions/${action}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({}),
+  });
+  await parseControlResponse(response);
+}
+
+export async function updateAsicPoolsByIp(
+  ip: string,
+  poolGroups: AsicPoolGroupConfig[]
+): Promise<void> {
+  const endpoints = getEndpointsCached();
+  const response = await fetch(`${endpoints.translator.base}/asic/${encodeURIComponent(ip)}/pools`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ pool_groups: poolGroups }),
+  });
+  await parseControlResponse(response);
 }
 
 /**

@@ -145,9 +145,40 @@ const NETWORK_NAME = 'sv2-network';
 const CONFIG_VOLUME = 'sv2-config';
 const TRANSLATOR_CONTAINER = 'sv2-translator';
 const JDC_CONTAINER = 'sv2-jdc';
-const TRANSLATOR_IMAGE = 'stratumv2/translator_sv2:main';
-const JDC_IMAGE = 'stratumv2/jd_client_sv2:main';
 const DOCKER_LOG_HEADER_SIZE = 8;
+
+type ImageConfig = {
+  image: string;
+  isOverride: boolean;
+  sourceEnv: string | null;
+};
+
+function resolveImageConfig(tempEnvName: string, envName: string, defaultImage: string): ImageConfig {
+  const tempImage = process.env[tempEnvName]?.trim();
+  if (tempImage) {
+    return { image: tempImage, isOverride: true, sourceEnv: tempEnvName };
+  }
+
+  const image = process.env[envName]?.trim();
+  if (image) {
+    return { image, isOverride: true, sourceEnv: envName };
+  }
+
+  return { image: defaultImage, isOverride: false, sourceEnv: null };
+}
+
+const TRANSLATOR_IMAGE_CONFIG = resolveImageConfig(
+  'SV2_UI_TEMP_TRANSLATOR_IMAGE',
+  'SV2_TRANSLATOR_IMAGE',
+  'stratumv2/translator_sv2:main'
+);
+const JDC_IMAGE_CONFIG = resolveImageConfig(
+  'SV2_UI_TEMP_JDC_IMAGE',
+  'SV2_JDC_IMAGE',
+  'stratumv2/jd_client_sv2:main'
+);
+const TRANSLATOR_IMAGE = TRANSLATOR_IMAGE_CONFIG.image;
+const JDC_IMAGE = JDC_IMAGE_CONFIG.image;
 
 /**
  * Detect if we're running inside a Docker container.
@@ -330,6 +361,25 @@ async function pullImage(imageName: string): Promise<void> {
   });
 }
 
+async function imageExistsLocally(imageName: string): Promise<boolean> {
+  try {
+    await docker.getImage(imageName).inspect();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function ensureImageAvailable(imageConfig: ImageConfig): Promise<void> {
+  const { image, isOverride, sourceEnv } = imageConfig;
+  if (isOverride && await imageExistsLocally(image)) {
+    console.log(`Using local image ${image}${sourceEnv ? ` from ${sourceEnv}` : ''}`);
+    return;
+  }
+
+  await pullImage(image);
+}
+
 /**
  * Remove a container if it exists
  */
@@ -486,10 +536,10 @@ export async function startStack(
   // Connect sv2-ui to the network so it can proxy API requests
   await connectSv2UiToNetwork();
 
-  // Pull latest images from Docker Hub
-  await pullImage(TRANSLATOR_IMAGE);
+  // Pull default images, but use locally built override tags when available.
+  await ensureImageAvailable(TRANSLATOR_IMAGE_CONFIG);
   if (data.mode === 'jd') {
-    await pullImage(JDC_IMAGE);
+    await ensureImageAvailable(JDC_IMAGE_CONFIG);
   }
 
   // Start JDC first if in JD mode (Translator connects to JDC)

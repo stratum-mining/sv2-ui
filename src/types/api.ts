@@ -195,12 +195,139 @@ export interface ClientWithChannels extends ClientMetadata {
 // SV1 Client Types (Translator only)
 // ============================================================================
 
+export interface AsicMinerCapabilities {
+  telemetry: boolean;
+  restart: boolean;
+  pause: boolean;
+  resume: boolean;
+  blink_led: boolean;
+  pools_config: boolean;
+  power_limit: boolean;
+  tuning_config: boolean;
+}
+
+export interface AsicHashboardTelemetry {
+  position: number;
+  hashrate_hs: number | null;
+  expected_hashrate_hs: number | null;
+  board_temperature_c: number | null;
+  intake_temperature_c: number | null;
+  outlet_temperature_c: number | null;
+  expected_chips: number | null;
+  working_chips: number | null;
+  serial_number: string | null;
+  voltage_v: number | null;
+  frequency_mhz: number | null;
+  tuned: boolean | null;
+  active: boolean | null;
+}
+
+export interface AsicFanTelemetry {
+  position: number;
+  rpm: number | null;
+}
+
+export interface AsicMinerMessage {
+  timestamp: number;
+  code: number;
+  message: string;
+  severity: string;
+}
+
+export interface AsicPoolData {
+  position: number | null;
+  url: string | null;
+  accepted_shares: number | null;
+  rejected_shares: number | null;
+  active: boolean | null;
+  alive: boolean | null;
+  user: string | null;
+}
+
+export interface AsicPoolGroupData {
+  name: string;
+  quota: number;
+  pools: AsicPoolData[];
+}
+
+export interface AsicPoolConfig {
+  url: string;
+  username: string;
+  password: string;
+}
+
+export interface AsicPoolGroupConfig {
+  name: string;
+  quota: number;
+  pools: AsicPoolConfig[];
+}
+
+export interface AsicMinerTelemetry {
+  ip: string;
+  make: string;
+  model: string;
+  firmware: string;
+  firmware_version: string | null;
+  serial_number: string | null;
+  mac_address: string | null;
+  hostname: string | null;
+  api_version: string | null;
+  control_board_version: string | null;
+  hashrate_hs: number | null;
+  expected_hashrate_hs: number | null;
+  power_w: number | null;
+  efficiency_j_th: number | null;
+  average_temperature_c: number | null;
+  fluid_temperature_c: number | null;
+  uptime_secs: number | null;
+  is_mining: boolean;
+  light_flashing: boolean | null;
+  expected_hashboards: number | null;
+  expected_chips: number | null;
+  total_chips: number | null;
+  expected_fans: number | null;
+  hashboards: AsicHashboardTelemetry[];
+  fans: AsicFanTelemetry[];
+  psu_fans: AsicFanTelemetry[];
+  pools: AsicPoolGroupData[];
+  messages: AsicMinerMessage[];
+  capabilities: AsicMinerCapabilities;
+  last_updated_at: number;
+}
+
+export interface AsicDiscoveredMiner {
+  ip: string;
+  port: number | null;
+  make: string;
+  model: string;
+  firmware: string;
+  firmware_version: string | null;
+  serial_number: string | null;
+  mac_address: string | null;
+  hostname: string | null;
+  capabilities: AsicMinerCapabilities;
+}
+
+export interface AsicScanError {
+  target: string;
+  error: string;
+}
+
+export interface AsicScanResponse {
+  total_targets: number;
+  found: AsicDiscoveredMiner[];
+  errors: AsicScanError[];
+}
+
 /**
  * Information about a single SV1 miner connected to Translator.
  */
 export interface Sv1ClientInfo {
   client_id: number;
   channel_id: number | null;
+  peer_ip?: string | null;
+  peer_port?: number | null;
+  asic?: AsicMinerTelemetry | null;
   authorized_worker_name: string;
   user_identity: string;
   target_hex: string;

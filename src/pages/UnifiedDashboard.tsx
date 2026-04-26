@@ -1,19 +1,26 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, Search, Play } from 'lucide-react';
+import { useQueryClient } from '@tanstack/react-query';
 import { InfoPopover } from '@/components/ui/info-popover';
+import { Button } from '@/components/ui/button';
 import { MinerConnectionInfo } from '@/components/setup/MinerConnectionInfo';
 import { Shell } from '@/components/layout/Shell';
 import { StatCard } from '@/components/data/StatCard';
 import { HashrateChart, type TimeRange } from '@/components/data/HashrateChart';
+import { MinerManagementModal } from '@/components/data/MinerManagementModal';
+import { MinerScanModal } from '@/components/data/MinerScanModal';
 
 import {
   DownstreamWorkerTable,
+  canOpenMinerManagement,
+  type AsicProbeStatus,
   type ChannelType,
   type DownstreamWorkerRow,
   type DownstreamWorkerSortKey,
 } from '@/components/data/DownstreamWorkerTable';
 import {
   usePoolData,
+  useSv1ClientAsicTelemetry,
   useSv1ClientsData,
   useTranslatorHealth,
   useJdcHealth,
@@ -42,6 +49,35 @@ function normalizeUserIdentity(userIdentity: string) {
   return userIdentity.trim().toLowerCase();
 }
 
+function getErrorMessage(error: unknown) {
+  if (error instanceof Error) return error.message;
+  if (typeof error === 'string') return error;
+  return 'Unknown ASIC telemetry error';
+}
+
+function getAsicUnavailableMessage(message: string) {
+  const normalized = message.toLowerCase();
+
+  if (normalized.includes('asic monitoring not available')) {
+    return 'ASIC monitoring is not available in this Translator image.';
+  }
+
+  if (
+    normalized.includes('no asic-rs supported miner') ||
+    normalized.includes('timed out') ||
+    normalized.includes('timeout') ||
+    normalized.includes('failed') ||
+    normalized.includes('connection') ||
+    normalized.includes('connect') ||
+    normalized.includes('http 404') ||
+    normalized.includes('http 502')
+  ) {
+    return 'No ASIC telemetry. This peer may be rented/proxied hashpower, unsupported, or its management API may be unreachable from this host.';
+  }
+
+  return message;
+}
+
 /**
  * Unified Dashboard for the SV2 Mining Stack.
  * 
@@ -66,6 +102,10 @@ export function UnifiedDashboard() {
   const [sortKey, setSortKey] = useState<DownstreamWorkerSortKey>('connection_id');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
   const [timeRange, setTimeRange] = useState<TimeRange>('5m');
+  const [selectedMinerIds, setSelectedMinerIds] = useState<Set<number>>(() => new Set());
+  const [scanModalOpen, setScanModalOpen] = useState(false);
+  const [managedWorkers, setManagedWorkers] = useState<DownstreamWorkerRow[]>([]);
+  const queryClient = useQueryClient();
   const itemsPerPage = 15;
 
   // Get configured template mode from setup status
@@ -206,6 +246,23 @@ export function UnifiedDashboard() {
       ...client.extended_channels.map((channel) => ({
         connection_id: client.client_id,
         channel_id: channel.channel_id,
+        peer_ip: null,
+        peer_port: null,
+        asic: null,
+        asic_status: null,
+        asic_probe_status: 'not_applicable' as const,
+        asic_error: null,
+        miner_status: null,
+        asic_make: null,
+        asic_model: null,
+        asic_firmware_version: null,
+        asic_hashrate_hs: null,
+        asic_expected_hashrate_hs: null,
+        asic_temperature_c: null,
+        asic_fluid_temperature_c: null,
+        asic_power_w: null,
+        asic_efficiency_j_th: null,
+        asic_uptime_secs: null,
         channel_type: translatedConnectionIds.has(client.client_id)
           ? 'sv1' as const
           : 'sv2_extended' as const,
@@ -216,6 +273,23 @@ export function UnifiedDashboard() {
       ...client.standard_channels.map((channel) => ({
         connection_id: client.client_id,
         channel_id: channel.channel_id,
+        peer_ip: null,
+        peer_port: null,
+        asic: null,
+        asic_status: null,
+        asic_probe_status: 'not_applicable' as const,
+        asic_error: null,
+        miner_status: null,
+        asic_make: null,
+        asic_model: null,
+        asic_firmware_version: null,
+        asic_hashrate_hs: null,
+        asic_expected_hashrate_hs: null,
+        asic_temperature_c: null,
+        asic_fluid_temperature_c: null,
+        asic_power_w: null,
+        asic_efficiency_j_th: null,
+        asic_uptime_secs: null,
         channel_type: 'sv2_standard' as const,
         user_identity: channel.user_identity,
         estimated_hashrate: channel.nominal_hashrate,
@@ -376,6 +450,10 @@ export function UnifiedDashboard() {
 
   const hasBestDiffSource = isJdMode ? !!sv2Clients : !!serverChannels;
 
+  const refreshMinerData = () => {
+    void queryClient.invalidateQueries({ queryKey: ['sv1-clients'] });
+  };
+
   useEffect(() => {
     if (isAggregatedTproxy && sortKey === 'best_diff') {
       setSortKey('connection_id');
@@ -384,6 +462,24 @@ export function UnifiedDashboard() {
   }, [isAggregatedTproxy, sortKey]);
 
   type DashboardWorkerRow = DownstreamWorkerRow & { search_text: string };
+  type AsicProbeResult = {
+    status: AsicProbeStatus;
+    telemetry: NonNullable<Sv1ClientInfo['asic']> | null;
+    error: string | null;
+  };
+
+  const translatorBestDiffByChannelId = useMemo(() => {
+    const bestDiffByChannelId = new Map<number, number>();
+    if (isAggregatedTproxy || !serverChannels) {
+      return bestDiffByChannelId;
+    }
+
+    [...serverChannels.extended_channels, ...serverChannels.standard_channels].forEach((channel) => {
+      bestDiffByChannelId.set(channel.channel_id, channel.best_diff);
+    });
+
+    return bestDiffByChannelId;
+  }, [isAggregatedTproxy, serverChannels]);
 
   const dashboardWorkers = useMemo<DashboardWorkerRow[]>(() => {
     if (isJdMode) {
@@ -393,6 +489,8 @@ export function UnifiedDashboard() {
           worker.user_identity,
           worker.connection_id.toString(),
           worker.channel_id?.toString() || '',
+          worker.peer_ip || '',
+          worker.peer_port?.toString() || '',
           worker.channel_type,
         ].join(' ').toLowerCase(),
       }));
@@ -401,19 +499,38 @@ export function UnifiedDashboard() {
     return allSv1Clients.map((client) => ({
       connection_id: client.client_id,
       channel_id: client.channel_id,
+      peer_ip: client.peer_ip ?? null,
+      peer_port: client.peer_port ?? null,
+      asic: null,
+      asic_status: null,
+      asic_probe_status: client.peer_ip ? 'probing' as const : 'not_applicable' as const,
+      asic_error: null,
+      miner_status: null,
+      asic_make: null,
+      asic_model: null,
+      asic_firmware_version: null,
+      asic_hashrate_hs: null,
+      asic_expected_hashrate_hs: null,
+      asic_temperature_c: null,
+      asic_fluid_temperature_c: null,
+      asic_power_w: null,
+      asic_efficiency_j_th: null,
+      asic_uptime_secs: null,
       channel_type: 'sv1' as ChannelType,
       user_identity: client.user_identity,
       estimated_hashrate: client.hashrate,
-      best_diff: null,
+      best_diff: client.channel_id == null ? null : translatorBestDiffByChannelId.get(client.channel_id) ?? null,
       search_text: [
         client.authorized_worker_name || '',
         client.user_identity,
         client.client_id.toString(),
         client.channel_id?.toString() || '',
+        client.peer_ip || '',
+        client.peer_port?.toString() || '',
         'sv1',
       ].join(' ').toLowerCase(),
     }));
-  }, [isJdMode, downstreamWorkers, allSv1Clients]);
+  }, [isJdMode, downstreamWorkers, allSv1Clients, translatorBestDiffByChannelId]);
 
   const filteredWorkers = useMemo(() => {
     let list = dashboardWorkers;
@@ -424,13 +541,18 @@ export function UnifiedDashboard() {
 
     const nullLast = sortDir === 'asc' ? Infinity : -Infinity;
     return [...list].sort((a, b) => {
-      const av = a[sortKey] ?? nullLast;
-      const bv = b[sortKey] ?? nullLast;
+      const av = a[sortKey];
+      const bv = b[sortKey];
+      if (av == null && bv == null) return 0;
+      if (av == null) return sortDir === 'asc' ? 1 : -1;
+      if (bv == null) return sortDir === 'asc' ? -1 : 1;
       if (typeof av === 'string' && typeof bv === 'string') {
         return sortDir === 'asc' ? av.localeCompare(bv) : bv.localeCompare(av);
       }
-      if (av < bv) return sortDir === 'asc' ? -1 : 1;
-      if (av > bv) return sortDir === 'asc' ? 1 : -1;
+      const aValue = av ?? nullLast;
+      const bValue = bv ?? nullLast;
+      if (aValue < bValue) return sortDir === 'asc' ? -1 : 1;
+      if (aValue > bValue) return sortDir === 'asc' ? 1 : -1;
       return 0;
     });
   }, [dashboardWorkers, searchTerm, sortKey, sortDir]);
@@ -445,10 +567,179 @@ export function UnifiedDashboard() {
   }, [currentPage, totalPages]);
 
   // Pagination
-  const paginatedWorkers = useMemo(() => {
+  const paginatedBaseWorkers = useMemo(() => {
     const start = (currentPage - 1) * itemsPerPage;
     return filteredWorkers.slice(start, start + itemsPerPage);
   }, [filteredWorkers, currentPage, itemsPerPage]);
+
+  const selectedBaseWorkers = useMemo(
+    () => dashboardWorkers.filter((worker) => selectedMinerIds.has(worker.connection_id)),
+    [dashboardWorkers, selectedMinerIds]
+  );
+
+  const telemetryClientIds = useMemo(() => {
+    const ids = new Set<number>();
+    [...paginatedBaseWorkers, ...selectedBaseWorkers, ...managedWorkers].forEach((worker) => {
+      if (worker.channel_type === 'sv1' && worker.peer_ip) {
+        ids.add(worker.connection_id);
+      }
+    });
+    return [...ids];
+  }, [paginatedBaseWorkers, selectedBaseWorkers, managedWorkers]);
+
+  const asicTelemetryQueries = useSv1ClientAsicTelemetry(
+    telemetryClientIds,
+    !isJdMode && telemetryClientIds.length > 0
+  );
+  const sv1AsicProbeByClientId = useMemo(() => {
+    const probeByClientId = new Map<number, AsicProbeResult>();
+    telemetryClientIds.forEach((clientId, index) => {
+      const query = asicTelemetryQueries[index];
+      const telemetry = query?.data ?? null;
+      if (telemetry) {
+        probeByClientId.set(clientId, {
+          status: 'available',
+          telemetry,
+          error: null,
+        });
+        return;
+      }
+
+      if (query?.isError) {
+        const message = getAsicUnavailableMessage(getErrorMessage(query.error));
+        probeByClientId.set(clientId, {
+          status: 'unavailable',
+          telemetry: null,
+          error: message,
+        });
+        return;
+      }
+
+      probeByClientId.set(clientId, {
+        status: 'probing',
+        telemetry: null,
+        error: null,
+      });
+    });
+    return probeByClientId;
+  }, [asicTelemetryQueries, telemetryClientIds]);
+
+  const enrichWorkerWithAsic = useCallback((worker: DashboardWorkerRow): DashboardWorkerRow => {
+    if (worker.channel_type !== 'sv1' || !worker.peer_ip) {
+      return {
+        ...worker,
+        asic_probe_status: 'not_applicable',
+        asic_error: null,
+        miner_status: null,
+      };
+    }
+
+    const probe = sv1AsicProbeByClientId.get(worker.connection_id);
+    if (!probe) {
+      return {
+        ...worker,
+        asic: null,
+        asic_status: null,
+        asic_probe_status: 'probing',
+        asic_error: null,
+        miner_status: null,
+        asic_make: null,
+        asic_model: null,
+        asic_firmware_version: null,
+        asic_hashrate_hs: null,
+        asic_expected_hashrate_hs: null,
+        asic_temperature_c: null,
+        asic_fluid_temperature_c: null,
+        asic_power_w: null,
+        asic_efficiency_j_th: null,
+        asic_uptime_secs: null,
+      };
+    }
+
+    if (probe.status !== 'available' || !probe.telemetry) {
+      return {
+        ...worker,
+        asic: null,
+        asic_status: probe.status === 'unavailable' ? 'No telemetry' : null,
+        asic_probe_status: probe.status,
+        asic_error: probe.error,
+        miner_status: null,
+        asic_make: null,
+        asic_model: null,
+        asic_firmware_version: null,
+        asic_hashrate_hs: null,
+        asic_expected_hashrate_hs: null,
+        asic_temperature_c: null,
+        asic_fluid_temperature_c: null,
+        asic_power_w: null,
+        asic_efficiency_j_th: null,
+        asic_uptime_secs: null,
+      };
+    }
+
+    const asic = probe.telemetry;
+    return {
+      ...worker,
+      asic,
+      asic_status: 'Available',
+      asic_probe_status: 'available',
+      asic_error: null,
+      miner_status: asic.is_mining ? 'Mining' : 'Stopped',
+      asic_make: asic.make || null,
+      asic_model: asic.model || null,
+      asic_firmware_version: asic.firmware_version || asic.firmware || null,
+      asic_hashrate_hs: asic.hashrate_hs ?? null,
+      asic_expected_hashrate_hs: asic.expected_hashrate_hs ?? null,
+      asic_temperature_c: asic.average_temperature_c ?? null,
+      asic_fluid_temperature_c: asic.fluid_temperature_c ?? null,
+      asic_power_w: asic.power_w ?? null,
+      asic_efficiency_j_th: asic.efficiency_j_th ?? null,
+      asic_uptime_secs: asic.uptime_secs ?? null,
+    };
+  }, [sv1AsicProbeByClientId]);
+
+  const paginatedWorkers = useMemo(
+    () => paginatedBaseWorkers.map(enrichWorkerWithAsic),
+    [paginatedBaseWorkers, enrichWorkerWithAsic]
+  );
+
+  const selectedWorkers = useMemo(
+    () => selectedBaseWorkers.map(enrichWorkerWithAsic).filter(canOpenMinerManagement),
+    [selectedBaseWorkers, enrichWorkerWithAsic]
+  );
+
+  useEffect(() => {
+    setSelectedMinerIds((current) => {
+      const validIds = new Set(dashboardWorkers.map((worker) => worker.connection_id));
+      const next = new Set([...current].filter((id) => validIds.has(id)));
+      return next.size === current.size ? current : next;
+    });
+  }, [dashboardWorkers]);
+
+  const toggleWorkerSelection = (worker: DownstreamWorkerRow) => {
+    if (!canOpenMinerManagement(worker)) return;
+    setSelectedMinerIds((current) => {
+      const next = new Set(current);
+      if (next.has(worker.connection_id)) next.delete(worker.connection_id);
+      else next.add(worker.connection_id);
+      return next;
+    });
+  };
+
+  const toggleVisibleSelection = (workers: DownstreamWorkerRow[]) => {
+    const selectableIds = workers
+      .filter(canOpenMinerManagement)
+      .map((worker) => worker.connection_id);
+    setSelectedMinerIds((current) => {
+      const next = new Set(current);
+      const allSelected = selectableIds.length > 0 && selectableIds.every((id) => next.has(id));
+      selectableIds.forEach((id) => {
+        if (allSelected) next.delete(id);
+        else next.add(id);
+      });
+      return next;
+    });
+  };
 
   return (
     <Shell
@@ -594,7 +885,10 @@ export function UnifiedDashboard() {
       {/* Miner Connection Info */}
       <div>
         <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-widest mb-3">Point your miners to</h2>
-        <MinerConnectionInfo isJdMode={isJdMode} />
+        <p className="mb-3 text-sm text-muted-foreground">
+          Use the endpoint cards for manual miner setup, or add compatible miners automatically.
+        </p>
+        <MinerConnectionInfo isJdMode={isJdMode} onAddMiner={() => setScanModalOpen(true)} />
       </div>
 
       {/* Main Chart - Real data accumulated over time */}
@@ -620,7 +914,7 @@ export function UnifiedDashboard() {
 
       {/* Actions Bar */}
       {!poolLoading && (
-        <div className="flex items-center gap-2">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <div className="relative w-full sm:w-72">
             <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
             <input
@@ -633,6 +927,17 @@ export function UnifiedDashboard() {
                 setCurrentPage(1);
               }}
             />
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            {selectedWorkers.length > 0 && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setManagedWorkers(selectedWorkers)}
+              >
+                Manage {selectedWorkers.length}
+              </Button>
+            )}
           </div>
         </div>
       )}
@@ -651,6 +956,10 @@ export function UnifiedDashboard() {
               setCurrentPage(1);
             }}
             showBestDiff={!isAggregatedTproxy}
+            selectedIds={selectedMinerIds}
+            onToggleWorker={!isJdMode ? toggleWorkerSelection : undefined}
+            onToggleAll={!isJdMode ? toggleVisibleSelection : undefined}
+            onManageWorker={!isJdMode ? (worker) => setManagedWorkers([worker]) : undefined}
           />
 
           {/* Pagination Footer */}
@@ -679,6 +988,18 @@ export function UnifiedDashboard() {
           )}
         </>
       )}
+
+      <MinerScanModal
+        open={scanModalOpen}
+        onClose={() => setScanModalOpen(false)}
+        onRefresh={refreshMinerData}
+      />
+      <MinerManagementModal
+        open={managedWorkers.length > 0}
+        workers={managedWorkers}
+        onClose={() => setManagedWorkers([])}
+        onRefresh={refreshMinerData}
+      />
     </Shell>
   );
 }

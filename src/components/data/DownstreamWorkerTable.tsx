@@ -16,8 +16,10 @@ export type ChannelType = 'sv1' | 'sv2_standard' | 'sv2_extended';
 export type AsicProbeStatus = 'not_applicable' | 'probing' | 'available' | 'unavailable';
 
 export interface DownstreamWorkerRow {
+  row_id: string;
   connection_id: number;
   channel_id: number | null;
+  asic_client_id?: number | null;
   peer_ip?: string | null;
   peer_port?: number | null;
   asic?: AsicMinerTelemetry | null;
@@ -69,7 +71,7 @@ interface DownstreamWorkerTableProps {
   sortDir: 'asc' | 'desc';
   onSort: (key: DownstreamWorkerSortKey) => void;
   showBestDiff?: boolean;
-  selectedIds?: Set<number>;
+  selectedIds?: Set<string>;
   onToggleWorker?: (worker: DownstreamWorkerRow) => void;
   onToggleAll?: (workers: DownstreamWorkerRow[]) => void;
   onManageWorker?: (worker: DownstreamWorkerRow) => void;
@@ -178,11 +180,11 @@ function formatTextValue(value: string | null | undefined) {
 }
 
 export function isManageableWorker(worker: DownstreamWorkerRow) {
-  return worker.channel_type === 'sv1' && !!worker.peer_ip && worker.asic_probe_status === 'available';
+  return worker.channel_type === 'sv1' && !!worker.peer_ip && worker.asic_client_id != null && worker.asic_probe_status === 'available';
 }
 
 export function canOpenMinerManagement(worker: DownstreamWorkerRow) {
-  return worker.channel_type === 'sv1' && !!worker.peer_ip;
+  return worker.channel_type === 'sv1' && !!worker.peer_ip && worker.asic_client_id != null;
 }
 
 function isSelectable(worker: DownstreamWorkerRow) {
@@ -191,6 +193,8 @@ function isSelectable(worker: DownstreamWorkerRow) {
 
 function getManageTitle(worker: DownstreamWorkerRow) {
   if (canOpenMinerManagement(worker)) return 'Manage miner';
+  if (worker.channel_type !== 'sv1') return 'ASIC management is only available for SV1 miners connected through the Translator.';
+  if (worker.asic_client_id == null) return 'No matching Translator SV1 miner is available for this row.';
   if (!worker.peer_ip) return 'No miner endpoint is available for this row.';
   return 'No miner endpoint is available for this row.';
 }
@@ -237,7 +241,7 @@ export function DownstreamWorkerTable({
                   <input
                     type="checkbox"
                     className="h-4 w-4 rounded border-border"
-                    checked={workers.some(isSelectable) && workers.filter(isSelectable).every((worker) => selectedIds?.has(worker.connection_id))}
+                    checked={workers.some(isSelectable) && workers.filter(isSelectable).every((worker) => selectedIds?.has(worker.row_id))}
                     disabled={!workers.some(isSelectable)}
                     onChange={() => onToggleAll?.(workers.filter(isSelectable))}
                     aria-label="Select all visible miners"
@@ -374,7 +378,7 @@ export function DownstreamWorkerTable({
           <TableBody>
             {workers.map((worker) => (
               <TableRow
-                key={`${worker.connection_id}-${worker.channel_type}-${worker.channel_id ?? 'na'}-${worker.user_identity}`}
+                key={worker.row_id}
                 className={cn('hover:bg-muted/20 group', canManageWorker(worker) && 'cursor-pointer')}
                 onClick={() => {
                   if (canManageWorker(worker)) {
@@ -387,7 +391,7 @@ export function DownstreamWorkerTable({
                     <input
                       type="checkbox"
                       className="h-4 w-4 rounded border-border"
-                      checked={isSelectable(worker) && (selectedIds?.has(worker.connection_id) ?? false)}
+                      checked={isSelectable(worker) && (selectedIds?.has(worker.row_id) ?? false)}
                       disabled={!isSelectable(worker)}
                       onClick={(event) => event.stopPropagation()}
                       onChange={() => onToggleWorker(worker)}

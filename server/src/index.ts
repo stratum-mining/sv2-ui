@@ -103,6 +103,31 @@ function isPrivateIpv4(address: string): boolean {
     || (a === 192 && b === 168);
 }
 
+function isDockerBridgeIpv4(address: string): boolean {
+  const [a, b] = address.split('.').map(Number);
+  return a === 172 && b >= 16 && b <= 31;
+}
+
+function isLikelyVirtualInterface(name: string): boolean {
+  const normalized = name.toLowerCase();
+  return normalized.startsWith('docker') ||
+    normalized.startsWith('br-') ||
+    normalized.startsWith('bridge') ||
+    normalized.startsWith('veth') ||
+    normalized.startsWith('virbr') ||
+    normalized.startsWith('utun') ||
+    normalized.startsWith('awdl') ||
+    normalized.startsWith('llw') ||
+    normalized.startsWith('zt') ||
+    normalized.startsWith('tailscale');
+}
+
+function isLikelyContainerBridgeInterface(name: string, address: string): boolean {
+  return process.env.NODE_ENV === 'production' &&
+    name.toLowerCase() === 'eth0' &&
+    isDockerBridgeIpv4(address);
+}
+
 function normalizeAdvertisedHost(value: string): string {
   const trimmed = value.trim();
   if (!trimmed) return '';
@@ -125,6 +150,20 @@ function configuredAdvertisedHost(): { host: string; source: string } | null {
   return null;
 }
 
+function requestAdvertisedHost(req: express.Request): { host: string; source: string } | null {
+  const browserHost = typeof req.query.browser_host === 'string' ? req.query.browser_host : '';
+  const forwardedHost = typeof req.headers['x-forwarded-host'] === 'string'
+    ? req.headers['x-forwarded-host'].split(',')[0]
+    : '';
+  const host = normalizeAdvertisedHost(browserHost || forwardedHost || req.headers.host || '');
+
+  if (host && !LOCAL_HOSTNAMES.has(host.toLowerCase())) {
+    return { host, source: browserHost ? 'browser-host' : 'request-host' };
+  }
+
+  return null;
+}
+
 function lanAddressCandidates() {
   return Object.entries(networkInterfaces())
     .flatMap(([name, addresses]) => (addresses || []).map((address) => ({ name, address })))
@@ -133,8 +172,15 @@ function lanAddressCandidates() {
       interface: name,
       address: address.address,
       private: isPrivateIpv4(address.address),
+      virtual: isLikelyVirtualInterface(name),
+      container_bridge: isLikelyContainerBridgeInterface(name, address.address),
     }))
-    .sort((a, b) => Number(b.private) - Number(a.private) || a.interface.localeCompare(b.interface));
+    .sort((a, b) =>
+      Number(b.private) - Number(a.private) ||
+      Number(a.virtual) - Number(b.virtual) ||
+      Number(a.container_bridge) - Number(b.container_bridge) ||
+      a.interface.localeCompare(b.interface)
+    );
 }
 
 /**
@@ -144,12 +190,17 @@ function lanAddressCandidates() {
  * address they can reach from the LAN. Prefer an explicit advertised host when
  * set, otherwise use the first private IPv4 address on this machine.
  */
-app.get('/api/miner-connection', (_req, res) => {
+app.get('/api/miner-connection', (req, res) => {
   const configured = configuredAdvertisedHost();
+  const requestHost = requestAdvertisedHost(req);
   const candidates = lanAddressCandidates();
-  const detectedHost = candidates[0]?.address ?? null;
-  const host = configured?.host ?? detectedHost;
-  const source = configured?.source ?? (detectedHost ? 'detected' : 'unavailable');
+  const detectedHost = candidates.find((candidate) =>
+    candidate.private &&
+    !candidate.virtual &&
+    !candidate.container_bridge
+  )?.address ?? null;
+  const host = configured?.host ?? requestHost?.host ?? detectedHost;
+  const source = configured?.source ?? requestHost?.source ?? (detectedHost ? 'detected' : 'unavailable');
 
   res.json({
     host,

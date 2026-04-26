@@ -4,6 +4,8 @@ interface MinerConnectionCandidate {
   interface: string;
   address: string;
   private: boolean;
+  virtual?: boolean;
+  container_bridge?: boolean;
 }
 
 export interface MinerConnectionInfo {
@@ -16,7 +18,9 @@ export interface MinerConnectionInfo {
 
 async function fetchMinerConnectionInfo(): Promise<MinerConnectionInfo | null> {
   try {
-    const response = await fetch('/api/miner-connection', {
+    const browserHost = window.location.hostname || '';
+    const query = browserHost ? `?browser_host=${encodeURIComponent(browserHost)}` : '';
+    const response = await fetch(`/api/miner-connection${query}`, {
       signal: AbortSignal.timeout(1500),
     });
 

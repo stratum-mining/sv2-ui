@@ -4,6 +4,8 @@ export interface HashrateDataPoint {
   time: string;
   timestamp: number;
   hashrate: number;
+  powerW?: number | null;
+  efficiencyJTh?: number | null;
 }
 
 const MAX_HISTORY_POINTS = 720; // Keep up to 1 hour of data (at 5-second intervals)
@@ -48,6 +50,10 @@ function loadFromStorage(configKey: string): HashrateDataPoint[] {
 export function useHashrateHistory(
   currentHashrate: number | undefined,
   configKey: string,
+  telemetry?: {
+    powerW?: number | null;
+    efficiencyJTh?: number | null;
+  },
 ): HashrateDataPoint[] {
   const [history, setHistory] = useState<HashrateDataPoint[]>(
     () => loadFromStorage(configKey),
@@ -57,6 +63,8 @@ export function useHashrateHistory(
   // needing to restart on every change.
   const currentHashrateRef = useRef<number | undefined>(currentHashrate);
   currentHashrateRef.current = currentHashrate;
+  const telemetryRef = useRef<typeof telemetry>(telemetry);
+  telemetryRef.current = telemetry;
 
   const storageKeyRef = useRef<string>(storageKeyFor(configKey));
 
@@ -80,7 +88,14 @@ export function useHashrateHistory(
       });
 
       setHistory(prev => {
-        const newPoint: HashrateDataPoint = { time: timeStr, timestamp: now, hashrate };
+        const telemetry = telemetryRef.current;
+        const newPoint: HashrateDataPoint = {
+          time: timeStr,
+          timestamp: now,
+          hashrate,
+          powerW: telemetry?.powerW ?? null,
+          efficiencyJTh: telemetry?.efficiencyJTh ?? null,
+        };
         const updated = [...prev, newPoint];
         const trimmed = updated.length > MAX_HISTORY_POINTS
           ? updated.slice(-MAX_HISTORY_POINTS)

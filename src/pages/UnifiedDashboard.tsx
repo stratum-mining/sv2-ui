@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { MinerConnectionInfo } from '@/components/setup/MinerConnectionInfo';
 import { Shell } from '@/components/layout/Shell';
 import { StatCard } from '@/components/data/StatCard';
-import { HashrateChart, type TimeRange } from '@/components/data/HashrateChart';
+import { HashrateChart, type ChartMetric, type TimeRange } from '@/components/data/HashrateChart';
 import { MinerManagementModal } from '@/components/data/MinerManagementModal';
 import { MinerScanModal } from '@/components/data/MinerScanModal';
 
@@ -44,6 +44,7 @@ const RANGE_DESCRIPTIONS: Record<TimeRange, string> = {
   '15m': 'Last 15 minutes · sampled every 5 seconds',
   '1h': 'Last hour · sampled every 5 seconds',
 };
+const FLEET_TELEMETRY_PROBE_LIMIT = 96;
 
 function normalizeUserIdentity(userIdentity: string) {
   return userIdentity.trim().toLowerCase();
@@ -78,6 +79,21 @@ function getAsicUnavailableMessage(message: string) {
   return message;
 }
 
+function formatPowerValue(value: number | null | undefined) {
+  if (value == null) return '-';
+  if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(2)} MW`;
+  if (value >= 1_000) return `${(value / 1_000).toFixed(1)} kW`;
+  return `${Math.round(value).toLocaleString()} W`;
+}
+
+function formatEfficiencyValue(value: number | null | undefined) {
+  return value == null ? '-' : `${value.toFixed(1)} J/TH`;
+}
+
+function formatTemperatureValue(value: number | null | undefined) {
+  return value == null ? '-' : `${Math.round(value)} C`;
+}
+
 /**
  * Unified Dashboard for the SV2 Mining Stack.
  * 
@@ -102,7 +118,8 @@ export function UnifiedDashboard() {
   const [sortKey, setSortKey] = useState<DownstreamWorkerSortKey>('connection_id');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
   const [timeRange, setTimeRange] = useState<TimeRange>('5m');
-  const [selectedMinerIds, setSelectedMinerIds] = useState<Set<number>>(() => new Set());
+  const [chartMetric, setChartMetric] = useState<ChartMetric>('hashrate');
+  const [selectedMinerIds, setSelectedMinerIds] = useState<Set<string>>(() => new Set());
   const [scanModalOpen, setScanModalOpen] = useState(false);
   const [managedWorkers, setManagedWorkers] = useState<DownstreamWorkerRow[]>([]);
   const queryClient = useQueryClient();
@@ -134,11 +151,12 @@ export function UnifiedDashboard() {
   } = usePoolData(templateMode);
   const isAggregatedTproxy = !isJdMode && isAggregatedTproxyPoolName(configPoolName);
 
-  // SV1 clients (always from Translator)
+  // SV1 clients always come from the Translator. In JD mode they are not the
+  // primary worker-table source, but they are still needed for ASIC telemetry.
   const {
     data: sv1Data,
     isLoading: sv1Loading,
-  } = useSv1ClientsData(0, 1000, !isJdMode); // Translator-only rows for the shared worker table
+  } = useSv1ClientsData(0, 1000, true);
 
   const { data: translatorServerChannels } = useTranslatorServerChannels(isJdMode);
 
@@ -238,41 +256,72 @@ export function UnifiedDashboard() {
     return new Set<number>([candidates[0].client_id]);
   }, [isJdMode, sv2Clients, translatedUserIdentities]);
 
+  const sv1ClientMaps = useMemo(() => {
+    const byIdentity = new Map<string, Sv1ClientInfo[]>();
+    const byIdentityAndChannel = new Map<string, Sv1ClientInfo>();
+
+    allSv1Clients.forEach((client) => {
+      const key = normalizeUserIdentity(client.user_identity);
+      if (!key) return;
+
+      byIdentity.set(key, [...(byIdentity.get(key) ?? []), client]);
+      if (client.channel_id != null) {
+        byIdentityAndChannel.set(`${key}:${client.channel_id}`, client);
+      }
+    });
+
+    return { byIdentity, byIdentityAndChannel };
+  }, [allSv1Clients]);
+
   // All worker flows are normalized into the shared downstream worker table.
   const downstreamWorkers = useMemo<DownstreamWorkerRow[]>(() => {
     if (!sv2Clients) return [];
 
     return sv2Clients.flatMap((client) => [
-      ...client.extended_channels.map((channel) => ({
-        connection_id: client.client_id,
-        channel_id: channel.channel_id,
-        peer_ip: null,
-        peer_port: null,
-        asic: null,
-        asic_status: null,
-        asic_probe_status: 'not_applicable' as const,
-        asic_error: null,
-        miner_status: null,
-        asic_make: null,
-        asic_model: null,
-        asic_firmware_version: null,
-        asic_hashrate_hs: null,
-        asic_expected_hashrate_hs: null,
-        asic_temperature_c: null,
-        asic_fluid_temperature_c: null,
-        asic_power_w: null,
-        asic_efficiency_j_th: null,
-        asic_uptime_secs: null,
-        channel_type: translatedConnectionIds.has(client.client_id)
-          ? 'sv1' as const
-          : 'sv2_extended' as const,
-        user_identity: channel.user_identity,
-        estimated_hashrate: channel.nominal_hashrate,
-        best_diff: channel.best_diff,
-      })),
+      ...client.extended_channels.map((channel) => {
+        const isTranslatedSv1 = translatedConnectionIds.has(client.client_id);
+        const identityKey = normalizeUserIdentity(channel.user_identity);
+        const identityMatches = sv1ClientMaps.byIdentity.get(identityKey) ?? [];
+        const sv1Client = isTranslatedSv1
+          ? (
+              sv1ClientMaps.byIdentityAndChannel.get(`${identityKey}:${channel.channel_id}`) ??
+              (identityMatches.length === 1 ? identityMatches[0] : undefined)
+            )
+          : undefined;
+
+        return {
+          row_id: `jdc:${client.client_id}:extended:${channel.channel_id}:${channel.user_identity}`,
+          connection_id: client.client_id,
+          channel_id: channel.channel_id,
+          asic_client_id: sv1Client?.client_id ?? null,
+          peer_ip: sv1Client?.peer_ip ?? null,
+          peer_port: sv1Client?.peer_port ?? null,
+          asic: null,
+          asic_status: null,
+          asic_probe_status: sv1Client?.peer_ip ? 'probing' as const : 'not_applicable' as const,
+          asic_error: null,
+          miner_status: null,
+          asic_make: null,
+          asic_model: null,
+          asic_firmware_version: null,
+          asic_hashrate_hs: null,
+          asic_expected_hashrate_hs: null,
+          asic_temperature_c: null,
+          asic_fluid_temperature_c: null,
+          asic_power_w: null,
+          asic_efficiency_j_th: null,
+          asic_uptime_secs: null,
+          channel_type: isTranslatedSv1 ? 'sv1' as const : 'sv2_extended' as const,
+          user_identity: channel.user_identity,
+          estimated_hashrate: channel.nominal_hashrate,
+          best_diff: channel.best_diff,
+        };
+      }),
       ...client.standard_channels.map((channel) => ({
+        row_id: `jdc:${client.client_id}:standard:${channel.channel_id}:${channel.user_identity}`,
         connection_id: client.client_id,
         channel_id: channel.channel_id,
+        asic_client_id: null,
         peer_ip: null,
         peer_port: null,
         asic: null,
@@ -296,9 +345,9 @@ export function UnifiedDashboard() {
         best_diff: channel.best_diff,
       })),
     ]);
-  }, [sv2Clients, translatedConnectionIds]);
+  }, [sv2Clients, sv1ClientMaps, translatedConnectionIds]);
 
-  const downstreamWorkerCount = poolGlobal?.sv2_clients?.total_channels || downstreamWorkers.length;
+  const downstreamWorkerCount = poolGlobal?.sv2_clients?.total_channels ?? downstreamWorkers.length;
   // Hide the internal Translator->JDC hop by counting translated rows as user-facing
   // worker connections and direct SV2 clients by unique downstream connection ID.
   const userFacingDownstreamConnectionCount = useMemo(() => {
@@ -340,18 +389,6 @@ export function UnifiedDashboard() {
   // Falls back to 'default' while setup status is still loading or in
   // standalone mode (no orchestration backend).
   const historyConfigKey = [templateMode, configPoolName].filter(Boolean).join(':') || 'default';
-
-  // Build hashrate history from real-time data.
-  // Pass undefined until pool data has actually loaded to prevent injecting
-  // a false zero into persisted history on page refresh (see issue #57).
-  const hashrateForHistory = poolGlobal ? totalHashrate : undefined;
-  const hashrateHistory = useHashrateHistory(hashrateForHistory, historyConfigKey);
-
-  // Filter history to the selected time range for chart display
-  const filteredHistory = useMemo(() => {
-    const cutoff = Date.now() - RANGE_MS[timeRange];
-    return hashrateHistory.filter(p => p.timestamp > cutoff);
-  }, [hashrateHistory, timeRange]);
 
   const blocksFoundEntries = useMemo(() => {
     if (isJdMode) {
@@ -497,8 +534,10 @@ export function UnifiedDashboard() {
     }
 
     return allSv1Clients.map((client) => ({
+      row_id: `translator:sv1:${client.client_id}`,
       connection_id: client.client_id,
       channel_id: client.channel_id,
+      asic_client_id: client.client_id,
       peer_ip: client.peer_ip ?? null,
       peer_port: client.peer_port ?? null,
       asic: null,
@@ -573,23 +612,49 @@ export function UnifiedDashboard() {
   }, [filteredWorkers, currentPage, itemsPerPage]);
 
   const selectedBaseWorkers = useMemo(
-    () => dashboardWorkers.filter((worker) => selectedMinerIds.has(worker.connection_id)),
+    () => dashboardWorkers.filter((worker) => selectedMinerIds.has(worker.row_id)),
     [dashboardWorkers, selectedMinerIds]
+  );
+
+  const hasConnectedTelemetryRows = isJdMode ? downstreamWorkerCount > 0 : sv1TotalClients > 0;
+
+  const fleetTelemetryEligibleWorkers = useMemo<DashboardWorkerRow[]>(
+    () => {
+      if (!hasConnectedTelemetryRows) return [];
+
+      return dashboardWorkers.filter((worker) =>
+        worker.channel_type === 'sv1' &&
+        worker.peer_ip &&
+        worker.asic_client_id != null
+      );
+    },
+    [dashboardWorkers, hasConnectedTelemetryRows]
+  );
+
+  const fleetTelemetryProbeIds = useMemo(
+    () => Array.from(new Set(
+      fleetTelemetryEligibleWorkers
+        .slice(0, FLEET_TELEMETRY_PROBE_LIMIT)
+        .map((worker) => worker.asic_client_id!)
+    )),
+    [fleetTelemetryEligibleWorkers]
   );
 
   const telemetryClientIds = useMemo(() => {
     const ids = new Set<number>();
+    fleetTelemetryProbeIds.forEach((clientId) => ids.add(clientId));
     [...paginatedBaseWorkers, ...selectedBaseWorkers, ...managedWorkers].forEach((worker) => {
-      if (worker.channel_type === 'sv1' && worker.peer_ip) {
-        ids.add(worker.connection_id);
+      if (worker.channel_type === 'sv1' && worker.peer_ip && worker.asic_client_id != null) {
+        ids.add(worker.asic_client_id);
       }
     });
     return [...ids];
-  }, [paginatedBaseWorkers, selectedBaseWorkers, managedWorkers]);
+  }, [fleetTelemetryProbeIds, paginatedBaseWorkers, selectedBaseWorkers, managedWorkers]);
 
   const asicTelemetryQueries = useSv1ClientAsicTelemetry(
     telemetryClientIds,
-    !isJdMode && telemetryClientIds.length > 0
+    telemetryClientIds.length > 0,
+    60_000
   );
   const sv1AsicProbeByClientId = useMemo(() => {
     const probeByClientId = new Map<number, AsicProbeResult>();
@@ -624,8 +689,87 @@ export function UnifiedDashboard() {
     return probeByClientId;
   }, [asicTelemetryQueries, telemetryClientIds]);
 
+  const fleetTelemetrySummary = useMemo(() => {
+    const telemetry = fleetTelemetryProbeIds
+      .map((clientId) => sv1AsicProbeByClientId.get(clientId)?.telemetry)
+      .filter((asic): asic is NonNullable<Sv1ClientInfo['asic']> => !!asic);
+
+    const powerValues = telemetry
+      .map((asic) => asic.power_w)
+      .filter((value): value is number => typeof value === 'number' && Number.isFinite(value));
+    const hashrateValues = telemetry
+      .map((asic) => asic.hashrate_hs)
+      .filter((value): value is number => typeof value === 'number' && Number.isFinite(value) && value > 0);
+    const temperatureValues = telemetry
+      .map((asic) => asic.average_temperature_c)
+      .filter((value): value is number => typeof value === 'number' && Number.isFinite(value));
+    const efficiencyTelemetry = telemetry.filter((asic) =>
+      typeof asic.power_w === 'number' &&
+      Number.isFinite(asic.power_w) &&
+      typeof asic.hashrate_hs === 'number' &&
+      Number.isFinite(asic.hashrate_hs) &&
+      asic.hashrate_hs > 0
+    );
+
+    const totalPowerW = powerValues.length > 0
+      ? powerValues.reduce((sum, value) => sum + value, 0)
+      : null;
+    const totalHashrateHs = hashrateValues.length > 0
+      ? hashrateValues.reduce((sum, value) => sum + value, 0)
+      : null;
+    const efficiencyPowerW = efficiencyTelemetry.length > 0
+      ? efficiencyTelemetry.reduce((sum, asic) => sum + asic.power_w!, 0)
+      : null;
+    const efficiencyHashrateHs = efficiencyTelemetry.length > 0
+      ? efficiencyTelemetry.reduce((sum, asic) => sum + asic.hashrate_hs!, 0)
+      : null;
+    const averagePowerW = totalPowerW == null ? null : totalPowerW / powerValues.length;
+    const fleetEfficiencyJTh = efficiencyPowerW != null && efficiencyHashrateHs != null
+      ? efficiencyPowerW / (efficiencyHashrateHs / 1e12)
+      : null;
+    const averageTemperatureC = temperatureValues.length > 0
+      ? temperatureValues.reduce((sum, value) => sum + value, 0) / temperatureValues.length
+      : null;
+
+    return {
+      reportingCount: telemetry.length,
+      eligibleCount: fleetTelemetryEligibleWorkers.length,
+      probedCount: fleetTelemetryProbeIds.length,
+      isCapped: fleetTelemetryEligibleWorkers.length > fleetTelemetryProbeIds.length,
+      totalPowerW,
+      averagePowerW,
+      totalHashrateHs,
+      efficiencyPowerW,
+      efficiencyHashrateHs,
+      fleetEfficiencyJTh,
+      averageTemperatureC,
+    };
+  }, [fleetTelemetryEligibleWorkers.length, fleetTelemetryProbeIds, sv1AsicProbeByClientId]);
+  const hasAsicMetricSource = fleetTelemetrySummary.eligibleCount > 0;
+
+  useEffect(() => {
+    if (!hasAsicMetricSource && chartMetric !== 'hashrate') {
+      setChartMetric('hashrate');
+    }
+  }, [chartMetric, hasAsicMetricSource]);
+
+  // Build metric history from real-time data.
+  // Pass undefined until pool data has actually loaded to prevent injecting
+  // a false zero into persisted history on page refresh (see issue #57).
+  const hashrateForHistory = poolGlobal ? totalHashrate : undefined;
+  const hashrateHistory = useHashrateHistory(hashrateForHistory, historyConfigKey, {
+    powerW: fleetTelemetrySummary.totalPowerW,
+    efficiencyJTh: fleetTelemetrySummary.fleetEfficiencyJTh,
+  });
+
+  // Filter history to the selected time range for chart display
+  const filteredHistory = useMemo(() => {
+    const cutoff = Date.now() - RANGE_MS[timeRange];
+    return hashrateHistory.filter(p => p.timestamp > cutoff);
+  }, [hashrateHistory, timeRange]);
+
   const enrichWorkerWithAsic = useCallback((worker: DashboardWorkerRow): DashboardWorkerRow => {
-    if (worker.channel_type !== 'sv1' || !worker.peer_ip) {
+    if (worker.channel_type !== 'sv1' || !worker.peer_ip || worker.asic_client_id == null) {
       return {
         ...worker,
         asic_probe_status: 'not_applicable',
@@ -634,7 +778,7 @@ export function UnifiedDashboard() {
       };
     }
 
-    const probe = sv1AsicProbeByClientId.get(worker.connection_id);
+    const probe = sv1AsicProbeByClientId.get(worker.asic_client_id);
     if (!probe) {
       return {
         ...worker,
@@ -710,7 +854,7 @@ export function UnifiedDashboard() {
 
   useEffect(() => {
     setSelectedMinerIds((current) => {
-      const validIds = new Set(dashboardWorkers.map((worker) => worker.connection_id));
+      const validIds = new Set(dashboardWorkers.map((worker) => worker.row_id));
       const next = new Set([...current].filter((id) => validIds.has(id)));
       return next.size === current.size ? current : next;
     });
@@ -720,8 +864,8 @@ export function UnifiedDashboard() {
     if (!canOpenMinerManagement(worker)) return;
     setSelectedMinerIds((current) => {
       const next = new Set(current);
-      if (next.has(worker.connection_id)) next.delete(worker.connection_id);
-      else next.add(worker.connection_id);
+      if (next.has(worker.row_id)) next.delete(worker.row_id);
+      else next.add(worker.row_id);
       return next;
     });
   };
@@ -729,7 +873,7 @@ export function UnifiedDashboard() {
   const toggleVisibleSelection = (workers: DownstreamWorkerRow[]) => {
     const selectableIds = workers
       .filter(canOpenMinerManagement)
-      .map((worker) => worker.connection_id);
+      .map((worker) => worker.row_id);
     setSelectedMinerIds((current) => {
       const next = new Set(current);
       const allSelected = selectableIds.length > 0 && selectableIds.every((id) => next.has(id));
@@ -882,6 +1026,59 @@ export function UnifiedDashboard() {
         />
         </div>
 
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+        <StatCard
+          title="ASIC Telemetry"
+          value={
+            <span>
+              {fleetTelemetrySummary.reportingCount}
+              <span className="text-muted-foreground text-lg"> / {fleetTelemetrySummary.eligibleCount}</span>
+            </span>
+          }
+          subtitle={
+            fleetTelemetrySummary.isCapped
+              ? `probing first ${fleetTelemetrySummary.probedCount} Translator SV1 miners`
+              : 'Translator SV1 miners reporting telemetry'
+          }
+          info={
+            <InfoPopover>
+              ASIC telemetry comes from reachable miner management APIs on SV1 miners connected to the Translator. Rented or proxied hashpower can keep hashing without contributing telemetry here.
+            </InfoPopover>
+          }
+        />
+
+        <StatCard
+          title="Fleet Efficiency"
+          value={formatEfficiencyValue(fleetTelemetrySummary.fleetEfficiencyJTh)}
+          subtitle={
+            fleetTelemetrySummary.fleetEfficiencyJTh != null && fleetTelemetrySummary.efficiencyHashrateHs != null
+              ? `${formatPowerValue(fleetTelemetrySummary.efficiencyPowerW)} / ${formatHashrate(fleetTelemetrySummary.efficiencyHashrateHs)}`
+              : 'waiting for power and ASIC hashrate'
+          }
+          info={
+            <InfoPopover>
+              Calculated the same way as miner efficiency: total reporting ASIC power divided by total reporting ASIC hashrate in TH/s.
+            </InfoPopover>
+          }
+        />
+
+        <StatCard
+          title="Average Power Load"
+          value={formatPowerValue(fleetTelemetrySummary.averagePowerW)}
+          subtitle={
+            fleetTelemetrySummary.totalPowerW != null
+              ? `${formatPowerValue(fleetTelemetrySummary.totalPowerW)} total draw`
+              : 'waiting for power telemetry'
+          }
+        />
+
+        <StatCard
+          title="Average Temperature"
+          value={formatTemperatureValue(fleetTelemetrySummary.averageTemperatureC)}
+          subtitle="from reporting ASICs"
+        />
+      </div>
+
       {/* Miner Connection Info */}
       <div>
         <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-widest mb-3">Point your miners to</h2>
@@ -894,13 +1091,20 @@ export function UnifiedDashboard() {
       {/* Main Chart - Real data accumulated over time */}
       <HashrateChart
         data={filteredHistory}
-        title="Hashrate History"
-        description={RANGE_DESCRIPTIONS[timeRange]}
+        title={hasAsicMetricSource ? 'Fleet Metrics History' : 'Hashrate History'}
+        description={
+          chartMetric === 'hashrate' || !hasAsicMetricSource
+            ? RANGE_DESCRIPTIONS[timeRange]
+            : `${RANGE_DESCRIPTIONS[timeRange]} · from reporting ASIC telemetry`
+        }
         timeRange={timeRange}
         onTimeRangeChange={setTimeRange}
+        metric={chartMetric}
+        onMetricChange={setChartMetric}
+        availableMetrics={hasAsicMetricSource ? ['hashrate', 'power', 'efficiency'] : ['hashrate']}
         info={
           <InfoPopover>
-            Estimated hashrate sampled every 5 seconds. May take a few minutes to reflect your miner's actual output.
+            Hashrate comes from shares. Power and efficiency come from reachable ASIC telemetry and exclude rows without miner management data.
           </InfoPopover>
         }
       />
@@ -957,9 +1161,9 @@ export function UnifiedDashboard() {
             }}
             showBestDiff={!isAggregatedTproxy}
             selectedIds={selectedMinerIds}
-            onToggleWorker={!isJdMode ? toggleWorkerSelection : undefined}
-            onToggleAll={!isJdMode ? toggleVisibleSelection : undefined}
-            onManageWorker={!isJdMode ? (worker) => setManagedWorkers([worker]) : undefined}
+            onToggleWorker={toggleWorkerSelection}
+            onToggleAll={toggleVisibleSelection}
+            onManageWorker={(worker) => setManagedWorkers([worker])}
           />
 
           {/* Pagination Footer */}

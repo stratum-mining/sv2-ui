@@ -2,8 +2,9 @@ import { type ReactNode } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import {
   Area,
-  AreaChart,
   CartesianGrid,
+  ComposedChart,
+  Line,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -12,14 +13,23 @@ import {
 import { formatHashrate } from '@/lib/utils';
 
 export type TimeRange = '5m' | '15m' | '1h';
+export type ChartMetric = 'hashrate' | 'power' | 'efficiency';
 
 interface HashrateChartProps {
-  data: { time: string; hashrate: number }[];
+  data: {
+    time: string;
+    hashrate: number;
+    powerW?: number | null;
+    efficiencyJTh?: number | null;
+  }[];
   title?: string;
   description?: string;
   info?: ReactNode;
   timeRange?: TimeRange;
   onTimeRangeChange?: (range: TimeRange) => void;
+  metric?: ChartMetric;
+  onMetricChange?: (metric: ChartMetric) => void;
+  availableMetrics?: ChartMetric[];
 }
 
 /**
@@ -79,6 +89,28 @@ function formatHashrateAxis(value: number): string {
   return `${label} ${units[i]}`;
 }
 
+function formatPower(value: number | null | undefined): string {
+  if (value == null) return '-';
+  if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(2)} MW`;
+  if (value >= 1_000) return `${(value / 1_000).toFixed(1)} kW`;
+  return `${Math.round(value)} W`;
+}
+
+function formatPowerAxis(value: number): string {
+  if (value === 0) return '0';
+  if (value >= 1_000_000) return `${Number((value / 1_000_000).toFixed(1))} MW`;
+  if (value >= 1_000) return `${Number((value / 1_000).toFixed(1))} kW`;
+  return `${Math.round(value)} W`;
+}
+
+function formatEfficiency(value: number | null | undefined): string {
+  return value == null ? '-' : `${value.toFixed(1)} J/TH`;
+}
+
+function formatEfficiencyAxis(value: number): string {
+  return `${Number(value.toFixed(1))}`;
+}
+
 /**
  * Hashrate history chart component.
  * Displays real accumulated data - no mock data.
@@ -89,6 +121,42 @@ const TIME_RANGE_OPTIONS: { value: TimeRange; label: string }[] = [
   { value: '1h', label: '1 hr' },
 ];
 
+const METRIC_OPTIONS: { value: ChartMetric; label: string }[] = [
+  { value: 'hashrate', label: 'Hashrate' },
+  { value: 'power', label: 'Power' },
+  { value: 'efficiency', label: 'Efficiency' },
+];
+
+const METRIC_CONFIG: Record<ChartMetric, {
+  dataKey: 'hashrate' | 'powerW' | 'efficiencyJTh';
+  label: string;
+  yAxisFormatter: (value: number) => string;
+  tooltipFormatter: (value: number) => string;
+  isLine: boolean;
+}> = {
+  hashrate: {
+    dataKey: 'hashrate',
+    label: 'Hashrate',
+    yAxisFormatter: formatHashrateAxis,
+    tooltipFormatter: formatHashrate,
+    isLine: false,
+  },
+  power: {
+    dataKey: 'powerW',
+    label: 'Power',
+    yAxisFormatter: formatPowerAxis,
+    tooltipFormatter: formatPower,
+    isLine: false,
+  },
+  efficiency: {
+    dataKey: 'efficiencyJTh',
+    label: 'Efficiency',
+    yAxisFormatter: formatEfficiencyAxis,
+    tooltipFormatter: formatEfficiency,
+    isLine: true,
+  },
+};
+
 export function HashrateChart({
   data,
   title = 'Hashrate History',
@@ -96,7 +164,12 @@ export function HashrateChart({
   info,
   timeRange,
   onTimeRangeChange,
+  metric = 'hashrate',
+  onMetricChange,
+  availableMetrics = ['hashrate', 'power', 'efficiency'],
 }: HashrateChartProps) {
+  const effectiveMetric = availableMetrics.includes(metric) ? metric : 'hashrate';
+  const metricConfig = METRIC_CONFIG[effectiveMetric];
   const rangeSelector = timeRange && onTimeRangeChange ? (
     <div className="inline-flex items-center rounded-md bg-muted p-0.5 text-xs">
       {TIME_RANGE_OPTIONS.map(({ value, label }) => (
@@ -116,17 +189,43 @@ export function HashrateChart({
     </div>
   ) : null;
 
-  // Don't render chart if no data
-  if (!data || data.length === 0) {
+  const metricSelector = onMetricChange ? (
+    <div className="inline-flex items-center rounded-md bg-muted p-0.5 text-xs">
+      {METRIC_OPTIONS.filter(({ value }) => availableMetrics.includes(value)).map(({ value, label }) => (
+        <button
+          key={value}
+          type="button"
+          onClick={() => onMetricChange(value)}
+          className={`px-2.5 py-1 rounded-sm font-medium transition-all ${
+            effectiveMetric === value
+              ? 'bg-background text-foreground shadow-sm'
+              : 'text-muted-foreground hover:text-foreground'
+          }`}
+        >
+          {label}
+        </button>
+      ))}
+    </div>
+  ) : null;
+
+  const metricValues = data
+    .map((point) => point[metricConfig.dataKey])
+    .filter((value): value is number => typeof value === 'number' && Number.isFinite(value));
+
+  // Don't render chart if no data for the selected metric.
+  if (!data || data.length === 0 || metricValues.length === 0) {
     return (
       <Card className="glass-card shadow-sm">
         <CardHeader>
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <CardTitle className="text-base font-normal text-muted-foreground flex items-center gap-1.5">
               {title}
               {info}
             </CardTitle>
-            {rangeSelector}
+            <div className="flex flex-wrap items-center gap-2">
+              {metricSelector}
+              {rangeSelector}
+            </div>
           </div>
           {description && <CardDescription>{description}</CardDescription>}
         </CardHeader>
@@ -139,17 +238,20 @@ export function HashrateChart({
     );
   }
 
-  const { domain, ticks } = getNiceYAxisScale(data.map(d => d.hashrate));
+  const { domain, ticks } = getNiceYAxisScale(metricValues);
 
   return (
     <Card className="glass-card shadow-sm">
       <CardHeader>
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <CardTitle className="text-base font-normal text-muted-foreground flex items-center gap-1.5">
             {title}
             {info}
           </CardTitle>
-          {rangeSelector}
+          <div className="flex flex-wrap items-center gap-2">
+            {metricSelector}
+            {rangeSelector}
+          </div>
         </div>
         {description && <CardDescription>{description}</CardDescription>}
       </CardHeader>
@@ -157,9 +259,9 @@ export function HashrateChart({
       <CardContent className="pl-2 pr-4">
         <div className="h-[200px] w-full">
           <ResponsiveContainer width="100%" height="100%">
-            <AreaChart data={data} margin={{ top: 4, right: 0, left: 0, bottom: 0 }}>
+            <ComposedChart data={data} margin={{ top: 4, right: 0, left: 0, bottom: 0 }}>
               <defs>
-                <linearGradient id="colorHashrate" x1="0" y1="0" x2="0" y2="1">
+                <linearGradient id={`color-${effectiveMetric}`} x1="0" y1="0" x2="0" y2="1">
                   <stop offset="5%"  stopColor="hsl(var(--chart-1))" stopOpacity={0.3} />
                   <stop offset="95%" stopColor="hsl(var(--chart-1))" stopOpacity={0} />
                 </linearGradient>
@@ -184,7 +286,7 @@ export function HashrateChart({
                 tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 11 }}
                 domain={domain}
                 ticks={ticks}
-                tickFormatter={(v) => formatHashrateAxis(v)}
+                tickFormatter={(v) => metricConfig.yAxisFormatter(v)}
                 /* wide enough for labels like "1.20 GH/s" without truncation */
                 width={76}
               />
@@ -196,18 +298,30 @@ export function HashrateChart({
                   boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
                 }}
                 itemStyle={{ color: 'hsl(var(--foreground))' }}
-                formatter={(value: number) => [formatHashrate(value), 'Hashrate']}
+                formatter={(value: number) => [metricConfig.tooltipFormatter(value), metricConfig.label]}
                 labelFormatter={(label) => `Time: ${label}`}
               />
-              <Area
-                type="monotone"
-                dataKey="hashrate"
-                stroke="hsl(var(--chart-1))"
-                strokeWidth={2}
-                fillOpacity={1}
-                fill="url(#colorHashrate)"
-              />
-            </AreaChart>
+              {metricConfig.isLine ? (
+                <Line
+                  type="monotone"
+                  dataKey={metricConfig.dataKey}
+                  stroke="hsl(var(--chart-1))"
+                  strokeWidth={2}
+                  dot={false}
+                  connectNulls
+                />
+              ) : (
+                <Area
+                  type="monotone"
+                  dataKey={metricConfig.dataKey}
+                  stroke="hsl(var(--chart-1))"
+                  strokeWidth={2}
+                  fillOpacity={1}
+                  fill={`url(#color-${effectiveMetric})`}
+                  connectNulls
+                />
+              )}
+            </ComposedChart>
           </ResponsiveContainer>
         </div>
       </CardContent>

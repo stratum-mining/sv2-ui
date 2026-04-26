@@ -72,7 +72,7 @@ export function MinerManagementModal({ open, workers, onClose, onRefresh }: Mine
   const [error, setError] = useState<string | null>(null);
 
   const selectedWorkers = useMemo(
-    () => workers.filter((worker) => worker.channel_type === 'sv1' && worker.peer_ip),
+    () => workers.filter((worker) => worker.channel_type === 'sv1' && worker.peer_ip && worker.asic_client_id != null),
     [workers]
   );
   const telemetryAvailableWorkers = useMemo(
@@ -125,7 +125,7 @@ export function MinerManagementModal({ open, workers, onClose, onRefresh }: Mine
     if (action === 'reboot' && !window.confirm(`Reboot ${selectedWorkers.length} miner(s)?`)) return;
     const actionLabel = action === 'resume' ? 'Start' : action === 'pause' ? 'Stop' : action === 'blink' ? 'Blink' : 'Reboot';
     void applyToSelected(
-      (worker) => runAsicAction(worker.connection_id, action),
+      (worker) => runAsicAction(worker.asic_client_id!, action),
       actionLabel
     );
   };

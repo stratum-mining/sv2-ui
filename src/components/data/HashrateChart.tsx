@@ -15,6 +15,13 @@ import { formatHashrate } from '@/lib/utils';
 export type TimeRange = '5m' | '15m' | '1h';
 export type ChartMetric = 'hashrate' | 'power' | 'efficiency';
 
+export interface ChartSummaryItem {
+  label: string;
+  value: ReactNode;
+  detail?: ReactNode;
+  info?: ReactNode;
+}
+
 interface HashrateChartProps {
   data: {
     time: string;
@@ -30,6 +37,7 @@ interface HashrateChartProps {
   metric?: ChartMetric;
   onMetricChange?: (metric: ChartMetric) => void;
   availableMetrics?: ChartMetric[];
+  summaryItems?: ChartSummaryItem[];
 }
 
 /**
@@ -167,6 +175,7 @@ export function HashrateChart({
   metric = 'hashrate',
   onMetricChange,
   availableMetrics = ['hashrate', 'power', 'efficiency'],
+  summaryItems = [],
 }: HashrateChartProps) {
   const effectiveMetric = availableMetrics.includes(metric) ? metric : 'hashrate';
   const metricConfig = METRIC_CONFIG[effectiveMetric];
@@ -212,23 +221,52 @@ export function HashrateChart({
     .map((point) => point[metricConfig.dataKey])
     .filter((value): value is number => typeof value === 'number' && Number.isFinite(value));
 
+  const summaryChips = summaryItems.length > 0 ? (
+    <div className="flex flex-wrap gap-2">
+      {summaryItems.map((item) => (
+        <div
+          key={item.label}
+          className="min-w-[118px] rounded-md border border-border bg-muted/30 px-2.5 py-1.5"
+        >
+          <div className="flex items-center gap-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+            {item.label}
+            {item.info}
+          </div>
+          <div className="font-mono text-sm font-semibold text-foreground">{item.value}</div>
+          {item.detail && (
+            <div className="text-[11px] leading-tight text-muted-foreground">{item.detail}</div>
+          )}
+        </div>
+      ))}
+    </div>
+  ) : null;
+
+  const headerContent = (
+    <CardHeader>
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+        <div className="min-w-0 space-y-1">
+          <CardTitle className="text-base font-normal text-muted-foreground flex items-center gap-1.5">
+            {title}
+            {info}
+          </CardTitle>
+          {description && <CardDescription>{description}</CardDescription>}
+        </div>
+        <div className="flex flex-col items-start gap-2 lg:items-end">
+          <div className="flex flex-wrap items-center gap-2 lg:justify-end">
+            {metricSelector}
+            {rangeSelector}
+          </div>
+          {summaryChips}
+        </div>
+      </div>
+    </CardHeader>
+  );
+
   // Don't render chart if no data for the selected metric.
   if (!data || data.length === 0 || metricValues.length === 0) {
     return (
       <Card className="glass-card shadow-sm">
-        <CardHeader>
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <CardTitle className="text-base font-normal text-muted-foreground flex items-center gap-1.5">
-              {title}
-              {info}
-            </CardTitle>
-            <div className="flex flex-wrap items-center gap-2">
-              {metricSelector}
-              {rangeSelector}
-            </div>
-          </div>
-          {description && <CardDescription>{description}</CardDescription>}
-        </CardHeader>
+        {headerContent}
         <CardContent>
           <div className="h-[200px] w-full flex items-center justify-center text-muted-foreground text-sm">
             Collecting data… Chart will appear shortly.
@@ -242,19 +280,7 @@ export function HashrateChart({
 
   return (
     <Card className="glass-card shadow-sm">
-      <CardHeader>
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <CardTitle className="text-base font-normal text-muted-foreground flex items-center gap-1.5">
-            {title}
-            {info}
-          </CardTitle>
-          <div className="flex flex-wrap items-center gap-2">
-            {metricSelector}
-            {rangeSelector}
-          </div>
-        </div>
-        {description && <CardDescription>{description}</CardDescription>}
-      </CardHeader>
+      {headerContent}
       {/* pr-4 keeps the right edge of the chart flush with the card padding */}
       <CardContent className="pl-2 pr-4">
         <div className="h-[200px] w-full">

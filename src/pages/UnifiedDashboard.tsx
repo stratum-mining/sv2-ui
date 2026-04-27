@@ -6,9 +6,9 @@ import { Button } from '@/components/ui/button';
 import { MinerConnectionInfo } from '@/components/setup/MinerConnectionInfo';
 import { Shell } from '@/components/layout/Shell';
 import { StatCard } from '@/components/data/StatCard';
-import { HashrateChart, type ChartMetric, type TimeRange } from '@/components/data/HashrateChart';
+import { HashrateChart, type ChartMetric, type ChartSummaryItem, type TimeRange } from '@/components/data/HashrateChart';
 import { MinerManagementModal } from '@/components/data/MinerManagementModal';
-import { MinerScanModal } from '@/components/data/MinerScanModal';
+import { AddMinerModal } from '@/components/data/AddMinerModal';
 
 import {
   DownstreamWorkerTable,
@@ -60,7 +60,7 @@ function getAsicUnavailableMessage(message: string) {
   const normalized = message.toLowerCase();
 
   if (normalized.includes('asic monitoring not available')) {
-    return 'ASIC monitoring is not available in this Translator image.';
+    return 'ASIC monitoring is not available in this app image.';
   }
 
   if (
@@ -120,7 +120,7 @@ export function UnifiedDashboard() {
   const [timeRange, setTimeRange] = useState<TimeRange>('5m');
   const [chartMetric, setChartMetric] = useState<ChartMetric>('hashrate');
   const [selectedMinerIds, setSelectedMinerIds] = useState<Set<string>>(() => new Set());
-  const [scanModalOpen, setScanModalOpen] = useState(false);
+  const [addMinerModalOpen, setAddMinerModalOpen] = useState(false);
   const [managedWorkers, setManagedWorkers] = useState<DownstreamWorkerRow[]>([]);
   const queryClient = useQueryClient();
   const itemsPerPage = 15;
@@ -746,12 +746,65 @@ export function UnifiedDashboard() {
     };
   }, [fleetTelemetryEligibleWorkers.length, fleetTelemetryProbeIds, sv1AsicProbeByClientId]);
   const hasAsicMetricSource = fleetTelemetrySummary.eligibleCount > 0;
+  const availableChartMetrics = useMemo<ChartMetric[]>(() => {
+    const metrics: ChartMetric[] = ['hashrate'];
+    if (fleetTelemetrySummary.totalPowerW != null) metrics.push('power');
+    if (fleetTelemetrySummary.fleetEfficiencyJTh != null) metrics.push('efficiency');
+    return metrics;
+  }, [fleetTelemetrySummary.fleetEfficiencyJTh, fleetTelemetrySummary.totalPowerW]);
+  const chartSummaryItems = useMemo<ChartSummaryItem[]>(() => {
+    if (!hasAsicMetricSource) return [];
+
+    return [
+      {
+        label: 'ASIC telemetry',
+        value: (
+          <span>
+            {fleetTelemetrySummary.reportingCount}
+            <span className="text-muted-foreground"> / {fleetTelemetrySummary.eligibleCount}</span>
+          </span>
+        ),
+        detail: fleetTelemetrySummary.isCapped
+          ? `probing first ${fleetTelemetrySummary.probedCount}`
+          : 'reporting miners',
+        info: (
+          <InfoPopover>
+            ASIC telemetry comes from reachable miner management APIs on connected SV1 miners. Rented or proxied hashpower can keep hashing without contributing telemetry here.
+          </InfoPopover>
+        ),
+      },
+      {
+        label: 'Efficiency',
+        value: formatEfficiencyValue(fleetTelemetrySummary.fleetEfficiencyJTh),
+        detail: fleetTelemetrySummary.fleetEfficiencyJTh != null && fleetTelemetrySummary.efficiencyHashrateHs != null
+          ? `${formatPowerValue(fleetTelemetrySummary.efficiencyPowerW)} / ${formatHashrate(fleetTelemetrySummary.efficiencyHashrateHs)}`
+          : 'waiting for power and hashrate',
+        info: (
+          <InfoPopover>
+            Calculated the same way as miner efficiency: total reporting ASIC power divided by total reporting ASIC hashrate in TH/s.
+          </InfoPopover>
+        ),
+      },
+      {
+        label: 'Power',
+        value: formatPowerValue(fleetTelemetrySummary.averagePowerW),
+        detail: fleetTelemetrySummary.totalPowerW != null
+          ? `${formatPowerValue(fleetTelemetrySummary.totalPowerW)} total`
+          : 'waiting for telemetry',
+      },
+      {
+        label: 'Temperature',
+        value: formatTemperatureValue(fleetTelemetrySummary.averageTemperatureC),
+        detail: 'from reporting ASICs',
+      },
+    ];
+  }, [fleetTelemetrySummary, hasAsicMetricSource]);
 
   useEffect(() => {
-    if (!hasAsicMetricSource && chartMetric !== 'hashrate') {
+    if (!availableChartMetrics.includes(chartMetric)) {
       setChartMetric('hashrate');
     }
-  }, [chartMetric, hasAsicMetricSource]);
+  }, [availableChartMetrics, chartMetric]);
 
   // Build metric history from real-time data.
   // Pass undefined until pool data has actually loaded to prevent injecting
@@ -949,6 +1002,12 @@ export function UnifiedDashboard() {
         </div>
       ))}
 
+      <MinerConnectionInfo
+        isJdMode={isJdMode}
+        variant="compact"
+        onAddMiner={() => setAddMinerModalOpen(true)}
+      />
+
       {/* Hero Stats Section */}
       <div className={isSovereignSolo ? 'grid gap-4 md:grid-cols-2 lg:grid-cols-4' : 'grid gap-4 md:grid-cols-2 lg:grid-cols-5'}>
         <StatCard
@@ -1024,68 +1083,6 @@ export function UnifiedDashboard() {
           value={hasBestDiffSource ? formatDifficulty(bestDiff) : '-'}
           subtitle={bestDiffSubtitle}
         />
-        </div>
-
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <StatCard
-          title="ASIC Telemetry"
-          value={
-            <span>
-              {fleetTelemetrySummary.reportingCount}
-              <span className="text-muted-foreground text-lg"> / {fleetTelemetrySummary.eligibleCount}</span>
-            </span>
-          }
-          subtitle={
-            fleetTelemetrySummary.isCapped
-              ? `probing first ${fleetTelemetrySummary.probedCount} Translator SV1 miners`
-              : 'Translator SV1 miners reporting telemetry'
-          }
-          info={
-            <InfoPopover>
-              ASIC telemetry comes from reachable miner management APIs on SV1 miners connected to the Translator. Rented or proxied hashpower can keep hashing without contributing telemetry here.
-            </InfoPopover>
-          }
-        />
-
-        <StatCard
-          title="Fleet Efficiency"
-          value={formatEfficiencyValue(fleetTelemetrySummary.fleetEfficiencyJTh)}
-          subtitle={
-            fleetTelemetrySummary.fleetEfficiencyJTh != null && fleetTelemetrySummary.efficiencyHashrateHs != null
-              ? `${formatPowerValue(fleetTelemetrySummary.efficiencyPowerW)} / ${formatHashrate(fleetTelemetrySummary.efficiencyHashrateHs)}`
-              : 'waiting for power and ASIC hashrate'
-          }
-          info={
-            <InfoPopover>
-              Calculated the same way as miner efficiency: total reporting ASIC power divided by total reporting ASIC hashrate in TH/s.
-            </InfoPopover>
-          }
-        />
-
-        <StatCard
-          title="Average Power Load"
-          value={formatPowerValue(fleetTelemetrySummary.averagePowerW)}
-          subtitle={
-            fleetTelemetrySummary.totalPowerW != null
-              ? `${formatPowerValue(fleetTelemetrySummary.totalPowerW)} total draw`
-              : 'waiting for power telemetry'
-          }
-        />
-
-        <StatCard
-          title="Average Temperature"
-          value={formatTemperatureValue(fleetTelemetrySummary.averageTemperatureC)}
-          subtitle="from reporting ASICs"
-        />
-      </div>
-
-      {/* Miner Connection Info */}
-      <div>
-        <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-widest mb-3">Point your miners to</h2>
-        <p className="mb-3 text-sm text-muted-foreground">
-          Use the endpoint cards for manual miner setup, or add compatible miners automatically.
-        </p>
-        <MinerConnectionInfo isJdMode={isJdMode} onAddMiner={() => setScanModalOpen(true)} />
       </div>
 
       {/* Main Chart - Real data accumulated over time */}
@@ -1101,7 +1098,8 @@ export function UnifiedDashboard() {
         onTimeRangeChange={setTimeRange}
         metric={chartMetric}
         onMetricChange={setChartMetric}
-        availableMetrics={hasAsicMetricSource ? ['hashrate', 'power', 'efficiency'] : ['hashrate']}
+        availableMetrics={availableChartMetrics}
+        summaryItems={chartSummaryItems}
         info={
           <InfoPopover>
             Hashrate comes from shares. Power and efficiency come from reachable ASIC telemetry and exclude rows without miner management data.
@@ -1133,6 +1131,12 @@ export function UnifiedDashboard() {
             />
           </div>
           <div className="flex flex-wrap items-center gap-2">
+            <Button
+              size="sm"
+              onClick={() => setAddMinerModalOpen(true)}
+            >
+              Add miner
+            </Button>
             {selectedWorkers.length > 0 && (
               <Button
                 variant="outline"
@@ -1193,9 +1197,10 @@ export function UnifiedDashboard() {
         </>
       )}
 
-      <MinerScanModal
-        open={scanModalOpen}
-        onClose={() => setScanModalOpen(false)}
+      <AddMinerModal
+        open={addMinerModalOpen}
+        isJdMode={isJdMode}
+        onClose={() => setAddMinerModalOpen(false)}
         onRefresh={refreshMinerData}
       />
       <MinerManagementModal

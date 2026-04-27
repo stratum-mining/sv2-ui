@@ -45,6 +45,20 @@ const RANGE_DESCRIPTIONS: Record<TimeRange, string> = {
   '1h': 'Last hour · sampled every 5 seconds',
 };
 const FLEET_TELEMETRY_PROBE_LIMIT = 96;
+const ASIC_SORT_KEYS = new Set<DownstreamWorkerSortKey>([
+  'asic_status',
+  'miner_status',
+  'asic_make',
+  'asic_model',
+  'asic_firmware_version',
+  'asic_hashrate_hs',
+  'asic_expected_hashrate_hs',
+  'asic_temperature_c',
+  'asic_fluid_temperature_c',
+  'asic_power_w',
+  'asic_efficiency_j_th',
+  'asic_uptime_secs',
+]);
 
 function normalizeUserIdentity(userIdentity: string) {
   return userIdentity.trim().toLowerCase();
@@ -806,6 +820,13 @@ export function UnifiedDashboard() {
     }
   }, [availableChartMetrics, chartMetric]);
 
+  useEffect(() => {
+    if (!hasAsicMetricSource && ASIC_SORT_KEYS.has(sortKey)) {
+      setSortKey('connection_id');
+      setSortDir('asc');
+    }
+  }, [hasAsicMetricSource, sortKey]);
+
   // Build metric history from real-time data.
   // Pass undefined until pool data has actually loaded to prevent injecting
   // a false zero into persisted history on page refresh (see issue #57).
@@ -1168,6 +1189,7 @@ export function UnifiedDashboard() {
             onToggleWorker={toggleWorkerSelection}
             onToggleAll={toggleVisibleSelection}
             onManageWorker={(worker) => setManagedWorkers([worker])}
+            showAsicTelemetry={hasAsicMetricSource}
           />
 
           {/* Pagination Footer */}

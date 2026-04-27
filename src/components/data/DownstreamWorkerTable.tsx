@@ -75,6 +75,7 @@ interface DownstreamWorkerTableProps {
   onToggleWorker?: (worker: DownstreamWorkerRow) => void;
   onToggleAll?: (workers: DownstreamWorkerRow[]) => void;
   onManageWorker?: (worker: DownstreamWorkerRow) => void;
+  showAsicTelemetry?: boolean;
 }
 
 const TABLE_CONTAINER_CLASS_NAME = 'glass-table shadow-sm';
@@ -213,6 +214,7 @@ export function DownstreamWorkerTable({
   onToggleWorker,
   onToggleAll,
   onManageWorker,
+  showAsicTelemetry = true,
 }: DownstreamWorkerTableProps) {
   if (isLoading) {
     return (
@@ -224,7 +226,12 @@ export function DownstreamWorkerTable({
     );
   }
 
-  const canManageWorker = (worker: DownstreamWorkerRow) => Boolean(onManageWorker && canOpenMinerManagement(worker));
+  const showSelection = showAsicTelemetry && Boolean(onToggleWorker);
+  const showManage = showAsicTelemetry && Boolean(onManageWorker);
+  const canManageWorker = (worker: DownstreamWorkerRow) => Boolean(showManage && canOpenMinerManagement(worker));
+  const tableMinWidth = showAsicTelemetry
+    ? (showManage ? 'min-w-[2520px]' : 'min-w-[2440px]')
+    : (showManage ? 'min-w-[1220px]' : 'min-w-[1120px]');
 
   return (
     <div className={TABLE_CONTAINER_CLASS_NAME}>
@@ -233,10 +240,10 @@ export function DownstreamWorkerTable({
           No workers connected
         </div>
       ) : (
-        <Table className={cn(onManageWorker ? 'min-w-[2520px]' : 'min-w-[2440px]')}>
+        <Table className={cn(tableMinWidth)}>
           <TableHeader className="bg-muted/30">
             <TableRow className="hover:bg-transparent">
-              {onToggleWorker && (
+              {showSelection && (
                 <TableHead className="w-[44px]">
                   <input
                     type="checkbox"
@@ -263,9 +270,9 @@ export function DownstreamWorkerTable({
                   Channel Id <SortIcon column="channel_id" sortKey={sortKey} sortDir={sortDir} />
                 </span>
               </TableHead>
-              <TableHead className="hidden md:table-cell w-[180px] cursor-pointer select-none whitespace-nowrap" onClick={() => onSort('peer_ip')}>
+              <TableHead className="w-[180px] cursor-pointer select-none whitespace-nowrap" onClick={() => onSort('peer_ip')}>
                 <span className="flex items-center gap-1 whitespace-nowrap hover:text-foreground transition-colors">
-                  Miner IP <SortIcon column="peer_ip" sortKey={sortKey} sortDir={sortDir} />
+                  Connection IP <SortIcon column="peer_ip" sortKey={sortKey} sortDir={sortDir} />
                 </span>
               </TableHead>
               <TableHead className="w-[160px] cursor-pointer select-none whitespace-nowrap" onClick={() => onSort('channel_type')}>
@@ -302,73 +309,77 @@ export function DownstreamWorkerTable({
                   </span>
                 </TableHead>
               )}
-              <TableHead className="w-[152px] cursor-pointer select-none whitespace-nowrap" onClick={() => onSort('asic_status')}>
-                <span className="flex items-center gap-1 whitespace-nowrap hover:text-foreground transition-colors">
-                  ASIC Telemetry <SortIcon column="asic_status" sortKey={sortKey} sortDir={sortDir} />
-                  <InfoPopover>
-                    Shows whether this dashboard can read telemetry from a supported miner
-                    management API. Rented or proxied hashpower, unsupported miners, or miners
-                    whose management API is unreachable can be connected without exposing
-                    telemetry here.
-                  </InfoPopover>
-                </span>
-              </TableHead>
-              <TableHead className="w-[132px] cursor-pointer select-none whitespace-nowrap" onClick={() => onSort('miner_status')}>
-                <span className="flex items-center gap-1 whitespace-nowrap hover:text-foreground transition-colors">
-                  Miner Status <SortIcon column="miner_status" sortKey={sortKey} sortDir={sortDir} />
-                </span>
-              </TableHead>
-              <TableHead className="w-[120px] cursor-pointer select-none whitespace-nowrap" onClick={() => onSort('asic_make')}>
-                <span className="flex items-center gap-1 whitespace-nowrap hover:text-foreground transition-colors">
-                  Make <SortIcon column="asic_make" sortKey={sortKey} sortDir={sortDir} />
-                </span>
-              </TableHead>
-              <TableHead className="w-[132px] cursor-pointer select-none whitespace-nowrap" onClick={() => onSort('asic_model')}>
-                <span className="flex items-center gap-1 whitespace-nowrap hover:text-foreground transition-colors">
-                  Model <SortIcon column="asic_model" sortKey={sortKey} sortDir={sortDir} />
-                </span>
-              </TableHead>
-              <TableHead className="w-[152px] cursor-pointer select-none whitespace-nowrap" onClick={() => onSort('asic_firmware_version')}>
-                <span className="flex items-center gap-1 whitespace-nowrap hover:text-foreground transition-colors">
-                  Firmware <SortIcon column="asic_firmware_version" sortKey={sortKey} sortDir={sortDir} />
-                </span>
-              </TableHead>
-              <TableHead className="w-[156px] text-right cursor-pointer select-none whitespace-nowrap" onClick={() => onSort('asic_hashrate_hs')}>
-                <span className="flex items-center justify-end gap-1 whitespace-nowrap hover:text-foreground transition-colors">
-                  ASIC Hashrate <SortIcon column="asic_hashrate_hs" sortKey={sortKey} sortDir={sortDir} />
-                </span>
-              </TableHead>
-              <TableHead className="w-[176px] text-right cursor-pointer select-none whitespace-nowrap" onClick={() => onSort('asic_expected_hashrate_hs')}>
-                <span className="flex items-center justify-end gap-1 whitespace-nowrap hover:text-foreground transition-colors">
-                  Expected Hashrate <SortIcon column="asic_expected_hashrate_hs" sortKey={sortKey} sortDir={sortDir} />
-                </span>
-              </TableHead>
-              <TableHead className="w-[120px] text-right cursor-pointer select-none whitespace-nowrap" onClick={() => onSort('asic_power_w')}>
-                <span className="flex items-center justify-end gap-1 whitespace-nowrap hover:text-foreground transition-colors">
-                  Power Draw <SortIcon column="asic_power_w" sortKey={sortKey} sortDir={sortDir} />
-                </span>
-              </TableHead>
-              <TableHead className="w-[132px] text-right cursor-pointer select-none whitespace-nowrap" onClick={() => onSort('asic_efficiency_j_th')}>
-                <span className="flex items-center justify-end gap-1 whitespace-nowrap hover:text-foreground transition-colors">
-                  Efficiency J/TH <SortIcon column="asic_efficiency_j_th" sortKey={sortKey} sortDir={sortDir} />
-                </span>
-              </TableHead>
-              <TableHead className="w-[120px] text-right cursor-pointer select-none whitespace-nowrap" onClick={() => onSort('asic_temperature_c')}>
-                <span className="flex items-center justify-end gap-1 whitespace-nowrap hover:text-foreground transition-colors">
-                  Avg Temp <SortIcon column="asic_temperature_c" sortKey={sortKey} sortDir={sortDir} />
-                </span>
-              </TableHead>
-              <TableHead className="w-[120px] text-right cursor-pointer select-none whitespace-nowrap" onClick={() => onSort('asic_fluid_temperature_c')}>
-                <span className="flex items-center justify-end gap-1 whitespace-nowrap hover:text-foreground transition-colors">
-                  Fluid Temp <SortIcon column="asic_fluid_temperature_c" sortKey={sortKey} sortDir={sortDir} />
-                </span>
-              </TableHead>
-              <TableHead className="w-[112px] text-right cursor-pointer select-none whitespace-nowrap" onClick={() => onSort('asic_uptime_secs')}>
-                <span className="flex items-center justify-end gap-1 whitespace-nowrap hover:text-foreground transition-colors">
-                  Uptime <SortIcon column="asic_uptime_secs" sortKey={sortKey} sortDir={sortDir} />
-                </span>
-              </TableHead>
-              {onManageWorker && (
+              {showAsicTelemetry && (
+                <>
+                  <TableHead className="w-[152px] cursor-pointer select-none whitespace-nowrap" onClick={() => onSort('asic_status')}>
+                    <span className="flex items-center gap-1 whitespace-nowrap hover:text-foreground transition-colors">
+                      ASIC Telemetry <SortIcon column="asic_status" sortKey={sortKey} sortDir={sortDir} />
+                      <InfoPopover>
+                        Shows whether this dashboard can read telemetry from a supported miner
+                        management API. Rented or proxied hashpower, unsupported miners, or miners
+                        whose management API is unreachable can be connected without exposing
+                        telemetry here.
+                      </InfoPopover>
+                    </span>
+                  </TableHead>
+                  <TableHead className="w-[132px] cursor-pointer select-none whitespace-nowrap" onClick={() => onSort('miner_status')}>
+                    <span className="flex items-center gap-1 whitespace-nowrap hover:text-foreground transition-colors">
+                      Miner Status <SortIcon column="miner_status" sortKey={sortKey} sortDir={sortDir} />
+                    </span>
+                  </TableHead>
+                  <TableHead className="w-[120px] cursor-pointer select-none whitespace-nowrap" onClick={() => onSort('asic_make')}>
+                    <span className="flex items-center gap-1 whitespace-nowrap hover:text-foreground transition-colors">
+                      Make <SortIcon column="asic_make" sortKey={sortKey} sortDir={sortDir} />
+                    </span>
+                  </TableHead>
+                  <TableHead className="w-[132px] cursor-pointer select-none whitespace-nowrap" onClick={() => onSort('asic_model')}>
+                    <span className="flex items-center gap-1 whitespace-nowrap hover:text-foreground transition-colors">
+                      Model <SortIcon column="asic_model" sortKey={sortKey} sortDir={sortDir} />
+                    </span>
+                  </TableHead>
+                  <TableHead className="w-[152px] cursor-pointer select-none whitespace-nowrap" onClick={() => onSort('asic_firmware_version')}>
+                    <span className="flex items-center gap-1 whitespace-nowrap hover:text-foreground transition-colors">
+                      Firmware <SortIcon column="asic_firmware_version" sortKey={sortKey} sortDir={sortDir} />
+                    </span>
+                  </TableHead>
+                  <TableHead className="w-[156px] text-right cursor-pointer select-none whitespace-nowrap" onClick={() => onSort('asic_hashrate_hs')}>
+                    <span className="flex items-center justify-end gap-1 whitespace-nowrap hover:text-foreground transition-colors">
+                      ASIC Hashrate <SortIcon column="asic_hashrate_hs" sortKey={sortKey} sortDir={sortDir} />
+                    </span>
+                  </TableHead>
+                  <TableHead className="w-[176px] text-right cursor-pointer select-none whitespace-nowrap" onClick={() => onSort('asic_expected_hashrate_hs')}>
+                    <span className="flex items-center justify-end gap-1 whitespace-nowrap hover:text-foreground transition-colors">
+                      Expected Hashrate <SortIcon column="asic_expected_hashrate_hs" sortKey={sortKey} sortDir={sortDir} />
+                    </span>
+                  </TableHead>
+                  <TableHead className="w-[120px] text-right cursor-pointer select-none whitespace-nowrap" onClick={() => onSort('asic_power_w')}>
+                    <span className="flex items-center justify-end gap-1 whitespace-nowrap hover:text-foreground transition-colors">
+                      Power Draw <SortIcon column="asic_power_w" sortKey={sortKey} sortDir={sortDir} />
+                    </span>
+                  </TableHead>
+                  <TableHead className="w-[132px] text-right cursor-pointer select-none whitespace-nowrap" onClick={() => onSort('asic_efficiency_j_th')}>
+                    <span className="flex items-center justify-end gap-1 whitespace-nowrap hover:text-foreground transition-colors">
+                      Efficiency J/TH <SortIcon column="asic_efficiency_j_th" sortKey={sortKey} sortDir={sortDir} />
+                    </span>
+                  </TableHead>
+                  <TableHead className="w-[120px] text-right cursor-pointer select-none whitespace-nowrap" onClick={() => onSort('asic_temperature_c')}>
+                    <span className="flex items-center justify-end gap-1 whitespace-nowrap hover:text-foreground transition-colors">
+                      Avg Temp <SortIcon column="asic_temperature_c" sortKey={sortKey} sortDir={sortDir} />
+                    </span>
+                  </TableHead>
+                  <TableHead className="w-[120px] text-right cursor-pointer select-none whitespace-nowrap" onClick={() => onSort('asic_fluid_temperature_c')}>
+                    <span className="flex items-center justify-end gap-1 whitespace-nowrap hover:text-foreground transition-colors">
+                      Fluid Temp <SortIcon column="asic_fluid_temperature_c" sortKey={sortKey} sortDir={sortDir} />
+                    </span>
+                  </TableHead>
+                  <TableHead className="w-[112px] text-right cursor-pointer select-none whitespace-nowrap" onClick={() => onSort('asic_uptime_secs')}>
+                    <span className="flex items-center justify-end gap-1 whitespace-nowrap hover:text-foreground transition-colors">
+                      Uptime <SortIcon column="asic_uptime_secs" sortKey={sortKey} sortDir={sortDir} />
+                    </span>
+                  </TableHead>
+                </>
+              )}
+              {showManage && (
                 <TableHead className="sticky right-0 z-10 w-[96px] bg-card text-right">
                   Manage
                 </TableHead>
@@ -386,7 +397,7 @@ export function DownstreamWorkerTable({
                   }
                 }}
               >
-                {onToggleWorker && (
+                {showSelection && (
                   <TableCell>
                     <input
                       type="checkbox"
@@ -394,7 +405,7 @@ export function DownstreamWorkerTable({
                       checked={isSelectable(worker) && (selectedIds?.has(worker.row_id) ?? false)}
                       disabled={!isSelectable(worker)}
                       onClick={(event) => event.stopPropagation()}
-                      onChange={() => onToggleWorker(worker)}
+                      onChange={() => onToggleWorker?.(worker)}
                       aria-label={`Select miner ${worker.connection_id}`}
                     />
                   </TableCell>
@@ -405,7 +416,7 @@ export function DownstreamWorkerTable({
                 <TableCell className="font-mono text-xs text-muted-foreground">
                   {worker.channel_id ?? '-'}
                 </TableCell>
-                <TableCell className="hidden md:table-cell font-mono text-xs text-muted-foreground">
+                <TableCell className="font-mono text-xs text-muted-foreground">
                   {getMinerEndpoint(worker)}
                 </TableCell>
                 <TableCell>
@@ -429,52 +440,56 @@ export function DownstreamWorkerTable({
                     {worker.best_diff !== null && worker.best_diff > 0 ? formatDifficulty(worker.best_diff) : '-'}
                   </TableCell>
                 )}
-                <TableCell>
-                  <span
-                    className={cn('inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold', getAsicStatusClassName(worker))}
-                    title={getAsicStatusTitle(worker)}
-                  >
-                    {getAsicStatus(worker)}
-                  </span>
-                </TableCell>
-                <TableCell>
-                  <span
-                    className={cn('inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold', getMinerStatusClassName(worker))}
-                  >
-                    {getMinerStatus(worker)}
-                  </span>
-                </TableCell>
-                <TableCell className="font-mono text-xs text-muted-foreground">
-                  {formatTextValue(worker.asic_make)}
-                </TableCell>
-                <TableCell className="max-w-[160px] font-mono text-xs text-muted-foreground">
-                  <span className="block truncate">{formatTextValue(worker.asic_model)}</span>
-                </TableCell>
-                <TableCell className="max-w-[180px] font-mono text-xs text-muted-foreground">
-                  <span className="block truncate">{formatTextValue(worker.asic_firmware_version)}</span>
-                </TableCell>
-                <TableCell className="text-right font-mono text-muted-foreground">
-                  {worker.asic_hashrate_hs != null ? formatHashrate(worker.asic_hashrate_hs) : '-'}
-                </TableCell>
-                <TableCell className="text-right font-mono text-muted-foreground">
-                  {worker.asic_expected_hashrate_hs != null ? formatHashrate(worker.asic_expected_hashrate_hs) : '-'}
-                </TableCell>
-                <TableCell className="text-right font-mono text-muted-foreground">
-                  {formatPower(worker.asic_power_w)}
-                </TableCell>
-                <TableCell className="text-right font-mono text-muted-foreground">
-                  {formatEfficiency(worker.asic_efficiency_j_th)}
-                </TableCell>
-                <TableCell className="text-right font-mono text-muted-foreground">
-                  {formatTemperature(worker.asic_temperature_c)}
-                </TableCell>
-                <TableCell className="text-right font-mono text-muted-foreground">
-                  {formatTemperature(worker.asic_fluid_temperature_c)}
-                </TableCell>
-                <TableCell className="text-right font-mono text-muted-foreground">
-                  {formatTelemetryUptime(worker.asic_uptime_secs)}
-                </TableCell>
-                {onManageWorker && (
+                {showAsicTelemetry && (
+                  <>
+                    <TableCell>
+                      <span
+                        className={cn('inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold', getAsicStatusClassName(worker))}
+                        title={getAsicStatusTitle(worker)}
+                      >
+                        {getAsicStatus(worker)}
+                      </span>
+                    </TableCell>
+                    <TableCell>
+                      <span
+                        className={cn('inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold', getMinerStatusClassName(worker))}
+                      >
+                        {getMinerStatus(worker)}
+                      </span>
+                    </TableCell>
+                    <TableCell className="font-mono text-xs text-muted-foreground">
+                      {formatTextValue(worker.asic_make)}
+                    </TableCell>
+                    <TableCell className="max-w-[160px] font-mono text-xs text-muted-foreground">
+                      <span className="block truncate">{formatTextValue(worker.asic_model)}</span>
+                    </TableCell>
+                    <TableCell className="max-w-[180px] font-mono text-xs text-muted-foreground">
+                      <span className="block truncate">{formatTextValue(worker.asic_firmware_version)}</span>
+                    </TableCell>
+                    <TableCell className="text-right font-mono text-muted-foreground">
+                      {worker.asic_hashrate_hs != null ? formatHashrate(worker.asic_hashrate_hs) : '-'}
+                    </TableCell>
+                    <TableCell className="text-right font-mono text-muted-foreground">
+                      {worker.asic_expected_hashrate_hs != null ? formatHashrate(worker.asic_expected_hashrate_hs) : '-'}
+                    </TableCell>
+                    <TableCell className="text-right font-mono text-muted-foreground">
+                      {formatPower(worker.asic_power_w)}
+                    </TableCell>
+                    <TableCell className="text-right font-mono text-muted-foreground">
+                      {formatEfficiency(worker.asic_efficiency_j_th)}
+                    </TableCell>
+                    <TableCell className="text-right font-mono text-muted-foreground">
+                      {formatTemperature(worker.asic_temperature_c)}
+                    </TableCell>
+                    <TableCell className="text-right font-mono text-muted-foreground">
+                      {formatTemperature(worker.asic_fluid_temperature_c)}
+                    </TableCell>
+                    <TableCell className="text-right font-mono text-muted-foreground">
+                      {formatTelemetryUptime(worker.asic_uptime_secs)}
+                    </TableCell>
+                  </>
+                )}
+                {showManage && (
                   <TableCell className="sticky right-0 z-10 bg-card text-right">
                     <Button
                       type="button"
@@ -484,7 +499,7 @@ export function DownstreamWorkerTable({
                       title={getManageTitle(worker)}
                       onClick={(event) => {
                         event.stopPropagation();
-                        onManageWorker(worker);
+                        onManageWorker?.(worker);
                       }}
                     >
                       Manage

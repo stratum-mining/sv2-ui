@@ -113,8 +113,74 @@ function aggregateSv2ClientChannels(clients: ClientWithChannels[]): AggregatedCl
 /**
  * Fetch all Sv2 clients plus their channels.
  */
+const SV2_CLIENT_PAGE_LIMIT = 100;
+
+async function fetchAllSv2ClientPages(baseUrl: string): Promise<ClientsResponse> {
+  const items: ClientsResponse['items'] = [];
+  let offset = 0;
+  let total = 0;
+
+  do {
+    const page = await fetchWithTimeout<ClientsResponse>(
+      `${baseUrl}/clients?offset=${offset}&limit=${SV2_CLIENT_PAGE_LIMIT}`
+    );
+
+    items.push(...page.items);
+    total = page.total;
+    offset += page.limit > 0 ? page.limit : SV2_CLIENT_PAGE_LIMIT;
+
+    if (page.items.length === 0) {
+      break;
+    }
+  } while (items.length < total);
+
+  return {
+    offset: 0,
+    limit: SV2_CLIENT_PAGE_LIMIT,
+    total,
+    items,
+  };
+}
+
+async function fetchAllSv2ClientChannelPages(baseUrl: string, clientId: number): Promise<ClientChannelsResponse> {
+  const extended_channels: ExtendedChannelInfo[] = [];
+  const standard_channels: StandardChannelInfo[] = [];
+  let offset = 0;
+  let total_extended = 0;
+  let total_standard = 0;
+
+  do {
+    const page = await fetchWithTimeout<ClientChannelsResponse>(
+      `${baseUrl}/clients/${clientId}/channels?offset=${offset}&limit=${SV2_CLIENT_PAGE_LIMIT}`
+    );
+
+    extended_channels.push(...page.extended_channels);
+    standard_channels.push(...page.standard_channels);
+    total_extended = page.total_extended;
+    total_standard = page.total_standard;
+    offset += page.limit > 0 ? page.limit : SV2_CLIENT_PAGE_LIMIT;
+
+    if (page.extended_channels.length === 0 && page.standard_channels.length === 0) {
+      break;
+    }
+  } while (
+    extended_channels.length < total_extended ||
+    standard_channels.length < total_standard
+  );
+
+  return {
+    client_id: clientId,
+    offset: 0,
+    limit: SV2_CLIENT_PAGE_LIMIT,
+    total_extended,
+    total_standard,
+    extended_channels,
+    standard_channels,
+  };
+}
+
 async function fetchAllSv2Clients(baseUrl: string): Promise<ClientWithChannels[]> {
-  const clientsResponse = await fetchWithTimeout<ClientsResponse>(`${baseUrl}/clients?offset=0&limit=100`);
+  const clientsResponse = await fetchAllSv2ClientPages(baseUrl);
   
   if (clientsResponse.items.length === 0) {
     return [];
@@ -122,9 +188,7 @@ async function fetchAllSv2Clients(baseUrl: string): Promise<ClientWithChannels[]
   
   const clientsWithChannels = await Promise.all(clientsResponse.items.map(async (client) => {
     try {
-      const channels = await fetchWithTimeout<ClientChannelsResponse>(
-        `${baseUrl}/clients/${client.client_id}/channels?offset=0&limit=100`
-      );
+      const channels = await fetchAllSv2ClientChannelPages(baseUrl, client.client_id);
 
       return {
         ...client,
@@ -210,6 +274,46 @@ export function usePoolData(templateMode: TemplateMode = null) {
  * Hook to fetch SV1 clients data.
  * Always fetches from Translator (the only app with SV1 clients).
  */
+const SV1_CLIENT_PAGE_LIMIT = 1000;
+
+async function fetchSv1ClientsPage(
+  baseUrl: string,
+  offset: number,
+  limit: number,
+  includeAsic: boolean
+): Promise<Sv1ClientsResponse> {
+  const includeAsicParam = includeAsic ? '&include_asic=true' : '';
+  const timeoutMs = includeAsic ? 15_000 : 5000;
+  return fetchWithTimeout<Sv1ClientsResponse>(
+    `${baseUrl}/sv1/clients?offset=${offset}&limit=${limit}${includeAsicParam}`,
+    timeoutMs
+  );
+}
+
+async function fetchAllSv1ClientPages(baseUrl: string, includeAsic = false): Promise<Sv1ClientsResponse> {
+  const items: Sv1ClientsResponse['items'] = [];
+  let offset = 0;
+  let total = 0;
+
+  do {
+    const page = await fetchSv1ClientsPage(baseUrl, offset, SV1_CLIENT_PAGE_LIMIT, includeAsic);
+    items.push(...page.items);
+    total = page.total;
+    offset += page.limit > 0 ? page.limit : SV1_CLIENT_PAGE_LIMIT;
+
+    if (page.items.length === 0) {
+      break;
+    }
+  } while (items.length < total);
+
+  return {
+    offset: 0,
+    limit: SV1_CLIENT_PAGE_LIMIT,
+    total,
+    items,
+  };
+}
+
 export function useSv1ClientsData(
   offset = 0,
   limit = 25,
@@ -221,18 +325,23 @@ export function useSv1ClientsData(
   
   return useQuery({
     queryKey: ['sv1-clients', offset, limit, includeAsic],
-    queryFn: async () => {
-      const includeAsicParam = includeAsic ? '&include_asic=true' : '';
-      const timeoutMs = includeAsic ? 15_000 : 5000;
-      const response = await fetch(
-        `${endpoints.translator.base}/sv1/clients?offset=${offset}&limit=${limit}${includeAsicParam}`,
-        { signal: AbortSignal.timeout(timeoutMs) }
-      );
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
-      }
-      return response.json() as Promise<Sv1ClientsResponse>;
-    },
+    queryFn: () => fetchSv1ClientsPage(endpoints.translator.base, offset, limit, includeAsic),
+    refetchInterval,
+    staleTime: includeAsic && typeof refetchInterval === 'number' ? refetchInterval : undefined,
+    enabled,
+  });
+}
+
+export function useAllSv1ClientsData(
+  enabled = true,
+  includeAsic = false,
+  refetchInterval: number | false = 3000
+) {
+  const endpoints = getEndpointsCached();
+
+  return useQuery({
+    queryKey: ['sv1-clients-all', includeAsic],
+    queryFn: () => fetchAllSv1ClientPages(endpoints.translator.base, includeAsic),
     refetchInterval,
     staleTime: includeAsic && typeof refetchInterval === 'number' ? refetchInterval : undefined,
     enabled,

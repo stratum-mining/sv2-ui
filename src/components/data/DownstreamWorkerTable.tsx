@@ -189,15 +189,15 @@ export function canOpenMinerManagement(worker: DownstreamWorkerRow) {
 }
 
 function isSelectable(worker: DownstreamWorkerRow) {
-  return canOpenMinerManagement(worker);
+  return isManageableWorker(worker);
 }
 
 function getManageTitle(worker: DownstreamWorkerRow) {
-  if (canOpenMinerManagement(worker)) return 'Manage miner';
+  if (isManageableWorker(worker)) return 'Manage miner';
   if (worker.channel_type !== 'sv1') return 'ASIC management is only available for SV1 miners connected through the Translator.';
   if (worker.asic_client_id == null) return 'No matching Translator SV1 miner is available for this row.';
   if (!worker.peer_ip) return 'No miner endpoint is available for this row.';
-  return 'No miner endpoint is available for this row.';
+  return worker.asic_error || 'ASIC management is only available after telemetry is available for this miner.';
 }
 
 /**
@@ -228,7 +228,7 @@ export function DownstreamWorkerTable({
 
   const showSelection = showAsicTelemetry && Boolean(onToggleWorker);
   const showManage = showAsicTelemetry && Boolean(onManageWorker);
-  const canManageWorker = (worker: DownstreamWorkerRow) => Boolean(showManage && canOpenMinerManagement(worker));
+  const canManageWorker = (worker: DownstreamWorkerRow) => Boolean(showManage && isManageableWorker(worker));
   const tableMinWidth = showAsicTelemetry
     ? (showManage ? 'min-w-[2520px]' : 'min-w-[2440px]')
     : (showManage ? 'min-w-[1220px]' : 'min-w-[1120px]');
@@ -495,11 +495,13 @@ export function DownstreamWorkerTable({
                       type="button"
                       variant="ghost"
                       size="sm"
-                      disabled={!canOpenMinerManagement(worker)}
+                      disabled={!canManageWorker(worker)}
                       title={getManageTitle(worker)}
                       onClick={(event) => {
                         event.stopPropagation();
-                        onManageWorker?.(worker);
+                        if (canManageWorker(worker)) {
+                          onManageWorker?.(worker);
+                        }
                       }}
                     >
                       Manage

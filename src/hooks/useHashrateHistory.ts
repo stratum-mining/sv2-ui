@@ -6,6 +6,7 @@ export interface HashrateDataPoint {
   hashrate: number;
   powerW?: number | null;
   efficiencyJTh?: number | null;
+  temperatureC?: number | null;
 }
 
 const MAX_HISTORY_POINTS = 720; // Keep up to 1 hour of data (at 5-second intervals)
@@ -53,6 +54,7 @@ export function useHashrateHistory(
   telemetry?: {
     powerW?: number | null;
     efficiencyJTh?: number | null;
+    temperatureC?: number | null;
   },
 ): HashrateDataPoint[] {
   const [history, setHistory] = useState<HashrateDataPoint[]>(
@@ -95,6 +97,7 @@ export function useHashrateHistory(
           hashrate,
           powerW: telemetry?.powerW ?? null,
           efficiencyJTh: telemetry?.efficiencyJTh ?? null,
+          temperatureC: telemetry?.temperatureC ?? null,
         };
         const updated = [...prev, newPoint];
         const trimmed = updated.length > MAX_HISTORY_POINTS

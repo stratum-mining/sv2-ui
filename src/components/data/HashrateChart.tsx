@@ -13,14 +13,7 @@ import {
 import { formatHashrate } from '@/lib/utils';
 
 export type TimeRange = '5m' | '15m' | '1h';
-export type ChartMetric = 'hashrate' | 'power' | 'efficiency';
-
-export interface ChartSummaryItem {
-  label: string;
-  value: ReactNode;
-  detail?: ReactNode;
-  info?: ReactNode;
-}
+export type ChartMetric = 'hashrate' | 'power' | 'efficiency' | 'temperature';
 
 interface HashrateChartProps {
   data: {
@@ -28,6 +21,7 @@ interface HashrateChartProps {
     hashrate: number;
     powerW?: number | null;
     efficiencyJTh?: number | null;
+    temperatureC?: number | null;
   }[];
   title?: string;
   description?: string;
@@ -37,7 +31,6 @@ interface HashrateChartProps {
   metric?: ChartMetric;
   onMetricChange?: (metric: ChartMetric) => void;
   availableMetrics?: ChartMetric[];
-  summaryItems?: ChartSummaryItem[];
 }
 
 /**
@@ -119,6 +112,14 @@ function formatEfficiencyAxis(value: number): string {
   return `${Number(value.toFixed(1))}`;
 }
 
+function formatTemperature(value: number | null | undefined): string {
+  return value == null ? '-' : `${Math.round(value)} C`;
+}
+
+function formatTemperatureAxis(value: number): string {
+  return `${Math.round(value)} C`;
+}
+
 /**
  * Hashrate history chart component.
  * Displays real accumulated data - no mock data.
@@ -133,10 +134,11 @@ const METRIC_OPTIONS: { value: ChartMetric; label: string }[] = [
   { value: 'hashrate', label: 'Hashrate' },
   { value: 'power', label: 'Power' },
   { value: 'efficiency', label: 'Efficiency' },
+  { value: 'temperature', label: 'Temperature' },
 ];
 
 const METRIC_CONFIG: Record<ChartMetric, {
-  dataKey: 'hashrate' | 'powerW' | 'efficiencyJTh';
+  dataKey: 'hashrate' | 'powerW' | 'efficiencyJTh' | 'temperatureC';
   label: string;
   yAxisFormatter: (value: number) => string;
   tooltipFormatter: (value: number) => string;
@@ -163,6 +165,13 @@ const METRIC_CONFIG: Record<ChartMetric, {
     tooltipFormatter: formatEfficiency,
     isLine: true,
   },
+  temperature: {
+    dataKey: 'temperatureC',
+    label: 'Temperature',
+    yAxisFormatter: formatTemperatureAxis,
+    tooltipFormatter: formatTemperature,
+    isLine: true,
+  },
 };
 
 export function HashrateChart({
@@ -174,8 +183,7 @@ export function HashrateChart({
   onTimeRangeChange,
   metric = 'hashrate',
   onMetricChange,
-  availableMetrics = ['hashrate', 'power', 'efficiency'],
-  summaryItems = [],
+  availableMetrics = ['hashrate', 'power', 'efficiency', 'temperature'],
 }: HashrateChartProps) {
   const effectiveMetric = availableMetrics.includes(metric) ? metric : 'hashrate';
   const metricConfig = METRIC_CONFIG[effectiveMetric];
@@ -221,26 +229,6 @@ export function HashrateChart({
     .map((point) => point[metricConfig.dataKey])
     .filter((value): value is number => typeof value === 'number' && Number.isFinite(value));
 
-  const summaryChips = summaryItems.length > 0 ? (
-    <div className="flex flex-wrap gap-2">
-      {summaryItems.map((item) => (
-        <div
-          key={item.label}
-          className="min-w-[118px] rounded-md border border-border bg-muted/30 px-2.5 py-1.5"
-        >
-          <div className="flex items-center gap-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-            {item.label}
-            {item.info}
-          </div>
-          <div className="font-mono text-sm font-semibold text-foreground">{item.value}</div>
-          {item.detail && (
-            <div className="text-[11px] leading-tight text-muted-foreground">{item.detail}</div>
-          )}
-        </div>
-      ))}
-    </div>
-  ) : null;
-
   const headerContent = (
     <CardHeader>
       <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
@@ -256,7 +244,6 @@ export function HashrateChart({
             {metricSelector}
             {rangeSelector}
           </div>
-          {summaryChips}
         </div>
       </div>
     </CardHeader>

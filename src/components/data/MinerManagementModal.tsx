@@ -66,6 +66,26 @@ const CAPABILITY_LABELS: Array<[keyof AsicMinerCapabilities, string]> = [
   ['tuning_config', 'Tuning config'],
 ];
 
+type MinerAction = 'blink' | 'reboot' | 'pause' | 'resume';
+
+const ACTION_CAPABILITY: Record<MinerAction, keyof AsicMinerCapabilities> = {
+  blink: 'blink_led',
+  reboot: 'restart',
+  pause: 'pause',
+  resume: 'resume',
+};
+
+const ACTION_LABEL: Record<MinerAction, string> = {
+  blink: 'Blink',
+  reboot: 'Reboot',
+  pause: 'Stop',
+  resume: 'Start',
+};
+
+function supportsAction(worker: DownstreamWorkerRow, action: MinerAction) {
+  return worker.asic?.capabilities[ACTION_CAPABILITY[action]] === true;
+}
+
 export function MinerManagementModal({ open, workers, onClose, onRefresh }: MinerManagementModalProps) {
   const [isWorking, setIsWorking] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
@@ -79,6 +99,15 @@ export function MinerManagementModal({ open, workers, onClose, onRefresh }: Mine
     () => selectedWorkers.filter((worker) => worker.asic_probe_status === 'available'),
     [selectedWorkers]
   );
+  const actionWorkers = useMemo(
+    () => ({
+      blink: selectedWorkers.filter((worker) => supportsAction(worker, 'blink')),
+      reboot: selectedWorkers.filter((worker) => supportsAction(worker, 'reboot')),
+      pause: selectedWorkers.filter((worker) => supportsAction(worker, 'pause')),
+      resume: selectedWorkers.filter((worker) => supportsAction(worker, 'resume')),
+    }),
+    [selectedWorkers]
+  );
   const single = selectedWorkers.length === 1 ? selectedWorkers[0] : null;
 
   useEffect(() => {
@@ -89,12 +118,16 @@ export function MinerManagementModal({ open, workers, onClose, onRefresh }: Mine
 
   if (!open) return null;
 
-  const applyToSelected = async (operation: (worker: DownstreamWorkerRow) => Promise<void>, actionLabel: string) => {
+  const applyToSelected = async (
+    workersToUpdate: DownstreamWorkerRow[],
+    operation: (worker: DownstreamWorkerRow) => Promise<void>,
+    actionLabel: string
+  ) => {
     setIsWorking(true);
     setError(null);
     setStatus(null);
     try {
-      const results = await Promise.allSettled(selectedWorkers.map(operation));
+      const results = await Promise.allSettled(workersToUpdate.map(operation));
       const failures = results.filter((result): result is PromiseRejectedResult => result.status === 'rejected');
       const successCount = results.length - failures.length;
 
@@ -117,14 +150,16 @@ export function MinerManagementModal({ open, workers, onClose, onRefresh }: Mine
     }
   };
 
-  const runAction = (action: 'blink' | 'reboot' | 'pause' | 'resume') => {
-    if (selectedWorkers.length === 0) {
-      setError('Select at least one SV1 miner endpoint.');
+  const runAction = (action: MinerAction) => {
+    const supportedWorkers = actionWorkers[action];
+    const actionLabel = ACTION_LABEL[action];
+    if (supportedWorkers.length === 0) {
+      setError(`Selected miner${selectedWorkers.length === 1 ? '' : 's'} do not support ${actionLabel.toLowerCase()}.`);
       return;
     }
-    if (action === 'reboot' && !window.confirm(`Reboot ${selectedWorkers.length} miner(s)?`)) return;
-    const actionLabel = action === 'resume' ? 'Start' : action === 'pause' ? 'Stop' : action === 'blink' ? 'Blink' : 'Reboot';
+    if (action === 'reboot' && !window.confirm(`Reboot ${supportedWorkers.length} miner(s)?`)) return;
     void applyToSelected(
+      supportedWorkers,
       (worker) => runAsicAction(worker.asic_client_id!, action),
       actionLabel
     );
@@ -337,16 +372,16 @@ export function MinerManagementModal({ open, workers, onClose, onRefresh }: Mine
             <div className="space-y-3 rounded-lg border border-border p-4">
               <div className="text-sm font-medium">Controls</div>
               <div className="grid grid-cols-2 gap-2">
-                <Button variant="outline" onClick={() => runAction('resume')} disabled={isWorking || selectedWorkers.length === 0}>
+                <Button variant="outline" onClick={() => runAction('resume')} disabled={isWorking || actionWorkers.resume.length === 0}>
                   Start
                 </Button>
-                <Button variant="outline" onClick={() => runAction('pause')} disabled={isWorking || selectedWorkers.length === 0}>
+                <Button variant="outline" onClick={() => runAction('pause')} disabled={isWorking || actionWorkers.pause.length === 0}>
                   Stop
                 </Button>
-                <Button variant="outline" onClick={() => runAction('blink')} disabled={isWorking || selectedWorkers.length === 0}>
+                <Button variant="outline" onClick={() => runAction('blink')} disabled={isWorking || actionWorkers.blink.length === 0}>
                   Blink
                 </Button>
-                <Button variant="outline" onClick={() => runAction('reboot')} disabled={isWorking || selectedWorkers.length === 0}>
+                <Button variant="outline" onClick={() => runAction('reboot')} disabled={isWorking || actionWorkers.reboot.length === 0}>
                   Reboot
                 </Button>
               </div>
@@ -360,6 +395,11 @@ export function MinerManagementModal({ open, workers, onClose, onRefresh }: Mine
                 <div className="rounded-md border border-border bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
                   Actions are sent to selected miner endpoints. Miners without a supported reachable
                   management API will report an error.
+                </div>
+              )}
+              {selectedWorkers.length > 0 && telemetryAvailableWorkers.length === selectedWorkers.length && (
+                <div className="rounded-md border border-border bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
+                  Controls are enabled only when selected miners report the matching asic-rs capability.
                 </div>
               )}
             </div>

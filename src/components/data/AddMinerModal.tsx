@@ -49,6 +49,10 @@ function minerLabel(miner: AsicDiscoveredMiner) {
   return [miner.make, miner.model].filter(Boolean).join(' ') || miner.ip;
 }
 
+function canConfigurePools(miner: AsicDiscoveredMiner) {
+  return miner.capabilities?.pools_config === true;
+}
+
 export function AddMinerModal({ open, isJdMode, onClose, onRefresh }: AddMinerModalProps) {
   const { data: minerConnection } = useMinerConnectionInfo();
   const [activeTab, setActiveTab] = useState<'automatic' | 'manual'>('automatic');
@@ -62,13 +66,18 @@ export function AddMinerModal({ open, isJdMode, onClose, onRefresh }: AddMinerMo
   const [error, setError] = useState<string | null>(null);
 
   const found = useMemo(() => scan?.found ?? [], [scan]);
-  const selectedFound = useMemo(
-    () => found.filter((miner) => selectedIps.has(miner.ip)),
-    [found, selectedIps]
+  const configurableFound = useMemo(
+    () => found.filter(canConfigurePools),
+    [found]
   );
+  const selectedFound = useMemo(
+    () => configurableFound.filter((miner) => selectedIps.has(miner.ip)),
+    [configurableFound, selectedIps]
+  );
+  const unsupportedFoundCount = found.length - configurableFound.length;
   const translatorEndpoint = minerConnection?.translator_url || defaultTranslatorPoolUrl(minerConnection?.host);
   const translatorEndpointReady = isConcreteTranslatorPoolUrl(translatorEndpoint);
-  const allFoundSelected = found.length > 0 && selectedFound.length === found.length;
+  const allFoundSelected = configurableFound.length > 0 && selectedFound.length === configurableFound.length;
 
   useEffect(() => {
     if (targetEdited) return;
@@ -89,7 +98,7 @@ export function AddMinerModal({ open, isJdMode, onClose, onRefresh }: AddMinerMo
       const targets = target.split(',').map((item) => item.trim()).filter(Boolean);
       const response = await scanAsicNetwork(targets);
       setScan(response);
-      setSelectedIps(new Set(response.found.map((miner) => miner.ip)));
+      setSelectedIps(new Set(response.found.filter(canConfigurePools).map((miner) => miner.ip)));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not find miners');
     } finally {
@@ -98,6 +107,7 @@ export function AddMinerModal({ open, isJdMode, onClose, onRefresh }: AddMinerMo
   };
 
   const toggleMiner = (miner: AsicDiscoveredMiner) => {
+    if (!canConfigurePools(miner)) return;
     setSelectedIps((current) => {
       const next = new Set(current);
       if (next.has(miner.ip)) {
@@ -110,7 +120,7 @@ export function AddMinerModal({ open, isJdMode, onClose, onRefresh }: AddMinerMo
   };
 
   const toggleAllFound = () => {
-    setSelectedIps(allFoundSelected ? new Set() : new Set(found.map((miner) => miner.ip)));
+    setSelectedIps(allFoundSelected ? new Set() : new Set(configurableFound.map((miner) => miner.ip)));
   };
 
   const addSelected = async () => {
@@ -222,6 +232,7 @@ export function AddMinerModal({ open, isJdMode, onClose, onRefresh }: AddMinerMo
                         type="checkbox"
                         className="h-4 w-4 rounded border-border"
                         checked={allFoundSelected}
+                        disabled={configurableFound.length === 0}
                         onChange={toggleAllFound}
                       />
                       Select all
@@ -254,7 +265,7 @@ export function AddMinerModal({ open, isJdMode, onClose, onRefresh }: AddMinerMo
                       {found.map((miner) => (
                         <TableRow
                           key={miner.ip}
-                          className="cursor-pointer hover:bg-muted/20"
+                          className={canConfigurePools(miner) ? 'cursor-pointer hover:bg-muted/20' : 'opacity-60'}
                           onClick={() => toggleMiner(miner)}
                         >
                           <TableCell>
@@ -262,6 +273,8 @@ export function AddMinerModal({ open, isJdMode, onClose, onRefresh }: AddMinerMo
                               type="checkbox"
                               className="h-4 w-4 rounded border-border"
                               checked={selectedIps.has(miner.ip)}
+                              disabled={!canConfigurePools(miner)}
+                              title={canConfigurePools(miner) ? undefined : 'This miner does not support pool configuration.'}
                               onClick={(event) => event.stopPropagation()}
                               onChange={() => toggleMiner(miner)}
                               aria-label={`Select miner ${miner.ip}`}
@@ -284,6 +297,9 @@ export function AddMinerModal({ open, isJdMode, onClose, onRefresh }: AddMinerMo
               {translatorEndpointReady ? (
                 <div className="rounded-md border border-border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
                   Selected miners will be pointed to <span className="font-mono text-foreground">{translatorEndpoint}</span>.
+                  {unsupportedFoundCount > 0 && (
+                    <> {unsupportedFoundCount} discovered miner{unsupportedFoundCount === 1 ? '' : 's'} cannot be selected because pool configuration is not supported.</>
+                  )}
                 </div>
               ) : (
                 <div className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-500">

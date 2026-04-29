@@ -13,6 +13,7 @@ import { fileURLToPath } from 'url';
 
 import type { SetupData, StatusResponse, SetupResponse } from './types.js';
 import { generateTranslatorConfig, generateJdcConfig, normalizeSetupData } from './config-generator.js';
+import { isSupportedBitcoinCoreVersion } from './compatibility.js';
 import {
   startStack,
   stopStack,
@@ -68,6 +69,18 @@ async function saveState(data: SetupData): Promise<void> {
     mode: data.mode,
     data,
   }, null, 2));
+}
+
+function getBitcoinCoreVersionError(data: SetupData): string | null {
+  if (data.mode !== 'jd') {
+    return null;
+  }
+
+  if (!isSupportedBitcoinCoreVersion(data.bitcoin?.core_version)) {
+    return 'Select a supported Bitcoin Core version: 30.2 or 31.0';
+  }
+
+  return null;
 }
 
 /**
@@ -219,6 +232,11 @@ app.put('/api/config', async (req, res) => {
       return res.status(400).json({ success: false, error: 'JD mode requires JDC and Bitcoin configuration' });
     }
 
+    const bitcoinCoreVersionError = getBitcoinCoreVersionError(newData);
+    if (bitcoinCoreVersionError) {
+      return res.status(400).json({ success: false, error: bitcoinCoreVersionError });
+    }
+
     await ensureDockerAvailable();
 
     await fs.mkdir(CONFIG_DIR, { recursive: true });
@@ -343,6 +361,11 @@ app.post('/api/setup', async (req, res) => {
       return res.status(400).json({ success: false, error: 'JD mode requires JDC and Bitcoin configuration' });
     }
 
+    const bitcoinCoreVersionError = getBitcoinCoreVersionError(data);
+    if (bitcoinCoreVersionError) {
+      return res.status(400).json({ success: false, error: bitcoinCoreVersionError });
+    }
+
     await ensureDockerAvailable();
 
     // Generate config files
@@ -427,6 +450,11 @@ app.post('/api/restart', async (_req, res) => {
     const state = await loadState();
     if (!state.configured || !state.data) {
       return res.status(400).json({ success: false, error: 'Not configured' });
+    }
+
+    const bitcoinCoreVersionError = getBitcoinCoreVersionError(state.data);
+    if (bitcoinCoreVersionError) {
+      return res.status(400).json({ success: false, error: bitcoinCoreVersionError });
     }
 
     await stopStack();

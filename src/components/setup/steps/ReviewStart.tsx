@@ -220,6 +220,7 @@ export function ReviewStart({ data, onComplete }: ReviewStartProps) {
           <div className="p-5 border-x border-b border-border bg-card">
             <SectionLabel n={nextSection()} label="Bitcoin Core" />
             <div className="text-sm text-muted-foreground space-y-1 pl-7">
+              <div>Bitcoin Core {data.bitcoin.core_version ?? "Not selected"}</div>
               <div>{data.bitcoin.network}</div>
               <div className="font-mono text-xs truncate">
                 {data.bitcoin.socket_path}

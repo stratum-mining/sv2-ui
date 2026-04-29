@@ -13,8 +13,10 @@ export interface PoolConfig {
 }
 
 export type OperatingSystem = 'linux' | 'macos';
+export type BitcoinCoreVersion = '30.2' | '31.0';
 
 export interface BitcoinConfig {
+  core_version: BitcoinCoreVersion | null;
   network: 'mainnet' | 'testnet4';
   os: OperatingSystem;
   customDataDir: string;

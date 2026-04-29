@@ -74,7 +74,13 @@ export function ConfigurationTab() {
   const queryClient = useQueryClient();
   const [config, setConfig] = useState<SetupData | null>(null);
   const [loading, setLoading] = useState(true);
-  const { isOrchestrated, isConfigured, isRunning, miningMode, mode } = useSetupStatus();
+  const {
+    isOrchestrated,
+    isConfigured,
+    isRunning,
+    miningMode: statusMiningMode,
+    mode: statusMode,
+  } = useSetupStatus();
   const {
     stop,
     restart,
@@ -164,7 +170,7 @@ export function ConfigurationTab() {
 
   const startEditPool = () => {
     if (!config?.pool) return;
-    const availablePools = getPoolsForMode(miningMode, mode);
+    const availablePools = getPoolsForMode(config.miningMode, config.mode);
     const matchesPreset = availablePools.some(p => p.address === config.pool?.address && p.port === config.pool?.port);
     setIsCustomPool(!matchesPreset);
     setEditPool({ ...config.pool });
@@ -172,7 +178,7 @@ export function ConfigurationTab() {
   };
 
   const startEditMode = () => {
-    setEditMode(mode ?? 'no-jd');
+    setEditMode(config?.mode ?? statusMode ?? 'no-jd');
     setEditing('mode');
   };
 
@@ -257,8 +263,12 @@ export function ConfigurationTab() {
     }
 
     setup(updated, {
-      onSuccess: () => {
-        setConfig(updated);
+      onSuccess: async (response) => {
+        if (!response.success) return;
+
+        await queryClient.invalidateQueries({ queryKey: ['setup-status'] });
+        const refreshedConfig = await getCurrentConfig();
+        setConfig(refreshedConfig ?? updated);
         cancelEdit();
         setSaveSuccess(true);
       },
@@ -314,8 +324,10 @@ export function ConfigurationTab() {
     return <div className="text-center text-muted-foreground py-8">Loading configuration...</div>;
   }
 
-  const isJdMode = mode === 'jd';
-  const isSoloMode = miningMode === 'solo';
+  const activeMiningMode = config.miningMode ?? statusMiningMode;
+  const activeMode = config.mode ?? statusMode;
+  const isJdMode = activeMode === 'jd';
+  const isSoloMode = activeMiningMode === 'solo';
   const isSovereignSolo = isSoloMode && isJdMode;
   const templateModeLabel = isSoloMode
     ? isJdMode
@@ -324,7 +336,7 @@ export function ConfigurationTab() {
     : isJdMode
       ? 'Custom Templates (Job Declaration)'
       : 'Pool Templates';
-  const pools = getPoolsForMode(miningMode, mode);
+  const pools = getPoolsForMode(activeMiningMode, activeMode);
   const isSaving = isSettingUp;
 
   return (

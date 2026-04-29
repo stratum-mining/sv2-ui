@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { Link } from 'wouter';
 import { AlertTriangle, Search, Play } from 'lucide-react';
 import { InfoPopover } from '@/components/ui/info-popover';
 import { MinerConnectionInfo } from '@/components/setup/MinerConnectionInfo';
@@ -37,6 +38,7 @@ const RANGE_DESCRIPTIONS: Record<TimeRange, string> = {
   '15m': 'Last 15 minutes · sampled every 5 seconds',
   '1h': 'Last hour · sampled every 5 seconds',
 };
+const BITCOIN_CORE_VERSION_MISMATCH_CODE = 'jdc-bitcoin-core-unsupported-mining-interface';
 
 function normalizeUserIdentity(userIdentity: string) {
   return userIdentity.trim().toLowerCase();
@@ -515,25 +517,39 @@ export function UnifiedDashboard() {
       )}
 
       {/* log-derived Diagnostic Banners */}
-      {diagnostics.map((diagnostic) => (
-        <div
-          key={diagnostic.code}
-          className={`flex items-start gap-3 rounded-xl border px-5 py-4 text-sm ${
-            diagnostic.severity === 'error'
-              ? 'border-red-500/40 bg-red-500/10 text-red-500'
-              : 'border-amber-500/40 bg-amber-500/10 text-amber-500'
-          }`}
-        >
-          <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
-          <div className="flex flex-col gap-1">
-            <span className="font-medium">{diagnostic.title}</span>
-            <span>{diagnostic.message}</span>
-            {diagnostic.recommendation && (
-              <span className="text-current/80">{diagnostic.recommendation}</span>
+      {diagnostics.map((diagnostic) => {
+        const showReconfigureButton = diagnostic.code === BITCOIN_CORE_VERSION_MISMATCH_CODE;
+
+        return (
+          <div
+            key={diagnostic.code}
+            className={`flex flex-col gap-3 rounded-xl border px-5 py-4 text-sm sm:flex-row sm:items-center sm:justify-between ${
+              diagnostic.severity === 'error'
+                ? 'border-red-500/40 bg-red-500/10 text-red-500'
+                : 'border-amber-500/40 bg-amber-500/10 text-amber-500'
+            }`}
+          >
+            <div className="flex items-start gap-3">
+              <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
+              <div className="flex flex-col gap-1">
+                <span className="font-medium">{diagnostic.title}</span>
+                <span>{diagnostic.message}</span>
+                {diagnostic.recommendation && (
+                  <span className="text-current/80">{diagnostic.recommendation}</span>
+                )}
+              </div>
+            </div>
+            {showReconfigureButton && (
+              <Link
+                href="/setup"
+                className="inline-flex h-9 shrink-0 items-center justify-center rounded-full bg-red-500 px-4 font-medium text-white transition-colors hover:bg-red-600 sm:ml-4"
+              >
+                Reconfigure
+              </Link>
             )}
           </div>
-        </div>
-      ))}
+        );
+      })}
 
       {/* Hero Stats Section */}
       <div className={isSovereignSolo ? 'grid gap-4 md:grid-cols-2 lg:grid-cols-4' : 'grid gap-4 md:grid-cols-2 lg:grid-cols-5'}>

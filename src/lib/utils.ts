@@ -79,6 +79,22 @@ export function formatNumber(num: number, decimals: number = 0): string {
 }
 
 /**
+ * Counts rejected-share payloads returned by SRI monitoring APIs.
+ */
+export function countRejectedShares(value: unknown): number {
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? value : 0;
+  }
+  if (Array.isArray(value)) {
+    return value.length;
+  }
+  if (value !== null && typeof value === 'object') {
+    return Object.keys(value).length;
+  }
+  return 0;
+}
+
+/**
  * Calculates shares per minute rate from total shares and uptime.
  */
 export function calculateSharesPerMinute(shares: number, uptimeSecs: number): number {

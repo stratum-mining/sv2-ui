@@ -28,7 +28,7 @@ import { isAggregatedTproxyPoolName } from '@/components/setup/poolRules';
 import { useSetupStatus } from '@/hooks/useSetupStatus';
 import { useConnectionStatus } from '@/hooks/useConnectionStatus';
 import { useLogDiagnostics } from '@/hooks/useLogDiagnostics';
-import { formatHashrate, formatDifficulty } from '@/lib/utils';
+import { countRejectedShares, formatHashrate, formatDifficulty } from '@/lib/utils';
 import type { Sv1ClientInfo } from '@/types/api';
 
 const RANGE_MS: Record<TimeRange, number> = { '5m': 5 * 60_000, '15m': 15 * 60_000, '1h': 60 * 60_000 };
@@ -351,8 +351,8 @@ export function UnifiedDashboard() {
     const extSubmitted = serverChannels.extended_channels.reduce((sum, ch) => sum + ch.shares_submitted, 0);
     const stdSubmitted = serverChannels.standard_channels.reduce((sum, ch) => sum + ch.shares_submitted, 0);
 
-    const extRejected = serverChannels.extended_channels.reduce((sum, ch) => sum + ch.shares_rejected, 0);
-    const stdRejected = serverChannels.standard_channels.reduce((sum, ch) => sum + ch.shares_rejected, 0);
+    const extRejected = serverChannels.extended_channels.reduce((sum, ch) => sum + countRejectedShares(ch.shares_rejected), 0);
+    const stdRejected = serverChannels.standard_channels.reduce((sum, ch) => sum + countRejectedShares(ch.shares_rejected), 0);
     
     return {
       acknowledged: extAcknowledged + stdAcknowledged,

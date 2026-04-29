@@ -7,6 +7,8 @@
 // Server (Upstream) Types
 // ============================================================================
 
+export type ShareRejectedValue = number | unknown[] | Record<string, unknown> | null;
+
 /**
  * Information about an extended channel opened with the upstream server.
  * Used by JDC (to Pool) and Translator (to JDC/Pool).
@@ -22,7 +24,7 @@ export interface ServerExtendedChannelInfo {
   version_rolling: boolean;
   shares_acknowledged: number;
   shares_submitted: number;
-  shares_rejected: number;
+  shares_rejected: ShareRejectedValue;
   share_work_sum: number;
   best_diff: number;
   blocks_found: number;
@@ -39,7 +41,7 @@ export interface ServerStandardChannelInfo {
   extranonce_prefix_hex: string;
   shares_acknowledged: number;
   shares_submitted: number;
-  shares_rejected: number;
+  shares_rejected: ShareRejectedValue;
   share_work_sum: number;
   best_diff: number;
   blocks_found: number;
@@ -96,7 +98,7 @@ export interface ExtendedChannelInfo {
   expected_shares_per_minute: number;
   shares_acknowledged: number;
   shares_submitted: number;
-  shares_rejected: number;
+  shares_rejected: ShareRejectedValue;
   share_work_sum: number;
   last_share_sequence_number: number;
   best_diff: number;
@@ -119,7 +121,7 @@ export interface StandardChannelInfo {
   expected_shares_per_minute: number;
   shares_acknowledged: number;
   shares_submitted: number;
-  shares_rejected: number;
+  shares_rejected: ShareRejectedValue;
   share_work_sum: number;
   last_share_sequence_number: number;
   best_diff: number;

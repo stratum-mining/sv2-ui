@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {
+  countRejectedShares,
   stripWrappingQuotes,
   isValidPoolAuthorityPubkey,
   getPoolAuthorityPubkeyError,
@@ -14,6 +15,30 @@ const VALID_PUBKEYS = [
   '9auqWEzQDVyd2oe1JVGFLMLHZtCo2FFqZwtKA5gd9xbuEu7PH72', // SRI
   '9bCoFxTszKCuffyywH5uS5o6WcU4vsjTH2axxc7wE86y2HhvULU', // Blitzpool
 ];
+
+test('countRejectedShares: returns finite numeric counts unchanged', () => {
+  assert.equal(countRejectedShares(3), 3);
+});
+
+test('countRejectedShares: counts array payload items', () => {
+  assert.equal(countRejectedShares([{ error: 'stale' }, { error: 'low-difficulty' }]), 2);
+});
+
+test('countRejectedShares: counts object/map payload entries', () => {
+  assert.equal(countRejectedShares({ a: { error: 'stale' }, b: { error: 'duplicate' } }), 2);
+});
+
+test('countRejectedShares: returns zero for an empty object payload', () => {
+  assert.equal(countRejectedShares({}), 0);
+});
+
+test('countRejectedShares: returns zero for null', () => {
+  assert.equal(countRejectedShares(null), 0);
+});
+
+test('countRejectedShares: returns zero for NaN', () => {
+  assert.equal(countRejectedShares(Number.NaN), 0);
+});
 
 test('stripWrappingQuotes: returns the input unchanged when no wrapping quotes', () => {
   assert.equal(stripWrappingQuotes('abc'), 'abc');

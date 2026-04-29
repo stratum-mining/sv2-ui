@@ -415,7 +415,7 @@ export function ConfigurationTab() {
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between">
-            <div>
+            <div className="space-y-1.5">
               <CardTitle>Current Configuration</CardTitle>
               <CardDescription>Your active mining client setup. Click the edit icon to change a setting.</CardDescription>
             </div>

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { StepProps } from '../types';
-import { Check } from 'lucide-react';
+import { Check, ChevronDown, Settings2 } from 'lucide-react';
 
 interface HashratePreset {
   id: string;
@@ -16,6 +16,19 @@ const HASHRATE_PRESETS: HashratePreset[] = [
   { id: 'custom',      label: 'Custom',               hashrate: 0,                   description: 'Enter your own value' },
 ];
 
+const DEFAULT_SHARES_PER_MINUTE = 6;
+const DEFAULT_DOWNSTREAM_EXTRANONCE2_SIZE = 4;
+
+function isPositiveNumber(value: string): boolean {
+  const parsed = Number(value);
+  return value.trim() !== '' && Number.isFinite(parsed) && parsed > 0;
+}
+
+function isPositiveInteger(value: string): boolean {
+  const parsed = Number(value);
+  return isPositiveNumber(value) && Number.isInteger(parsed);
+}
+
 function formatHashrateDisplay(hashrate: number): string {
   if (hashrate >= 1e15) return `${(hashrate / 1e15).toFixed(2)} PH/s`;
   if (hashrate >= 1e12) return `${(hashrate / 1e12).toFixed(2)} TH/s`;
@@ -26,6 +39,9 @@ function formatHashrateDisplay(hashrate: number): string {
 
 export function HashrateStep({ data, updateData, onNext }: StepProps) {
   const existingHashrate = data.translator?.min_hashrate || 0;
+  const existingSharesPerMinute = data.translator?.shares_per_minute || DEFAULT_SHARES_PER_MINUTE;
+  const existingDownstreamExtranonce2Size =
+    data.translator?.downstream_extranonce2_size || DEFAULT_DOWNSTREAM_EXTRANONCE2_SIZE;
 
   const getInitialPreset = () => {
     if (!existingHashrate) return 'mid-asic';
@@ -56,6 +72,11 @@ export function HashrateStep({ data, updateData, onNext }: StepProps) {
     return (initial / multiplier).toPrecision(6).replace(/\.?0+$/, '');
   });
   const [inputError, setInputError] = useState<string | null>(null);
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [sharesPerMinute, setSharesPerMinute] = useState(String(existingSharesPerMinute));
+  const [downstreamExtranonce2Size, setDownstreamExtranonce2Size] = useState(
+    String(existingDownstreamExtranonce2Size),
+  );
 
   const syncCustomInputToRaw = (raw: number) => {
     const { multiplier } = getAutoUnit(raw);
@@ -98,20 +119,26 @@ export function HashrateStep({ data, updateData, onNext }: StepProps) {
     selectedPreset === 'custom' ? rawHashrate : (HASHRATE_PRESETS.find(p => p.id === selectedPreset)?.hashrate || 0);
 
   const hashrate = getHashrateValue();
+  const advancedIsValid =
+    isPositiveNumber(sharesPerMinute) &&
+    isPositiveInteger(downstreamExtranonce2Size);
 
   useEffect(() => {
     updateData({
       translator: {
         ...data.translator,
         user_identity: data.translator?.user_identity || '',
-        enable_vardiff: data.translator?.enable_vardiff ?? true,
+        enable_vardiff: true,
         aggregate_channels: data.translator?.aggregate_channels ?? false,
         min_hashrate: hashrate,
+        shares_per_minute: Number(sharesPerMinute) || DEFAULT_SHARES_PER_MINUTE,
+        downstream_extranonce2_size:
+          Number(downstreamExtranonce2Size) || DEFAULT_DOWNSTREAM_EXTRANONCE2_SIZE,
       },
     });
   // intentionally excluded: data.translator and updateData cause infinite loop when included
     // eslint-disable-next-line react-hooks/exhaustive-deps
-}, [hashrate]);
+}, [hashrate, sharesPerMinute, downstreamExtranonce2Size]);
 
   return (
     <div className="space-y-8">
@@ -204,11 +231,75 @@ export function HashrateStep({ data, updateData, onNext }: StepProps) {
         );
       })()}
 
+      <div className="rounded-xl border border-border bg-card">
+        <button
+          type="button"
+          onClick={() => setShowAdvanced((open) => !open)}
+          aria-expanded={showAdvanced}
+          className="w-full p-4 flex items-center justify-between gap-3 text-left hover:bg-muted/40 rounded-xl transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+        >
+          <span className="flex items-center gap-2">
+            <Settings2 className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+            <span className="text-sm font-semibold">Advanced Options</span>
+          </span>
+          <ChevronDown
+            className={`h-4 w-4 text-muted-foreground transition-transform ${showAdvanced ? 'rotate-180' : ''}`}
+            aria-hidden="true"
+          />
+        </button>
+
+        {showAdvanced && (
+          <div className="border-t border-border p-4 space-y-4">
+            <div>
+              <label htmlFor="shares-per-minute" className="block text-sm font-medium mb-2">
+                Shares Per Minute
+              </label>
+              <input
+                id="shares-per-minute"
+                type="number"
+                min="0.1"
+                step="0.1"
+                value={sharesPerMinute}
+                onChange={(e) => setSharesPerMinute(e.target.value)}
+                className="w-full h-10 px-3 rounded-lg border border-input bg-background text-sm focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/15 outline-none transition-all"
+              />
+              {!isPositiveNumber(sharesPerMinute) && (
+                <p className="text-xs text-destructive mt-1">Enter a value greater than 0.</p>
+              )}
+              <p className="text-xs text-muted-foreground mt-2">
+                Target share rate used by variable difficulty mechanism by the Stratum V2 Client.
+              </p>
+            </div>
+
+            <div>
+              <label htmlFor="downstream-extranonce2-size" className="block text-sm font-medium mb-2">
+                Downstream Extranonce2 Size
+              </label>
+              <input
+                id="downstream-extranonce2-size"
+                type="number"
+                min="1"
+                step="1"
+                value={downstreamExtranonce2Size}
+                onChange={(e) => setDownstreamExtranonce2Size(e.target.value)}
+                className="w-full h-10 px-3 rounded-lg border border-input bg-background text-sm focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/15 outline-none transition-all"
+              />
+              {!isPositiveInteger(downstreamExtranonce2Size) && (
+                <p className="text-xs text-destructive mt-1">Enter a whole number greater than 0.</p>
+              )}
+              <p className="text-xs text-muted-foreground mt-2">
+                Extranonce2 bytes assigned to downstream SV1 connections.
+              </p>
+            </div>
+          </div>
+        )}
+      </div>
+
       <div className="flex justify-center">
         <button
           type="button"
           onClick={onNext}
-          disabled={hashrate <= 0}
+          disabled={hashrate <= 0 || !advancedIsValid}
           className="h-11 px-10 rounded-full bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 transition-colors font-medium"
         >
           Continue

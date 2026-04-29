@@ -242,6 +242,26 @@ export function ReviewStart({ data, onComplete }: ReviewStartProps) {
           </div>
         )}
 
+        {data.translator && (
+          <div className="p-5 border-x border-b border-border bg-card">
+            <SectionLabel n={nextSection()} label="Advanced Mining Config" />
+            <div className="text-sm text-muted-foreground space-y-1 pl-7">
+              <div>
+                Shares per minute:{" "}
+                <span className="font-mono text-xs text-foreground">
+                  {data.translator.shares_per_minute ?? 6}
+                </span>
+              </div>
+              <div>
+                Downstream extranonce2 size:{" "}
+                <span className="font-mono text-xs text-foreground">
+                  {data.translator.downstream_extranonce2_size ?? 4}
+                </span>
+              </div>
+            </div>
+          </div>
+        )}
+
         <div className="p-5 rounded-b-xl border-x border-b border-border bg-card">
           <SectionLabel n={nextSection()} label="Mining Identity" />
           <div className="text-sm text-muted-foreground space-y-1 pl-7">
@@ -333,6 +353,16 @@ export function ReviewStart({ data, onComplete }: ReviewStartProps) {
                 </span>{" "}
                 <span className="font-mono text-xs text-muted-foreground/70">
                   {data.jdc.coinbase_reward_address}
+                </span>
+              </div>
+            )}
+            {isJdMode && data.jdc?.jdc_signature && (
+              <div>
+                <span className="text-muted-foreground text-xs">
+                  Miner Signature:
+                </span>{" "}
+                <span className="font-mono text-xs text-muted-foreground/70">
+                  {data.jdc.jdc_signature}
                 </span>
               </div>
             )}

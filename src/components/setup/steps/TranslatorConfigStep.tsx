@@ -14,6 +14,8 @@ export function TranslatorConfigStep({ data, updateData, onNext }: StepProps) {
       enable_vardiff: false,
       aggregate_channels: false,
       min_hashrate: 0,
+      shares_per_minute: 6,
+      downstream_extranonce2_size: 4,
     }
   );
 

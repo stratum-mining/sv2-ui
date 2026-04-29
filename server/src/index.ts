@@ -198,7 +198,7 @@ app.put('/api/config', async (req, res) => {
 
     const updates = req.body as Partial<SetupData>;
     const currentData = state.data;
-    const newData: SetupData = {
+    const newData: SetupData = normalizeSetupData({
       ...currentData,
       ...updates,
       mode: updates.mode ?? currentData.mode,
@@ -207,7 +207,7 @@ app.put('/api/config', async (req, res) => {
       bitcoin: updates.bitcoin ?? currentData.bitcoin,
       jdc: updates.jdc ?? currentData.jdc,
       translator: updates.translator ?? currentData.translator,
-    };
+    });
 
     const requiresPool = !(newData.miningMode === 'solo' && newData.mode === 'jd');
 

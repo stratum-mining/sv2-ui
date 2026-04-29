@@ -87,22 +87,34 @@ export function MiningIdentityStep({ data, updateData, onNext }: StepProps) {
 
   const [userIdentity, setUserIdentity] = useState(!useSriConventions ? existingIdentity : '');
   const [coinbaseAddress, setCoinbaseAddress] = useState(data.jdc?.coinbase_reward_address || '');
+  const [minerSignature, setMinerSignature] = useState(
+    data.jdc?.jdc_signature || (isSovereignSolo ? existingIdentity : ''),
+  );
 
   const finalIdentity = useSriConventions
     ? buildSriIdentity(payoutAddress, workerName, donationPercent)
     : userIdentity;
-  const jdcSignature = isSovereignSolo ? finalIdentity : (data.jdc?.jdc_signature || '');
+  const finalJdcSignature = isSovereignSolo ? (minerSignature || finalIdentity) : minerSignature;
 
   useEffect(() => {
     updateData({
       jdc: isJdMode
-        ? { user_identity: finalIdentity, coinbase_reward_address: coinbaseAddress, jdc_signature: jdcSignature }
+        ? { user_identity: finalIdentity, coinbase_reward_address: coinbaseAddress, jdc_signature: finalJdcSignature }
         : null,
       translator: data.translator
         ? { ...data.translator, user_identity: finalIdentity, enable_vardiff: true }
-        : { user_identity: finalIdentity, enable_vardiff: true, aggregate_channels: false, min_hashrate: 0 },
+        : {
+            user_identity: finalIdentity,
+            enable_vardiff: true,
+            aggregate_channels: false,
+            min_hashrate: 0,
+            shares_per_minute: 6,
+            downstream_extranonce2_size: 4,
+          },
     });
-  }, [finalIdentity, coinbaseAddress, isJdMode, jdcSignature, data.translator, updateData]);
+  // intentionally excluded: data.translator and updateData cause infinite loop when included
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [finalIdentity, coinbaseAddress, isJdMode, finalJdcSignature]);
 
   const network = data.bitcoin?.network ?? 'mainnet';
   const bitcoinAddressPlaceholder = getBitcoinAddressPlaceholder(network);
@@ -137,6 +149,7 @@ export function MiningIdentityStep({ data, updateData, onNext }: StepProps) {
        && (!isJdMode || isValidBitcoinAddress(coinbaseAddress, network)))
     : (userIdentity.length > 0 &&
        isTomlSafeIdentifier(userIdentity) &&
+       (!minerSignature || isTomlSafeIdentifier(minerSignature)) &&
        (!requiresAddressIdentity || isValidBitcoinAddress(userIdentity, network)) &&
        (!isJdMode || isValidBitcoinAddress(coinbaseAddress, network)));
 
@@ -288,6 +301,29 @@ export function MiningIdentityStep({ data, updateData, onNext }: StepProps) {
               {identityHelpText}
             </p>
           </div>
+        </div>
+      )}
+
+      {isJdMode && (
+        <div>
+          <label htmlFor="jdc-signature" className="block text-sm font-medium mb-2">
+            Miner Signature <span className="text-muted-foreground text-xs font-normal">(optional)</span>
+          </label>
+          <input
+            id="jdc-signature"
+            type="text"
+            value={minerSignature}
+            onChange={(e) => setMinerSignature(e.target.value)}
+            placeholder={finalIdentity || 'MyBusinessName'}
+            autoComplete="off"
+            className="w-full h-10 px-3 rounded-lg border border-input bg-background focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/15 outline-none transition-all font-mono text-sm"
+          />
+          {minerSignature && getIdentifierError(minerSignature) && (
+            <p className="text-xs text-destructive mt-1">{getIdentifierError(minerSignature)}</p>
+          )}
+          <p className="text-xs text-muted-foreground mt-2">
+            Miner-chosen tag shown in coinbase transactions on block explorers
+          </p>
         </div>
       )}
 

@@ -7,15 +7,14 @@ import { Badge } from '@/components/ui/badge';
 import { PoolIcon } from '@/components/ui/pool-icon';
 import { useSetupStatus } from '@/hooks/useSetupStatus';
 import { useControlApi, getCurrentConfig } from '@/hooks/useControlApi';
-import { getPoolsForMode, type KnownPool } from '@/lib/pools';
+import { getPoolsForMode, EMPTY_CUSTOM_POOL, isPoolValid, isSamePool, type KnownPool } from '@/lib/pools';
 import {
   getIdentifierError,
   getPoolAuthorityPubkeyError,
   isTomlSafeIdentifier,
-  isValidPoolAuthorityPubkey,
   stripWrappingQuotes,
 } from '@/lib/utils';
-import type { SetupData } from '@/components/setup/types';
+import type { PoolConfig, SetupData } from '@/components/setup/types';
 import {
   Loader2,
   AlertCircle,
@@ -55,14 +54,7 @@ function clearPersistedDashboardState() {
 
 type EditingField = null | 'pool' | 'mode' | 'identity' | 'signature' | 'advanced' | 'fallbacks';
 
-type DraftPool = { name: string; address: string; port: number; authority_public_key: string };
-
-const EMPTY_FALLBACK: DraftPool = {
-  name: 'Custom Pool',
-  address: '',
-  port: 34254,
-  authority_public_key: '',
-};
+type DraftPool = PoolConfig;
 
 const DEFAULT_SHARES_PER_MINUTE = 6;
 const DEFAULT_DOWNSTREAM_EXTRANONCE2_SIZE = 4;
@@ -75,10 +67,6 @@ function isPositiveNumber(value: string): boolean {
 function isPositiveInteger(value: string): boolean {
   const parsed = Number(value);
   return isPositiveNumber(value) && Number.isInteger(parsed);
-}
-
-function isFallbackValid(p: DraftPool): boolean {
-  return p.address.length > 0 && isValidPoolAuthorityPubkey(p.authority_public_key);
 }
 
 /**
@@ -236,17 +224,25 @@ export function ConfigurationTab() {
     setEditFallbacks(null);
   };
 
-  const isPoolValid =
-    !!editPool?.address &&
-    !!editPool?.authority_public_key &&
-    isValidPoolAuthorityPubkey(editPool.authority_public_key);
+  const isEditPoolValid = !!editPool && isPoolValid(editPool);
   const isIdentityValid = isTomlSafeIdentifier(editIdentity);
   const isSignatureValid = editSignature === '' || isTomlSafeIdentifier(editSignature);
   const isAdvancedValid =
     !!editAdvanced &&
     isPositiveNumber(editAdvanced.shares_per_minute) &&
     isPositiveInteger(editAdvanced.downstream_extranonce2_size);
-  const areFallbacksValid = editFallbacks?.every(isFallbackValid) ?? true;
+  const fallbackDuplicateIndex = (() => {
+    if (!editFallbacks || !config?.pool) return -1;
+    const all = [config.pool, ...editFallbacks];
+    for (let i = 1; i < all.length; i++) {
+      for (let j = 0; j < i; j++) {
+        if (isSamePool(all[i], all[j])) return i - 1;
+      }
+    }
+    return -1;
+  })();
+  const areFallbacksValid =
+    (editFallbacks?.every(isPoolValid) ?? true) && fallbackDuplicateIndex === -1;
 
   const saveEdit = () => {
     if (!config) return;
@@ -254,7 +250,7 @@ export function ConfigurationTab() {
     const updated: SetupData = { ...config };
 
     if (editing === 'pool' && editPool) {
-      if (!isPoolValid) return;
+      if (!isEditPoolValid) return;
       updated.pool = { ...editPool };
     } else if (editing === 'mode') {
       if (editMode === 'jd' && !config.bitcoin) {
@@ -544,7 +540,7 @@ export function ConfigurationTab() {
               onSave={saveEdit}
               onCancel={cancelEdit}
               isSaving={isSaving}
-              saveDisabled={!isPoolValid}
+              saveDisabled={!isEditPoolValid}
               disabled={editing !== null && editing !== 'pool'}
               display={
                 <>
@@ -677,6 +673,8 @@ export function ConfigurationTab() {
                     value={editFallbacks}
                     onChange={setEditFallbacks}
                     pools={pools.filter((p) => p.badge !== 'coming-soon')}
+                    primary={config.pool}
+                    duplicateIndex={fallbackDuplicateIndex}
                   />
                 )
               }
@@ -1031,18 +1029,26 @@ function PoolOption({
   );
 }
 
-function matchPoolByEndpoint(pools: KnownPool[], p: DraftPool): KnownPool | undefined {
-  return pools.find((kp) => kp.address === p.address && kp.port === p.port);
+function knownToConfig(kp: KnownPool): PoolConfig {
+  return { name: kp.name, address: kp.address, port: kp.port, authority_public_key: kp.authority_public_key };
+}
+
+function matchKnownByPool(pools: KnownPool[], p: DraftPool): KnownPool | undefined {
+  return pools.find((kp) => isSamePool(knownToConfig(kp), p));
 }
 
 function FallbackListEditor({
   value,
   onChange,
   pools,
+  primary,
+  duplicateIndex,
 }: {
   value: DraftPool[];
   onChange: (next: DraftPool[]) => void;
   pools: KnownPool[];
+  primary: PoolConfig | null;
+  duplicateIndex: number;
 }) {
   const update = (i: number, patch: Partial<DraftPool>) => {
     onChange(value.map((p, idx) => (idx === i ? { ...p, ...patch } : p)));
@@ -1062,12 +1068,20 @@ function FallbackListEditor({
     onChange(next);
   };
 
-  const add = () => onChange([...value, { ...EMPTY_FALLBACK }]);
+  const add = () => onChange([...value, { ...EMPTY_CUSTOM_POOL }]);
 
   return (
     <div className="space-y-3">
       {value.map((fp, i) => {
-        const matched = matchPoolByEndpoint(pools, fp);
+        // Filter known pools shown for this slot: hide any pool already
+        // claimed by primary or another fallback. Slot's own pick stays.
+        const slotPools = pools.filter((kp) => {
+          const kpAsConfig = knownToConfig(kp);
+          if (isSamePool(fp, kpAsConfig)) return true;
+          if (primary && isSamePool(primary, kpAsConfig)) return false;
+          return !value.some((other, j) => j !== i && isSamePool(other, kpAsConfig));
+        });
+        const matched = matchKnownByPool(slotPools, fp);
         const isCustom = !matched;
         return (
           <div key={i} className="space-y-2 p-3 rounded-lg border border-border bg-muted/20">
@@ -1106,25 +1120,18 @@ function FallbackListEditor({
             </div>
 
             <div className="space-y-2">
-              {pools.map((kp) => (
+              {slotPools.map((kp) => (
                 <PoolOption
                   key={kp.id}
                   pool={kp}
                   selected={matched?.id === kp.id}
-                  onSelect={() =>
-                    replaceAt(i, {
-                      name: kp.name,
-                      address: kp.address,
-                      port: kp.port,
-                      authority_public_key: kp.authority_public_key,
-                    })
-                  }
+                  onSelect={() => replaceAt(i, knownToConfig(kp))}
                 />
               ))}
               <button
                 type="button"
                 onClick={() => {
-                  if (!isCustom) replaceAt(i, { ...EMPTY_FALLBACK });
+                  if (!isCustom) replaceAt(i, { ...EMPTY_CUSTOM_POOL });
                 }}
                 className={`w-full p-3 rounded-lg border transition-all text-left ${
                   isCustom
@@ -1185,6 +1192,12 @@ function FallbackListEditor({
                   )}
                 </div>
               </div>
+            )}
+
+            {duplicateIndex === i && (
+              <p className="text-xs text-destructive">
+                This pool is already used. Remove or change it — fallbacks must be distinct from the primary and each other.
+              </p>
             )}
           </div>
         );

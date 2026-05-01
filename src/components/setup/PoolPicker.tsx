@@ -1,6 +1,6 @@
 import { Check } from 'lucide-react';
 import { PoolIcon } from '@/components/ui/pool-icon';
-import type { KnownPool } from '@/lib/pools';
+import { EMPTY_CUSTOM_POOL, isSamePool, type KnownPool } from '@/lib/pools';
 import type { PoolConfig } from './types';
 import {
   getPoolAuthorityPubkeyError,
@@ -15,7 +15,7 @@ interface PoolPickerProps {
 }
 
 function matchKnownPool(pools: KnownPool[], value: PoolConfig): KnownPool | undefined {
-  return pools.find((p) => p.address === value.address && p.port === value.port);
+  return pools.find((p) => isSamePool({ name: p.name, address: p.address, port: p.port, authority_public_key: p.authority_public_key }, value));
 }
 
 export function PoolPicker({ pools, value, onChange, formIdPrefix }: PoolPickerProps) {
@@ -34,7 +34,7 @@ export function PoolPicker({ pools, value, onChange, formIdPrefix }: PoolPickerP
 
   const selectCustom = () => {
     if (isCustom) return;
-    onChange({ name: 'Custom Pool', address: '', port: 34254, authority_public_key: '' });
+    onChange({ ...EMPTY_CUSTOM_POOL });
   };
 
   const updateCustomField = (field: keyof PoolConfig, val: string | number) => {

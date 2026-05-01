@@ -1,30 +1,34 @@
 import { useEffect } from 'react';
 import { StepProps, PoolConfig } from '../types';
 import { Plus, ArrowUp, ArrowDown, X } from 'lucide-react';
-import { POOL_MINING_NO_JD, POOL_MINING_JD, SOLO_POOLS } from '@/lib/pools';
-import { isValidPoolAuthorityPubkey } from '@/lib/utils';
+import {
+  POOL_MINING_NO_JD,
+  POOL_MINING_JD,
+  SOLO_POOLS,
+  EMPTY_CUSTOM_POOL,
+  isPoolValid,
+  isSamePool,
+  type KnownPool,
+} from '@/lib/pools';
 import { PoolPicker } from '../PoolPicker';
 
-const EMPTY_CUSTOM: PoolConfig = {
-  name: 'Custom Pool',
-  address: '',
-  port: 34254,
-  authority_public_key: '',
-};
-
-function isPoolValid(pool: PoolConfig): boolean {
-  return pool.address.length > 0 && isValidPoolAuthorityPubkey(pool.authority_public_key);
+function knownPoolToConfig(p: KnownPool): PoolConfig {
+  return {
+    name: p.name,
+    address: p.address,
+    port: p.port,
+    authority_public_key: p.authority_public_key,
+  };
 }
 
 export function PoolConfigStep({ data, updateData, onNext }: StepProps) {
   const isSoloMode = data.miningMode === 'solo';
   const isJdMode = data.mode === 'jd';
+  const isSovereignSolo = isSoloMode && isJdMode;
   const pools = isSoloMode ? SOLO_POOLS : (isJdMode ? POOL_MINING_JD : POOL_MINING_NO_JD);
 
   const first = pools.find((p) => p.badge !== 'coming-soon');
-  const defaultPrimary: PoolConfig = first
-    ? { name: first.name, address: first.address, port: first.port, authority_public_key: first.authority_public_key }
-    : EMPTY_CUSTOM;
+  const defaultPrimary: PoolConfig = first ? knownPoolToConfig(first) : EMPTY_CUSTOM_POOL;
 
   const primary: PoolConfig = data.pool ?? defaultPrimary;
   useEffect(() => {
@@ -38,12 +42,11 @@ export function PoolConfigStep({ data, updateData, onNext }: StepProps) {
   const setPrimary = (pool: PoolConfig) => updateData({ pool });
 
   const setFallback = (index: number, pool: PoolConfig) => {
-    const next = fallbacks.map((f, i) => (i === index ? pool : f));
-    updateData({ fallbackPools: next });
+    updateData({ fallbackPools: fallbacks.map((f, i) => (i === index ? pool : f)) });
   };
 
   const addFallback = () => {
-    updateData({ fallbackPools: [...fallbacks, { ...EMPTY_CUSTOM }] });
+    updateData({ fallbackPools: [...fallbacks, { ...EMPTY_CUSTOM_POOL }] });
   };
 
   const removeFallback = (index: number) => {
@@ -58,7 +61,32 @@ export function PoolConfigStep({ data, updateData, onNext }: StepProps) {
     updateData({ fallbackPools: next });
   };
 
-  const isValid = isPoolValid(primary) && fallbacks.every(isPoolValid);
+  // Filter known pools shown in fallback slot N: hide any pool already claimed
+  // by primary or another fallback. The slot's own current pick stays visible
+  // so its branding renders. Custom Pool always remains available.
+  const knownPoolsForFallback = (slotIndex: number): KnownPool[] =>
+    pools.filter((kp) => {
+      const kpAsConfig = knownPoolToConfig(kp);
+      if (isSamePool(fallbacks[slotIndex], kpAsConfig)) return true;
+      if (isSamePool(primary, kpAsConfig)) return false;
+      return !fallbacks.some((other, j) => j !== slotIndex && isSamePool(other, kpAsConfig));
+    });
+
+  // Reject configurations where the same SV2 endpoint appears more than once.
+  // sv2-apps treats each [[upstreams]] entry as a fresh attempt, so duplicates
+  // burn retries against the same dead pool with no failover benefit.
+  const duplicateIndex = (() => {
+    const all = [primary, ...fallbacks];
+    for (let i = 1; i < all.length; i++) {
+      for (let j = 0; j < i; j++) {
+        if (isSamePool(all[i], all[j])) return i - 1; // index in fallbacks
+      }
+    }
+    return -1;
+  })();
+  const hasDuplicate = duplicateIndex !== -1;
+
+  const isValid = isPoolValid(primary) && fallbacks.every(isPoolValid) && !hasDuplicate;
 
   return (
     <div className="space-y-8">
@@ -82,7 +110,7 @@ export function PoolConfigStep({ data, updateData, onNext }: StepProps) {
         formIdPrefix="primary-pool"
       />
 
-      {!isSoloMode && (
+      {!isSovereignSolo && (
         <div className="space-y-4">
           <div className="border-t border-border/60 pt-6">
             <h3 className="text-lg font-semibold tracking-tight">Fallback Pools</h3>
@@ -125,11 +153,16 @@ export function PoolConfigStep({ data, updateData, onNext }: StepProps) {
                 </div>
               </div>
               <PoolPicker
-                pools={pools}
+                pools={knownPoolsForFallback(index)}
                 value={fp}
                 onChange={(pool) => setFallback(index, pool)}
                 formIdPrefix={`fallback-${index}`}
               />
+              {duplicateIndex === index && (
+                <p className="text-xs text-destructive">
+                  This pool is already used. Remove or change it — fallbacks must be distinct from the primary and each other.
+                </p>
+              )}
             </div>
           ))}
 

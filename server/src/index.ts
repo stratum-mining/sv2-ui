@@ -24,6 +24,7 @@ import {
   readContainerLogs
 } from './docker.js';
 import { getLogDiagnostics, getLogStreams, readCollatedLogLines } from './logs/diagnostics.js';
+import { getCurrentUpstreamPoolName } from './logs/current-upstream.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -104,14 +105,25 @@ app.get('/api/status', async (_req, res) => {
         (containers.jdc?.status === 'healthy' || containers.jdc?.status === 'starting')
       : (containers.translator?.status === 'healthy' || containers.translator?.status === 'starting');
 
+    const isSovereignSolo = state.data?.miningMode === 'solo' && state.data?.mode === 'jd';
+    let poolName: string | null;
+    if (isSovereignSolo) {
+      poolName = 'Sovereign Solo Mining';
+    } else if (running) {
+      const container = state.mode === 'jd' ? 'jdc' : 'translator';
+      poolName = (await getCurrentUpstreamPoolName(container, state.data))
+        ?? state.data?.pool?.name
+        ?? null;
+    } else {
+      poolName = state.data?.pool?.name ?? null;
+    }
+
     const response: StatusResponse = {
       configured: state.configured,
       running,
       miningMode: state.miningMode,
       mode: state.mode,
-      poolName: state.data?.miningMode === 'solo' && state.data?.mode === 'jd'
-        ? 'Sovereign Solo Mining'
-        : (state.data?.pool?.name ?? null),
+      poolName,
       containers,
     };
 

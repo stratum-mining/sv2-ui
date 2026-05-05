@@ -17,7 +17,12 @@ function computeSocketPath(os: OperatingSystem, network: 'mainnet' | 'testnet4',
 
 const SUPPORTED_BITCOIN_CORE_VERSIONS: BitcoinCoreVersion[] = ['30.2', '31.0'];
 
-export function BitcoinSetup({ data, updateData, onNext }: StepProps) {
+interface BitcoinSetupProps extends StepProps {
+  notice?: string | null;
+  onDismissNotice?: () => void;
+}
+
+export function BitcoinSetup({ data, updateData, onNext, notice, onDismissNotice }: BitcoinSetupProps) {
   const [coreVersion, setCoreVersion] = useState<BitcoinCoreVersion | null>(data.bitcoin?.core_version ?? null);
   const [os, setOs] = useState<OperatingSystem>(data.bitcoin?.os || 'linux');
   const [network, setNetwork] = useState<'mainnet' | 'testnet4'>(data.bitcoin?.network || 'mainnet');
@@ -95,10 +100,23 @@ export function BitcoinSetup({ data, updateData, onNext }: StepProps) {
         <label htmlFor="core-version" className="block text-sm font-medium mb-3">
           Bitcoin Core Version
         </label>
+        {notice && (
+          <div
+            className="mb-3 p-3 rounded-lg bg-destructive/[0.08] text-sm text-destructive flex gap-3 items-start"
+            role="alert"
+            aria-live="assertive"
+          >
+            <AlertCircle className="h-4 w-4 flex-shrink-0 mt-0.5" aria-hidden="true" />
+            <span>{notice}</span>
+          </div>
+        )}
         <select
           id="core-version"
           value={coreVersion ?? ''}
-          onChange={(e) => setCoreVersion(e.target.value ? (e.target.value as BitcoinCoreVersion) : null)}
+          onChange={(e) => {
+            setCoreVersion(e.target.value ? (e.target.value as BitcoinCoreVersion) : null);
+            onDismissNotice?.();
+          }}
           className="w-full h-10 px-3 rounded-lg border border-input bg-background text-sm focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/15 outline-none transition-all"
         >
           <option value="" disabled>Select a supported version</option>

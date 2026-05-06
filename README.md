@@ -161,8 +161,18 @@ sv2-ui/
 
 ## Docker Images Used
 
-- `stratumv2/translator_sv2:main` - Translator Proxy
-- `stratumv2/jd_client_sv2:main` - JD Client
+`sv2-ui` selects the JDC and Translator Proxy images from the Bitcoin Core compatibility table.
+
+## Bitcoin Core Compatibility
+
+| Bitcoin Core | JDC image | Translator Proxy image | Status | Reference |
+|--------------|-----------|------------------------|--------|-----------|
+| 30.2 | `stratumv2/jd_client_sv2:v0.3.5` | `stratumv2/translator_sv2:v0.3.5` | Supported | [`release/v0.1.4`](https://github.com/stratum-mining/sv2-ui/tree/release/v0.1.4) |
+| 31.0 | `stratumv2/jd_client_sv2:main` | `stratumv2/translator_sv2:main` | Supported using development images | Release branches pin matching sv2-apps release tags |
+
+## Compatibility Notes
+
+- [Monitoring API compatibility](docs/monitoring-api-compatibility.md) - How `sv2-ui` should handle monitoring API changes across supported JDC and Translator Proxy image sets.
 
 ## Ports
 

@@ -12,6 +12,9 @@ const UNKNOWN_USER_REGEX =
 const JDC_BITCOIN_CORE_DISCONNECTED_REGEX =
   /Failed to (create BitcoinCoreToSv2|get response): (CannotConnectToUnixSocket|CapnpError\(Error \{ kind: Disconnected|Disconnected: Peer disconnected)/;
 
+const JDC_BITCOIN_CORE_UNSUPPORTED_MINING_INTERFACE_REGEX =
+  /(Old mining interface \(@[^)]+\) not supported\. Please update your client!|Failed to create BitcoinCoreToSv2: CapnpError\(Error \{ kind: Unimplemented, extra: "remote exception: Method not implemented\.; interfaceName = capnp\/init\.capnp:Init; typeId = \d+; methodId = \d+" \}\))/;
+
 const INVALID_CERTIFICATE_REGEX =
   /(InvalidCertificate|Invalid Certificate).*SignatureNoiseMessage \{ version: \d+, valid_from: (\d+), not_valid_after: (\d+),/;
 
@@ -83,6 +86,42 @@ export function jdcBitcoinCoreDisconnectedParser(
   };
 }
 
+export function jdcBitcoinCoreUnsupportedMiningInterfaceParser(
+  lines: ContainerLogLine[]
+): LogDiagnostic | null {
+  const matches = lines.filter(
+    ({ container, message }) =>
+      container === 'jdc' && JDC_BITCOIN_CORE_UNSUPPORTED_MINING_INTERFACE_REGEX.test(message)
+  );
+
+  if (matches.length === 0) {
+    return null;
+  }
+
+  const evidence: DiagnosticEvidence[] = matches.map(
+    ({ container, stream, timestamp, raw }) => ({
+      container,
+      stream,
+      timestamp,
+      line: raw,
+    })
+  );
+
+  return {
+    code: 'jdc-bitcoin-core-unsupported-mining-interface',
+    severity: 'error' as DiagnosticSeverity,
+    title: 'Bitcoin Core version does not match',
+    message:
+      'The Bitcoin Core version selected in setup does not match the node that is running.',
+    recommendation:
+      'Open setup and select your actual Bitcoin Core version.',
+    streamId: 'mining-services',
+    containers: ['jdc'],
+    detectedAt: matches[0].timestamp,
+    evidence,
+  };
+}
+
 function invalidCertificateParser(lines: ContainerLogLine[]): LogDiagnostic | null {
   const matches = lines.filter(
     ({ container, message }) =>
@@ -122,6 +161,10 @@ function invalidCertificateParser(lines: ContainerLogLine[]): LogDiagnostic | nu
 export const logParsers: LogParser[] = [
   { code: 'unknown-user', match: unknownUserParser },
   { code: 'jdc-bitcoin-core-disconnected', match: jdcBitcoinCoreDisconnectedParser },
+  {
+    code: 'jdc-bitcoin-core-unsupported-mining-interface',
+    match: jdcBitcoinCoreUnsupportedMiningInterfaceParser,
+  },
   { code: 'invalid-certificate', match: invalidCertificateParser },
 ];
 

@@ -31,7 +31,7 @@ export function BitcoinPrereqStep({ onNext }: StepProps) {
           Start Bitcoin Core
         </h2>
         <p className="text-lg text-muted-foreground">
-          Job Declaration requires Bitcoin Core v30.2+ running with IPC enabled
+          Job Declaration requires Bitcoin Core 30.2 or 31.0 running with IPC enabled
         </p>
         <p className="text-sm text-muted-foreground mt-3">
           Bitcoin Core IPC is currently supported on Linux and macOS only. Windows is not supported yet.
@@ -44,10 +44,10 @@ export function BitcoinPrereqStep({ onNext }: StepProps) {
           <div className="w-7 h-7 rounded-full bg-primary/10 text-primary text-xs flex items-center justify-center font-mono flex-shrink-0 mt-0.5">1</div>
           <div className="flex-1 min-w-0">
             <div className="font-medium text-sm mb-1">
-              Install Bitcoin Core v30.2+
+              Install a supported Bitcoin Core release
             </div>
             <p className="text-xs text-muted-foreground mb-2">
-              Download the latest release with IPC support.
+              Use Bitcoin Core 30.2 or 31.0. If your node runs another version, upgrade to a supported release to get all SV2 features.
             </p>
             <a
               href="https://bitcoincore.org/en/download/"

@@ -61,7 +61,9 @@ function positiveInteger(value: number | undefined, fallback: number): number {
 }
 
 export function normalizeSetupData(data: SetupData): SetupData {
-  if (!data.translator) return data;
+  if (!data.translator) {
+    return data;
+  }
 
   return {
     ...data,

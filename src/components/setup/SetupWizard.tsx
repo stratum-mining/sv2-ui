@@ -76,6 +76,10 @@ function computeSteps(data: SetupData): SetupStep[] {
   return steps;
 }
 
+const SETUP_TARGET_STEP_STORAGE_KEY = 'sv2-ui-setup-target-step';
+const BITCOIN_CORE_VERSION_MISMATCH_NOTICE =
+  'Bitcoin Core version mismatch detected. Select the version your running node is actually using.';
+
 export function SetupWizard() {
   const { isDark, toggle } = useTheme();
   const [, navigate] = useLocation();
@@ -83,6 +87,7 @@ export function SetupWizard() {
   const [data, setData] = useState<SetupData>(initialSetupData);
   const [isReconfiguring, setIsReconfiguring] = useState(false);
   const [loadingConfig, setLoadingConfig] = useState(true);
+  const [bitcoinSetupNotice, setBitcoinSetupNotice] = useState<string | null>(null);
   // White flash: 0 = invisible, 1 = full white
   const [flashOpacity, setFlashOpacity] = useState(0);
   const flashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -92,7 +97,31 @@ export function SetupWizard() {
 
   useEffect(() => {
     getCurrentConfig().then(config => {
-      if (config) { setData(config); setIsReconfiguring(true); }
+      if (config) {
+        let nextConfig = config;
+        setIsReconfiguring(true);
+
+        const targetStep = window.sessionStorage.getItem(SETUP_TARGET_STEP_STORAGE_KEY) as SetupStep | null;
+        window.sessionStorage.removeItem(SETUP_TARGET_STEP_STORAGE_KEY);
+
+        if (targetStep === 'bitcoin' && config.bitcoin) {
+          nextConfig = {
+            ...config,
+            bitcoin: {
+              ...config.bitcoin,
+              core_version: null,
+            },
+          };
+          setBitcoinSetupNotice(BITCOIN_CORE_VERSION_MISMATCH_NOTICE);
+        }
+
+        setData(nextConfig);
+        dataRef.current = nextConfig;
+
+        if (targetStep && computeSteps(config).includes(targetStep)) {
+          setCurrentStep(targetStep);
+        }
+      }
       setLoadingConfig(false);
     });
   }, []);
@@ -247,7 +276,13 @@ export function SetupWizard() {
             {currentStep === 'template-mode'  && <TemplateModeSelection {...stepProps} />}
             {currentStep === 'pool'            && <PoolConfigStep {...stepProps} />}
             {currentStep === 'bitcoin-prereq'  && <BitcoinPrereqStep {...stepProps} />}
-            {currentStep === 'bitcoin'         && <BitcoinSetup {...stepProps} />}
+            {currentStep === 'bitcoin'         && (
+              <BitcoinSetup
+                {...stepProps}
+                notice={bitcoinSetupNotice}
+                onDismissNotice={() => setBitcoinSetupNotice(null)}
+              />
+            )}
             {currentStep === 'hashrate'        && <HashrateStep {...stepProps} />}
             {currentStep === 'identity'        && <MiningIdentityStep {...stepProps} />}
             {currentStep === 'review'          && <ReviewStart {...stepProps} onComplete={handleComplete} />}

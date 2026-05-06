@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { StepProps, BitcoinConfig, OperatingSystem } from '../types';
+import { StepProps, BitcoinConfig, BitcoinCoreVersion, OperatingSystem } from '../types';
 import { Bitcoin, Apple, Terminal, Pencil, Check, Loader2, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { useBitcoinSocketValidation } from '@/hooks/useBitcoinSocketValidation';
 
@@ -15,7 +15,15 @@ function computeSocketPath(os: OperatingSystem, network: 'mainnet' | 'testnet4',
   return network === 'mainnet' ? `${dataDir}/node.sock` : `${dataDir}/testnet4/node.sock`;
 }
 
-export function BitcoinSetup({ data, updateData, onNext }: StepProps) {
+const SUPPORTED_BITCOIN_CORE_VERSIONS: BitcoinCoreVersion[] = ['30.2', '31.0'];
+
+interface BitcoinSetupProps extends StepProps {
+  notice?: string | null;
+  onDismissNotice?: () => void;
+}
+
+export function BitcoinSetup({ data, updateData, onNext, notice, onDismissNotice }: BitcoinSetupProps) {
+  const [coreVersion, setCoreVersion] = useState<BitcoinCoreVersion | null>(data.bitcoin?.core_version ?? null);
   const [os, setOs] = useState<OperatingSystem>(data.bitcoin?.os || 'linux');
   const [network, setNetwork] = useState<'mainnet' | 'testnet4'>(data.bitcoin?.network || 'mainnet');
   const [customDataDir, setCustomDataDir] = useState(data.bitcoin?.customDataDir || '');
@@ -25,8 +33,16 @@ export function BitcoinSetup({ data, updateData, onNext }: StepProps) {
   const socketPath = manualSocketPath || computedSocketPath;
 
   useEffect(() => {
-    updateData({ bitcoin: { os, network, customDataDir, socket_path: socketPath } as BitcoinConfig });
-  }, [os, network, customDataDir, socketPath, updateData]);
+    updateData({
+      bitcoin: {
+        core_version: coreVersion,
+        os,
+        network,
+        customDataDir,
+        socket_path: socketPath,
+      } as BitcoinConfig,
+    });
+  }, [coreVersion, os, network, customDataDir, socketPath, updateData]);
 
   const { isChecking, isValid, error: socketError } = useBitcoinSocketValidation(socketPath);
 
@@ -78,6 +94,46 @@ export function BitcoinSetup({ data, updateData, onNext }: StepProps) {
         <p className="text-xs text-muted-foreground mt-2">
           Windows is intentionally omitted here because Bitcoin Core IPC support is still in progress.
         </p>
+      </div>
+
+      <div>
+        <label htmlFor="core-version" className="block text-sm font-medium mb-3">
+          Bitcoin Core Version
+        </label>
+        {notice && (
+          <div
+            className="mb-3 p-3 rounded-lg bg-destructive/[0.08] text-sm text-destructive flex gap-3 items-start"
+            role="alert"
+            aria-live="assertive"
+          >
+            <AlertCircle className="h-4 w-4 flex-shrink-0 mt-0.5" aria-hidden="true" />
+            <span>{notice}</span>
+          </div>
+        )}
+        <select
+          id="core-version"
+          value={coreVersion ?? ''}
+          onChange={(e) => {
+            setCoreVersion(e.target.value ? (e.target.value as BitcoinCoreVersion) : null);
+            onDismissNotice?.();
+          }}
+          className="w-full h-10 px-3 rounded-lg border border-input bg-background text-sm focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/15 outline-none transition-all"
+        >
+          <option value="" disabled>Select a supported version</option>
+          {SUPPORTED_BITCOIN_CORE_VERSIONS.map((version) => (
+            <option key={version} value={version}>
+              Bitcoin Core {version}
+            </option>
+          ))}
+        </select>
+        <p className="text-xs text-muted-foreground mt-2">
+          If your node runs another Bitcoin Core version, upgrade to a supported release to get all SV2 features.
+        </p>
+        {!coreVersion && (
+          <p className="text-xs text-destructive mt-2">
+            Select your Bitcoin Core version to continue.
+          </p>
+        )}
       </div>
 
       <div role="group" aria-labelledby="network-label">
@@ -194,7 +250,7 @@ export function BitcoinSetup({ data, updateData, onNext }: StepProps) {
         <button
           type="button"
           onClick={onNext}
-          disabled={!isChecking && !!socketError}
+          disabled={!coreVersion || (!isChecking && !!socketError)}
           className="h-11 px-10 rounded-full bg-primary text-primary-foreground hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
         >
           Continue

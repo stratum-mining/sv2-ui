@@ -7,6 +7,7 @@ import Docker from 'dockerode';
 import os from 'os';
 import type { SetupData, ContainerStatus, HealthStatus } from './types.js';
 import type { ContainerLogLine, LogContainerRole, LogOutputStream } from './logs/types.js';
+import { getCompatibilityProfileForSetup } from './compatibility.js';
 
 /**
  * Expand ~ to home directory in a path.
@@ -145,8 +146,6 @@ const NETWORK_NAME = 'sv2-network';
 const CONFIG_VOLUME = 'sv2-config';
 const TRANSLATOR_CONTAINER = 'sv2-translator';
 const JDC_CONTAINER = 'sv2-jdc';
-const TRANSLATOR_IMAGE = 'stratumv2/translator_sv2:main';
-const JDC_IMAGE = 'stratumv2/jd_client_sv2:main';
 const DOCKER_LOG_HEADER_SIZE = 8;
 
 /**
@@ -385,7 +384,7 @@ async function getContainerStatus(name: string): Promise<ContainerStatus | null>
  * - In Docker: uses shared volume (sv2-config) for config
  * - In dev: bind-mounts config file from host filesystem
  */
-async function startTranslator(configPath: string): Promise<void> {
+async function startTranslator(configPath: string, image: string): Promise<void> {
   await removeContainer(TRANSLATOR_CONTAINER);
 
   const binds = isRunningInDocker
@@ -393,7 +392,7 @@ async function startTranslator(configPath: string): Promise<void> {
     : [`${configPath}:/config/translator.toml:ro`];
 
   const container = await docker.createContainer({
-    Image: TRANSLATOR_IMAGE,
+    Image: image,
     name: TRANSLATOR_CONTAINER,
     Entrypoint: ['/app/translator_sv2'],
     Cmd: ['-c', '/config/translator.toml'],
@@ -425,7 +424,8 @@ async function startTranslator(configPath: string): Promise<void> {
 async function startJdc(
   configPath: string,
   bitcoinSocketPath: string,
-  network: string
+  network: string,
+  image: string
 ): Promise<void> {
   await removeContainer(JDC_CONTAINER);
 
@@ -447,7 +447,7 @@ async function startJdc(
     ];
 
   const container = await docker.createContainer({
-    Image: JDC_IMAGE,
+    Image: image,
     name: JDC_CONTAINER,
     Entrypoint: ['/app/jd_client_sv2'],
     Cmd: ['-c', '/config/jdc.toml'],
@@ -486,22 +486,27 @@ export async function startStack(
   // Connect sv2-ui to the network so it can proxy API requests
   await connectSv2UiToNetwork();
 
-  // Pull latest images from Docker Hub
-  await pullImage(TRANSLATOR_IMAGE);
+  const profile = getCompatibilityProfileForSetup(data);
+  console.log(
+    `Using compatibility profile ${profile.id} for Bitcoin Core ${profile.bitcoinCoreVersion}`
+  );
+
+  // Pull profile-selected images from Docker Hub
+  await pullImage(profile.images.translator);
   if (data.mode === 'jd') {
-    await pullImage(JDC_IMAGE);
+    await pullImage(profile.images.jdc);
   }
 
   // Start JDC first if in JD mode (Translator connects to JDC)
   if (data.mode === 'jd' && data.bitcoin) {
     const socketPath = expandHomePath(data.bitcoin.socket_path);
-    await startJdc(`${configDir}/jdc.toml`, socketPath, data.bitcoin.network);
+    await startJdc(`${configDir}/jdc.toml`, socketPath, data.bitcoin.network, profile.images.jdc);
     console.log('Waiting for JDC to initialize...');
     await new Promise(resolve => setTimeout(resolve, 3000));
   }
 
   // Start Translator
-  await startTranslator(`${configDir}/translator.toml`);
+  await startTranslator(`${configDir}/translator.toml`, profile.images.translator);
 }
 
 /**

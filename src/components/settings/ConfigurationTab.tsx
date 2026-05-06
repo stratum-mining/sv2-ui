@@ -832,6 +832,7 @@ export function ConfigurationTab() {
             <div className="p-4 rounded-lg border border-border/50 bg-muted/20 space-y-2">
               <div className="flex items-center gap-2">
                 <p className="font-medium">Bitcoin Core</p>
+                <Badge variant="outline" className="text-xs">{config.bitcoin.core_version ?? 'Not selected'}</Badge>
                 <Badge variant="outline" className="text-xs">{config.bitcoin.network}</Badge>
               </div>
               <p className="text-muted-foreground font-mono text-xs truncate">

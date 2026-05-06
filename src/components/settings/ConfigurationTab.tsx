@@ -34,6 +34,7 @@ function clearPersistedDashboardState() {
     'sv2_hashrate_history:',
     'sv2_blocks_found:',
     'sv2_best_diff:',
+    'sv2_share_stats:',
   ];
 
   const keysToRemove: string[] = [];

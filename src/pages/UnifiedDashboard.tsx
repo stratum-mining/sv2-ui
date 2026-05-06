@@ -24,7 +24,8 @@ import { useHashrateHistory } from '@/hooks/useHashrateHistory';
 import {
   usePersistentBestDifficulty,
   usePersistentBlocksFound,
-} from '@/hooks/usePersistentBlocksFound';
+  usePersistentShareStats,
+} from '@/hooks/usePersistentDashboardMetrics';
 import { isAggregatedTproxyPoolName } from '@/components/setup/poolRules';
 import { useSetupStatus } from '@/hooks/useSetupStatus';
 import { useConnectionStatus } from '@/hooks/useConnectionStatus';
@@ -342,50 +343,30 @@ export function UnifiedDashboard() {
     ];
   }, [isJdMode, serverChannels, sv2Clients]);
 
-  // Shares data from upstream SERVER channels (shares sent TO the Pool)
-  const shareStats = useMemo(() => {
-    if (!serverChannels) {
-      return {
-        acknowledged: 0,
-        submitted: 0,
-        rejected: 0,
-        rejectionReasons: [],
-        unclassifiedRejected: 0,
-      };
-    }
-    
-    const extAcknowledged = serverChannels.extended_channels.reduce((sum, ch) => sum + ch.shares_acknowledged, 0);
-    const stdAcknowledged = serverChannels.standard_channels.reduce((sum, ch) => sum + ch.shares_acknowledged, 0);
-    
-    const extSubmitted = serverChannels.extended_channels.reduce((sum, ch) => sum + ch.shares_submitted, 0);
-    const stdSubmitted = serverChannels.standard_channels.reduce((sum, ch) => sum + ch.shares_submitted, 0);
+  const shareStatsEntries = useMemo(() => {
+    if (!serverChannels) return [];
 
-    const extRejected = serverChannels.extended_channels.reduce((sum, ch) => sum + ch.shares_rejected, 0);
-    const stdRejected = serverChannels.standard_channels.reduce((sum, ch) => sum + ch.shares_rejected, 0);
-    const rejectedByReason = new Map<string, number>();
-    const channels = [...serverChannels.extended_channels, ...serverChannels.standard_channels];
-
-    for (const channel of channels) {
-      for (const [reason, count] of Object.entries(channel.shares_rejected_by_reason ?? {})) {
-        rejectedByReason.set(reason, (rejectedByReason.get(reason) ?? 0) + count);
-      }
-    }
-
-    const rejectionReasons = [...rejectedByReason.entries()]
-      .map(([reason, count]) => ({ reason, count }))
-      .sort((a, b) => b.count - a.count || a.reason.localeCompare(b.reason));
-    const classifiedRejected = rejectionReasons.reduce((sum, item) => sum + item.count, 0);
-    
-    return {
-      acknowledged: extAcknowledged + stdAcknowledged,
-      submitted: extSubmitted + stdSubmitted,
-      rejected: extRejected + stdRejected,
-      rejectionReasons,
-      unclassifiedRejected: Math.max(0, extRejected + stdRejected - classifiedRejected),
-    };
-  }, [serverChannels]);
+    const source = isJdMode ? 'jdc' : 'translator';
+    return [
+      ...serverChannels.extended_channels.map((channel) => ({
+        key: `${source}:server:extended:${channel.channel_id}:${channel.user_identity}`,
+        acknowledged: channel.shares_acknowledged,
+        submitted: channel.shares_submitted,
+        rejected: channel.shares_rejected,
+        rejectedByReason: channel.shares_rejected_by_reason,
+      })),
+      ...serverChannels.standard_channels.map((channel) => ({
+        key: `${source}:server:standard:${channel.channel_id}:${channel.user_identity}`,
+        acknowledged: channel.shares_acknowledged,
+        submitted: channel.shares_submitted,
+        rejected: channel.shares_rejected,
+        rejectedByReason: channel.shares_rejected_by_reason,
+      })),
+    ];
+  }, [isJdMode, serverChannels]);
   const blocksFound = usePersistentBlocksFound(blocksFoundEntries, historyConfigKey);
   const bestDiff = usePersistentBestDifficulty(bestDiffEntries, historyConfigKey);
+  const shareStats = usePersistentShareStats(shareStatsEntries, historyConfigKey);
 
   // Number of upstream pool channels (for shares subtitle)
   const poolChannelCount = (serverChannels?.total_extended || 0) + (serverChannels?.total_standard || 0);

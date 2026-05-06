@@ -24,7 +24,7 @@ import { useHashrateHistory } from '@/hooks/useHashrateHistory';
 import {
   usePersistentBestDifficulty,
   usePersistentBlocksFound,
-} from '@/hooks/usePersistentBlocksFound';
+} from '@/hooks/usePersistentDashboardMetrics';
 import { isAggregatedTproxyPoolName } from '@/components/setup/poolRules';
 import { useSetupStatus } from '@/hooks/useSetupStatus';
 import { useConnectionStatus } from '@/hooks/useConnectionStatus';

@@ -161,7 +161,9 @@ sv2-ui/
 
 ## Docker Images Used
 
-`sv2-ui` selects the JDC and Translator Proxy images from the Bitcoin Core compatibility table.
+`sv2-ui` uses `stratumv2/translator_sv2:main` for no-JD stacks on development branches. JD stacks select JDC and Translator Proxy images from the Bitcoin Core compatibility table.
+
+Release branches should pin all sv2-apps image tags in `server/src/compatibility.ts` before publishing.
 
 ## Bitcoin Core Compatibility
 

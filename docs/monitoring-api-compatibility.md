@@ -4,11 +4,13 @@
 
 These APIs may still be considered unstable on the `sv2-apps` side. Because of that, `sv2-ui` must not assume that every supported `sv2-apps` image exposes the same raw monitoring schema.
 
-This matters especially because `sv2-ui` may intentionally run older JDC/tProxy images when users are running older Bitcoin Core versions. For example, a user on Bitcoin Core 30.2 may require an older JDC image, while a user on Bitcoin Core 31.0 may require a newer one. Both setups may need to be supported by the same `sv2-ui` release.
+This matters especially in JD mode because `sv2-ui` may intentionally run older JDC/tProxy images when users are running older Bitcoin Core versions. For example, a user on Bitcoin Core 30.2 may require an older JDC image, while a user on Bitcoin Core 31.0 may require a newer one. Both setups may need to be supported by the same `sv2-ui` release.
+
+No-JD Translator-only stacks use the default Translator image unless a separate compatibility need is introduced.
 
 ## Compatibility Profiles
 
-`sv2-ui` should select `sv2-apps` image versions through runtime compatibility profiles.
+`sv2-ui` should select JD-mode `sv2-apps` image versions through runtime compatibility profiles.
 
 Each profile should describe:
 

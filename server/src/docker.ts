@@ -7,7 +7,7 @@ import Docker from 'dockerode';
 import os from 'os';
 import type { SetupData, ContainerStatus, HealthStatus } from './types.js';
 import type { ContainerLogLine, LogContainerRole, LogOutputStream } from './logs/types.js';
-import { getCompatibilityProfileForSetup } from './compatibility.js';
+import { getImageSelectionForSetup } from './compatibility.js';
 
 /**
  * Expand ~ to home directory in a path.
@@ -486,27 +486,32 @@ export async function startStack(
   // Connect sv2-ui to the network so it can proxy API requests
   await connectSv2UiToNetwork();
 
-  const profile = getCompatibilityProfileForSetup(data);
-  console.log(
-    `Using compatibility profile ${profile.id} for Bitcoin Core ${profile.bitcoinCoreVersion}`
-  );
+  const imageSelection = getImageSelectionForSetup(data);
 
-  // Pull profile-selected images from Docker Hub
-  await pullImage(profile.images.translator);
-  if (data.mode === 'jd') {
-    await pullImage(profile.images.jdc);
+  if (imageSelection.mode === 'jd') {
+    console.log(
+      `Using compatibility profile ${imageSelection.profile.id} for Bitcoin Core ${imageSelection.profile.bitcoinCoreVersion}`
+    );
+  } else {
+    console.log(`Using Translator image ${imageSelection.translator} for no-JD mode`);
+  }
+
+  // Pull selected images from Docker Hub
+  await pullImage(imageSelection.translator);
+  if (imageSelection.mode === 'jd') {
+    await pullImage(imageSelection.jdc);
   }
 
   // Start JDC first if in JD mode (Translator connects to JDC)
-  if (data.mode === 'jd' && data.bitcoin) {
+  if (imageSelection.mode === 'jd' && data.bitcoin) {
     const socketPath = expandHomePath(data.bitcoin.socket_path);
-    await startJdc(`${configDir}/jdc.toml`, socketPath, data.bitcoin.network, profile.images.jdc);
+    await startJdc(`${configDir}/jdc.toml`, socketPath, data.bitcoin.network, imageSelection.jdc);
     console.log('Waiting for JDC to initialize...');
     await new Promise(resolve => setTimeout(resolve, 3000));
   }
 
   // Start Translator
-  await startTranslator(`${configDir}/translator.toml`, profile.images.translator);
+  await startTranslator(`${configDir}/translator.toml`, imageSelection.translator);
 }
 
 /**

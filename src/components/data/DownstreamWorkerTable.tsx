@@ -149,7 +149,7 @@ export function DownstreamWorkerTable({
               </TableHead>
               {showBestDiff && (
                 <TableHead
-                  className="hidden lg:table-cell text-right cursor-pointer select-none"
+                  className="text-right cursor-pointer select-none whitespace-nowrap"
                   onClick={() => onSort('best_diff')}
                 >
                   <span className="flex items-center justify-end gap-1 hover:text-foreground transition-colors">
@@ -185,7 +185,7 @@ export function DownstreamWorkerTable({
                   {worker.estimated_hashrate !== null ? `~${formatHashrate(worker.estimated_hashrate)}` : '-'}
                 </TableCell>
                 {showBestDiff && (
-                  <TableCell className="hidden lg:table-cell text-right font-mono text-muted-foreground">
+                  <TableCell className="text-right font-mono text-muted-foreground whitespace-nowrap">
                     {worker.best_diff !== null && worker.best_diff > 0 ? formatDifficulty(worker.best_diff) : '-'}
                   </TableCell>
                 )}

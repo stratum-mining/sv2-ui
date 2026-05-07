@@ -61,7 +61,7 @@ export function UpstreamChannelTable({
             <TableHead>User Identity</TableHead>
             <TableHead className="text-right">Hashrate</TableHead>
             <TableHead className="text-right">Shares</TableHead>
-            <TableHead className="text-right hidden md:table-cell">Best Diff</TableHead>
+            <TableHead className="text-right whitespace-nowrap">Best Diff</TableHead>
             <TableHead className="hidden lg:table-cell">Target</TableHead>
             <TableHead className="hidden xl:table-cell">Version Rolling</TableHead>
           </TableRow>
@@ -90,7 +90,7 @@ export function UpstreamChannelTable({
               <TableCell className="text-right font-mono">
                 {formatNumber(channel.shares_acknowledged)}
               </TableCell>
-              <TableCell className="text-right font-mono hidden md:table-cell text-muted-foreground">
+              <TableCell className="text-right font-mono text-muted-foreground whitespace-nowrap">
                 {formatDifficulty(channel.best_diff)}
               </TableCell>
               <TableCell className="hidden lg:table-cell font-mono text-xs text-muted-foreground">

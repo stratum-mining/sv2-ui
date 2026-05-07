@@ -51,7 +51,7 @@ export function BitcoinSetup({ data, updateData, onNext, notice, onDismissNotice
     error: socketError,
     isRetryable,
     retry: retrySocketValidation,
-  } = useBitcoinSocketValidation(socketPath);
+  } = useBitcoinSocketValidation(socketPath, network, coreVersion);
 
   const resetPath = () => { setManualSocketPath(''); setIsEditingPath(false); };
 

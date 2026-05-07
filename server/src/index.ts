@@ -190,19 +190,25 @@ function probeUnixSocket(socketPath: string, timeoutMs = 1000): Promise<{ valid:
  * POST /api/validate/bitcoin-socket - Check if a Bitcoin Core IPC socket is listening
  */
 app.post('/api/validate/bitcoin-socket', async (req, res) => {
-  const { socket_path } = req.body;
+  const { socket_path, network, core_version } = req.body;
   if (!socket_path || typeof socket_path !== 'string') {
     return res.status(400).json({ valid: false, error: 'socket_path is required' });
   }
 
-  const result = await validateBitcoinSocket(socket_path);
+  const result = await validateBitcoinSocket(socket_path, {
+    network: network === 'mainnet' || network === 'testnet4' ? network : undefined,
+    coreVersion: core_version === '30.2' || core_version === '31.0' ? core_version : null,
+  });
   return res.json(result);
 });
 
-async function validateBitcoinSocket(socketPath: string): Promise<{ valid: true } | { valid: false; error: string }> {
+async function validateBitcoinSocket(
+  socketPath: string,
+  options: { network?: 'mainnet' | 'testnet4'; coreVersion?: '30.2' | '31.0' | null } = {}
+): Promise<{ valid: true } | { valid: false; error: string }> {
   const resolved = expandHomePath(socketPath);
   return isRunningInsideDocker()
-    ? await probeHostBitcoinSocketWithDocker(resolved)
+    ? await probeHostBitcoinSocketWithDocker(resolved, 1000, options)
     : await probeUnixSocket(resolved);
 }
 
@@ -211,7 +217,10 @@ async function getBitcoinSocketStartupError(data: SetupData): Promise<string | n
     return null;
   }
 
-  const result = await validateBitcoinSocket(data.bitcoin.socket_path);
+  const result = await validateBitcoinSocket(data.bitcoin.socket_path, {
+    network: data.bitcoin.network,
+    coreVersion: data.bitcoin.core_version,
+  });
   return result.valid ? null : result.error;
 }
 

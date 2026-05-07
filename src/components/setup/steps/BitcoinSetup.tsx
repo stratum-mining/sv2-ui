@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { StepProps, BitcoinConfig, BitcoinCoreVersion, OperatingSystem } from '../types';
-import { Bitcoin, Apple, Terminal, Pencil, Check, Loader2, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { Bitcoin, Apple, Terminal, Pencil, Check, Loader2, AlertCircle, CheckCircle2, RotateCw } from 'lucide-react';
 import { useBitcoinSocketValidation } from '@/hooks/useBitcoinSocketValidation';
 
 function getDefaultDataDir(os: OperatingSystem): string {
@@ -44,7 +44,14 @@ export function BitcoinSetup({ data, updateData, onNext, notice, onDismissNotice
     });
   }, [coreVersion, os, network, customDataDir, socketPath, updateData]);
 
-  const { isChecking, isValid, error: socketError } = useBitcoinSocketValidation(socketPath);
+  const {
+    isChecking,
+    isRefreshing,
+    isValid,
+    error: socketError,
+    isRetryable,
+    retry: retrySocketValidation,
+  } = useBitcoinSocketValidation(socketPath, network, coreVersion);
 
   const resetPath = () => { setManualSocketPath(''); setIsEditingPath(false); };
 
@@ -241,7 +248,25 @@ export function BitcoinSetup({ data, updateData, onNext, notice, onDismissNotice
             aria-live="assertive"
           >
             <AlertCircle className="h-4 w-4 flex-shrink-0 mt-0.5" aria-hidden="true" />
-            <span>{socketError}</span>
+            <div className="flex-1 min-w-0 space-y-3">
+              <span className="block">{socketError}</span>
+              <button
+                type="button"
+                onClick={() => retrySocketValidation()}
+                disabled={isRefreshing}
+                className="inline-flex h-8 items-center gap-2 rounded-md border border-destructive/30 bg-background px-3 text-xs font-medium text-destructive transition-colors hover:bg-destructive/[0.06] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-destructive/30 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {isRefreshing ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
+                ) : (
+                  <RotateCw className="h-3.5 w-3.5" aria-hidden="true" />
+                )}
+                {isRefreshing ? 'Checking...' : 'Retry'}
+              </button>
+              {isRetryable && (
+                <p className="text-xs text-destructive/80">Rechecking automatically while Bitcoin Core starts.</p>
+              )}
+            </div>
           </div>
         )}
       </div>
@@ -250,7 +275,7 @@ export function BitcoinSetup({ data, updateData, onNext, notice, onDismissNotice
         <button
           type="button"
           onClick={onNext}
-          disabled={!coreVersion || (!isChecking && !!socketError)}
+          disabled={!coreVersion || isChecking || !!socketError}
           className="h-11 px-10 rounded-full bg-primary text-primary-foreground hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
         >
           Continue

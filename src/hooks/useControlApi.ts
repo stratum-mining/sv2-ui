@@ -6,6 +6,14 @@ interface ControlResponse {
   error?: string;
 }
 
+async function parseControlResponse(response: Response): Promise<ControlResponse> {
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok || data.success === false) {
+    throw new Error(data.error || data.message || `Request failed (${response.status})`);
+  }
+  return data;
+}
+
 /**
  * Stop all containers
  */
@@ -13,7 +21,7 @@ async function stopServices(): Promise<ControlResponse> {
   const response = await fetch('/api/stop', {
     method: 'POST',
   });
-  return response.json();
+  return parseControlResponse(response);
 }
 
 /**
@@ -23,7 +31,7 @@ async function restartServices(): Promise<ControlResponse> {
   const response = await fetch('/api/restart', {
     method: 'POST',
   });
-  return response.json();
+  return parseControlResponse(response);
 }
 
 /**
@@ -35,7 +43,7 @@ async function setupServices(config: SetupData): Promise<ControlResponse> {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(config),
   });
-  return response.json();
+  return parseControlResponse(response);
 }
 
 /**
@@ -47,7 +55,7 @@ async function updateConfigService(updates: Partial<SetupData>): Promise<Control
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(updates),
   });
-  return response.json();
+  return parseControlResponse(response);
 }
 
 /**

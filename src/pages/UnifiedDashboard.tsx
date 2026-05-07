@@ -40,6 +40,7 @@ const RANGE_DESCRIPTIONS: Record<TimeRange, string> = {
   '1h': 'Last hour · sampled every 5 seconds',
 };
 const BITCOIN_CORE_VERSION_MISMATCH_CODE = 'jdc-bitcoin-core-unsupported-mining-interface';
+const BITCOIN_CORE_DISCONNECTED_CODE = 'jdc-bitcoin-core-disconnected';
 const SETUP_TARGET_STEP_STORAGE_KEY = 'sv2-ui-setup-target-step';
 
 function normalizeUserIdentity(userIdentity: string) {
@@ -500,7 +501,9 @@ export function UnifiedDashboard() {
 
       {/* log-derived Diagnostic Banners */}
       {diagnostics.map((diagnostic) => {
-        const showReconfigureButton = diagnostic.code === BITCOIN_CORE_VERSION_MISMATCH_CODE;
+        const showBitcoinSetupButton =
+          diagnostic.code === BITCOIN_CORE_VERSION_MISMATCH_CODE ||
+          diagnostic.code === BITCOIN_CORE_DISCONNECTED_CODE;
 
         return (
           <div
@@ -521,13 +524,13 @@ export function UnifiedDashboard() {
                 )}
               </div>
             </div>
-            {showReconfigureButton && (
+            {showBitcoinSetupButton && (
               <Link
                 href="/setup"
                 onClick={() => window.sessionStorage.setItem(SETUP_TARGET_STEP_STORAGE_KEY, 'bitcoin')}
                 className="inline-flex h-9 shrink-0 items-center justify-center rounded-full bg-red-500 px-4 font-medium text-white transition-colors hover:bg-red-600 sm:ml-4"
               >
-                Reconfigure
+                Open Bitcoin Setup
               </Link>
             )}
           </div>

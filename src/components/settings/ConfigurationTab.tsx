@@ -15,6 +15,7 @@ import {
   isValidPoolAuthorityPubkey,
   stripWrappingQuotes,
 } from '@/lib/utils';
+import { isBitcoinSocketError } from '@/lib/bitcoinSocketErrors';
 import type { SetupData } from '@/components/setup/types';
 import {
   Loader2,
@@ -50,6 +51,8 @@ function clearPersistedDashboardState() {
     window.localStorage.removeItem(key);
   });
 }
+
+const SETUP_TARGET_STEP_STORAGE_KEY = 'sv2-ui-setup-target-step';
 
 type EditingField = null | 'pool' | 'mode' | 'identity' | 'signature' | 'advanced';
 
@@ -167,6 +170,11 @@ export function ConfigurationTab() {
         console.error('Reset failed:', error);
       }
     }
+  };
+
+  const handleOpenBitcoinSetup = () => {
+    window.sessionStorage.setItem(SETUP_TARGET_STEP_STORAGE_KEY, 'bitcoin');
+    navigate('/setup');
   };
 
   const startEditPool = () => {
@@ -402,11 +410,24 @@ export function ConfigurationTab() {
       {(stopError || restartError || setupError) && (
         <Card className="border-red-500/30 bg-red-500/5">
           <CardContent className="pt-6">
-            <div className="flex gap-3">
-              <AlertCircle className="h-5 w-5 text-red-500 flex-shrink-0" />
-              <p className="text-sm text-red-500">
-                {stopError?.message || restartError?.message || setupError?.message || 'Operation failed'}
-              </p>
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex gap-3">
+                <AlertCircle className="h-5 w-5 text-red-500 flex-shrink-0" />
+                <p className="text-sm text-red-500">
+                  {stopError?.message || restartError?.message || setupError?.message || 'Operation failed'}
+                </p>
+              </div>
+              {isBitcoinSocketError(stopError || restartError || setupError) && (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="destructive"
+                  onClick={handleOpenBitcoinSetup}
+                  className="sm:ml-4"
+                >
+                  Open Bitcoin Setup
+                </Button>
+              )}
             </div>
           </CardContent>
         </Card>

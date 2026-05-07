@@ -285,7 +285,13 @@ export function SetupWizard() {
             )}
             {currentStep === 'hashrate'        && <HashrateStep {...stepProps} />}
             {currentStep === 'identity'        && <MiningIdentityStep {...stepProps} />}
-            {currentStep === 'review'          && <ReviewStart {...stepProps} onComplete={handleComplete} />}
+            {currentStep === 'review'          && (
+              <ReviewStart
+                {...stepProps}
+                onComplete={handleComplete}
+                onGoToStep={setCurrentStep}
+              />
+            )}
           </div>
         </div>
       </div>

@@ -5,9 +5,10 @@
 import fs from 'fs';
 import Docker from 'dockerode';
 import os from 'os';
-import type { SetupData, ContainerStatus, HealthStatus } from './types.js';
+import path from 'path';
+import type { SetupData, ContainerStatus, HealthStatus, BitcoinCoreVersion } from './types.js';
 import type { ContainerLogLine, LogContainerRole, LogOutputStream } from './logs/types.js';
-import { getImageSelectionForSetup } from './compatibility.js';
+import { getImageSelectionForSetup, SV2_APP_IMAGES } from './compatibility.js';
 
 /**
  * Expand ~ to home directory in a path.
@@ -157,6 +158,460 @@ const isRunningInDocker = fs.existsSync('/.dockerenv');
 export function getDockerConnectionInfo(): DockerConnectionConfig {
   refreshDockerConnection();
   return dockerConnection;
+}
+
+export function isRunningInsideDocker(): boolean {
+  return isRunningInDocker;
+}
+
+export type BitcoinSocketValidationResult =
+  | { valid: true }
+  | { valid: false; error: string };
+
+type SocketValidatorBindMode = 'mounts' | 'binds';
+type BitcoinSocketValidationOptions = {
+  network?: 'mainnet' | 'testnet4';
+  coreVersion?: BitcoinCoreVersion | null;
+};
+
+async function getCurrentContainerImage(): Promise<string> {
+  const configuredImage = process.env.SV2_UI_VALIDATOR_IMAGE?.trim();
+  if (configuredImage) {
+    return configuredImage;
+  }
+
+  try {
+    const self = await docker.getContainer(os.hostname()).inspect();
+    if (self.Config?.Image) {
+      return self.Config.Image;
+    }
+  } catch (error) {
+    console.warn('Could not inspect sv2-ui container image for socket validation:', error);
+  }
+
+  return 'stratumv2/sv2-ui:latest';
+}
+
+const BITCOIN_SOCKET_VALIDATOR_SCRIPT = `
+const net = require('net');
+
+const socketPath = process.argv[1];
+const timeoutMs = Number(process.argv[2] || 1000);
+const displayPath = process.argv[3] || socketPath;
+const socket = net.createConnection({ path: socketPath });
+let settled = false;
+
+function finish(ok, message) {
+  if (settled) return;
+  settled = true;
+  socket.destroy();
+  if (!ok && message) console.error(message);
+  process.exit(ok ? 0 : 1);
+}
+
+socket.setTimeout(timeoutMs);
+socket.once('connect', () => finish(true));
+socket.once('timeout', () => finish(false, 'Socket did not respond within ' + timeoutMs + 'ms. Bitcoin Core may be unresponsive.'));
+socket.once('error', (err) => {
+  switch (err.code) {
+    case 'ENOENT':
+      finish(false, 'Socket not found at ' + displayPath + '. Make sure Bitcoin Core is running with IPC enabled.');
+      break;
+    case 'ECONNREFUSED':
+      finish(false, 'Socket file exists at ' + displayPath + ' but nothing is listening. Bitcoin Core may have crashed or been stopped.');
+      break;
+    case 'EACCES':
+      finish(false, 'Permission denied for ' + displayPath + '. Check that the sv2-ui process can read this file.');
+      break;
+    case 'ENOTSOCK':
+      finish(false, 'Path ' + displayPath + ' is not a Unix socket.');
+      break;
+    case 'ENOTSUP':
+      finish(false, 'connect ENOTSUP ' + displayPath);
+      break;
+    default:
+      finish(false, err.message || 'Unknown error connecting to socket');
+  }
+});
+`;
+
+const BITCOIN_SOCKET_EXISTS_SCRIPT = `
+const fs = require('fs');
+const path = require('path');
+const socketPath = process.argv[1];
+
+try {
+  const stat = fs.statSync(socketPath);
+  if (!stat.isSocket()) {
+    console.error('Path ' + socketPath + ' is not a Unix socket.');
+    process.exit(2);
+  }
+  process.exit(0);
+} catch (err) {
+  if (err && err.code === 'ENOENT') {
+    process.exit(1);
+  }
+
+  // Docker Desktop for macOS can expose host Unix sockets enough for runtime
+  // bind consumers while rejecting metadata operations with ENOTSUP/EINVAL.
+  // In that case, fall back to checking that the mounted directory contains
+  // the requested socket entry.
+  if (err && (err.code === 'ENOTSUP' || err.code === 'EINVAL')) {
+    try {
+      const entries = fs.readdirSync(path.dirname(socketPath));
+      process.exit(entries.includes(path.basename(socketPath)) ? 0 : 1);
+    } catch {
+      process.exit(2);
+    }
+  }
+
+  console.error((err && err.message) || 'Unknown error checking socket path');
+  process.exit(2);
+}
+`;
+
+function getContainerSocketMountPaths(socketPath: string): {
+  socketDir: string;
+  socketName: string;
+  containerDir: string;
+  containerSocketPath: string;
+} {
+  const socketDir = path.dirname(socketPath);
+  const socketName = path.basename(socketPath);
+  const containerDir = '/tmp/sv2-bitcoin-socket-dir';
+
+  return {
+    socketDir,
+    socketName,
+    containerDir,
+    containerSocketPath: `${containerDir}/${socketName}`,
+  };
+}
+
+function getSocketValidatorHostConfig(
+  socketDir: string,
+  containerDir: string,
+  bindMode: SocketValidatorBindMode
+): Docker.HostConfig {
+  return {
+    NetworkMode: 'none',
+    ...(bindMode === 'mounts'
+      ? {
+        Mounts: [
+          {
+            Type: 'bind' as const,
+            Source: socketDir,
+            Target: containerDir,
+            ReadOnly: true,
+          },
+        ],
+      }
+      : {
+        Binds: [`${socketDir}:${containerDir}:ro`],
+      }),
+    RestartPolicy: { Name: 'no' },
+  };
+}
+
+/**
+ * When sv2-ui runs in Docker, host paths such as ~/.bitcoin/node.sock are not
+ * visible inside the sv2-ui container. Validate the socket through Docker by
+ * bind-mounting the host socket into a short-lived helper container.
+ */
+export async function probeHostBitcoinSocketWithDocker(
+  socketPath: string,
+  timeoutMs = 1000,
+  options: BitcoinSocketValidationOptions = {}
+): Promise<BitcoinSocketValidationResult> {
+  refreshDockerConnection();
+
+  const result = await runBitcoinSocketValidatorContainer(
+    socketPath,
+    timeoutMs,
+    'mounts'
+  );
+
+  // JDC uses Binds, so retry with the same mount style it will use whenever
+  // the source path appears to exist. This avoids false negatives from API
+  // Mounts while still validating the actual runtime behavior JDC depends on.
+  const shouldRetryWithBinds = !result.valid && (
+    !isMissingBindSourceError(result.error) ||
+    await hostSocketExistsThroughParentMount(socketPath)
+  );
+
+  const finalResult = shouldRetryWithBinds
+    ? await runBitcoinSocketValidatorContainer(socketPath, timeoutMs, 'binds')
+    : result;
+
+  if (!finalResult.valid && isSocketMountUnsupportedError(finalResult.error)) {
+    // Docker Desktop for macOS can reject Node helper connect/stat calls
+    // against host-mounted Unix sockets with ENOTSUP. Probe with the actual
+    // JDC image before falling back, so stale socket files are still rejected.
+    if (options.network && options.coreVersion) {
+      return runJdcBitcoinSocketProbeContainer(socketPath, options.network, options.coreVersion);
+    }
+  }
+
+  return finalResult;
+}
+
+function getJdcContainerSocketPath(network: 'mainnet' | 'testnet4'): string {
+  return network === 'mainnet'
+    ? '/root/.bitcoin/node.sock'
+    : `/root/.bitcoin/${network}/node.sock`;
+}
+
+function getBitcoinSocketProbeJdcConfig(network: 'mainnet' | 'testnet4'): string {
+  return `# Temporary sv2-ui Bitcoin Core IPC probe config.
+listening_address = "127.0.0.1:34265"
+max_supported_version = 2
+min_supported_version = 2
+authority_public_key = "9auqWEzQDVyd2oe1JVGFLMLHZtCo2FFqZwtKA5gd9xbuEu7PH72"
+authority_secret_key = "mkDLTBBRxdBv998612qipDYoTK3YUrqLe8uWw7gu3iXbSrn2n"
+cert_validity_sec = 3600
+user_identity = "sv2-ui-ipc-probe"
+shares_per_minute = 6.0
+share_batch_size = 5
+mode = "SOLOMINING"
+jdc_signature = "sv2-ui-ipc-probe"
+coinbase_reward_script = "${network === 'mainnet'
+    ? 'addr(bc1q9f9vj7spn8h7qda6pn8d4g4j99f0mn9lhwz55j)'
+    : 'addr(tb1q4x6hgr2zanp7ky4ucr93e2cz9aqklgw56guf6l)'}"
+supported_extensions = []
+required_extensions = []
+upstreams = []
+
+[template_provider_type.BitcoinCoreIpc]
+network = "${network}"
+fee_threshold = 1000
+min_interval = 5
+`;
+}
+
+async function runJdcBitcoinSocketProbeContainer(
+  socketPath: string,
+  network: 'mainnet' | 'testnet4',
+  coreVersion: BitcoinCoreVersion
+): Promise<BitcoinSocketValidationResult> {
+  let container: Docker.Container | null = null;
+  const image = SV2_APP_IMAGES.byBitcoinCore[coreVersion].jdc;
+  const containerSocketPath = getJdcContainerSocketPath(network);
+  const config = getBitcoinSocketProbeJdcConfig(network);
+  const successPattern = 'IPC mining client successfully created';
+  const graceMs = 12_000;
+
+  try {
+    await pullImage(image);
+
+    container = await docker.createContainer({
+      Image: image,
+      Entrypoint: ['/bin/sh', '-c'],
+      Cmd: ['printf "%s" "$JDC_PROBE_CONFIG" > /tmp/jdc-probe.toml && exec /app/jd_client_sv2 -c /tmp/jdc-probe.toml'],
+      Env: [`JDC_PROBE_CONFIG=${config}`],
+      AttachStdout: true,
+      AttachStderr: true,
+      HostConfig: {
+        Binds: [`${socketPath}:${containerSocketPath}:ro`],
+        NetworkMode: 'none',
+        RestartPolicy: { Name: 'no' },
+      },
+    });
+
+    await container.start();
+
+    const startedAt = Date.now();
+    while (Date.now() - startedAt < graceMs) {
+      const logs = await readContainerLogText(container);
+      if (logs.includes(successPattern)) {
+        return { valid: true };
+      }
+
+      if (isJdcBitcoinSocketProbeFailure(logs)) {
+        return {
+          valid: false,
+          error: getJdcBitcoinSocketProbeError(logs, socketPath),
+        };
+      }
+
+      const state = await container.inspect().catch(() => null);
+      if (state?.State?.Running === false) {
+        return {
+          valid: false,
+          error: getJdcBitcoinSocketProbeError(logs, socketPath),
+        };
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, 250));
+    }
+
+    // JDC is a long-running service. If it is still alive after the IPC
+    // startup grace period and did not emit a Bitcoin Core IPC failure, the
+    // socket is good enough for the real runtime container to proceed.
+    return { valid: true };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return {
+      valid: false,
+      error: message.includes('bind source path does not exist')
+        ? `Socket not found at ${socketPath}. Make sure Bitcoin Core is running with IPC enabled.`
+        : message,
+    };
+  } finally {
+    if (container) {
+      try {
+        await container.remove({ force: true });
+      } catch {
+        // Best effort cleanup for short-lived validation containers.
+      }
+    }
+  }
+}
+
+async function readContainerLogText(container: Docker.Container): Promise<string> {
+  const rawLogs = await container.logs({ stdout: true, stderr: true }).catch(() => Buffer.alloc(0));
+  return demuxDockerLogBuffer(Buffer.isBuffer(rawLogs) ? rawLogs : Buffer.from(rawLogs))
+    .map((chunk) => chunk.payload.trim())
+    .filter(Boolean)
+    .join('\n');
+}
+
+function isJdcBitcoinSocketProbeFailure(logs: string): boolean {
+  return (
+    logs.includes('Failed to create BitcoinCoreToSv2') ||
+    logs.includes('CannotConnectToUnixSocket') ||
+    logs.includes('Connection refused') ||
+    logs.includes('No such file') ||
+    logs.includes('Permission denied')
+  );
+}
+
+function getJdcBitcoinSocketProbeError(logs: string, socketPath: string): string {
+  if (logs.includes('CannotConnectToUnixSocket') || logs.includes('Connection refused')) {
+    return `Socket file exists at ${socketPath} but nothing is listening. Bitcoin Core may have crashed or been stopped.`;
+  }
+
+  if (logs.includes('No such file') || logs.includes('ENOENT')) {
+    return `Socket not found at ${socketPath}. Make sure Bitcoin Core is running with IPC enabled.`;
+  }
+
+  if (logs.includes('Permission denied')) {
+    return `Permission denied for ${socketPath}. Check that the sv2-ui process can read this file.`;
+  }
+
+  return logs || `Socket validation failed for ${socketPath}`;
+}
+
+function isMissingBindSourceError(message: string): boolean {
+  return (
+    message.includes('bind source path does not exist') ||
+    message.includes('Socket not found at')
+  );
+}
+
+function isSocketMountUnsupportedError(message: string): boolean {
+  return (
+    message.includes('ENOTSUP') ||
+    message.includes('Not supported') ||
+    message.includes('not supported') ||
+    message.includes('operation not supported')
+  );
+}
+
+async function hostSocketExistsThroughParentMount(socketPath: string): Promise<boolean> {
+  if (await runHostSocketExistsContainer(socketPath, 'mounts')) {
+    return true;
+  }
+
+  return runHostSocketExistsContainer(socketPath, 'binds');
+}
+
+async function runHostSocketExistsContainer(
+  socketPath: string,
+  bindMode: SocketValidatorBindMode
+): Promise<boolean> {
+  const { socketDir, containerDir, containerSocketPath } = getContainerSocketMountPaths(socketPath);
+  let container: Docker.Container | null = null;
+
+  try {
+    const image = await getCurrentContainerImage();
+    container = await docker.createContainer({
+      Image: image,
+      Entrypoint: ['node'],
+      Cmd: ['-e', BITCOIN_SOCKET_EXISTS_SCRIPT, containerSocketPath],
+      AttachStdout: true,
+      AttachStderr: true,
+      HostConfig: getSocketValidatorHostConfig(socketDir, containerDir, bindMode),
+    });
+
+    await container.start();
+    const result = await container.wait();
+    return result.StatusCode === 0;
+  } catch {
+    return false;
+  } finally {
+    if (container) {
+      try {
+        await container.remove({ force: true });
+      } catch {
+        // Best effort cleanup for short-lived validation containers.
+      }
+    }
+  }
+}
+
+async function runBitcoinSocketValidatorContainer(
+  socketPath: string,
+  timeoutMs: number,
+  bindMode: SocketValidatorBindMode
+): Promise<BitcoinSocketValidationResult> {
+  let container: Docker.Container | null = null;
+  const { socketDir, containerDir, containerSocketPath } = getContainerSocketMountPaths(socketPath);
+
+  try {
+    const image = await getCurrentContainerImage();
+    container = await docker.createContainer({
+      Image: image,
+      Entrypoint: ['node'],
+      Cmd: ['-e', BITCOIN_SOCKET_VALIDATOR_SCRIPT, containerSocketPath, String(timeoutMs), socketPath],
+      AttachStdout: true,
+      AttachStderr: true,
+      HostConfig: getSocketValidatorHostConfig(socketDir, containerDir, bindMode),
+    });
+
+    await container.start();
+    const result = await container.wait();
+
+    if (result.StatusCode === 0) {
+      return { valid: true };
+    }
+
+    const rawLogs = await container.logs({ stdout: true, stderr: true });
+    const message = demuxDockerLogBuffer(Buffer.isBuffer(rawLogs) ? rawLogs : Buffer.from(rawLogs))
+      .map((chunk) => chunk.payload.trim())
+      .filter(Boolean)
+      .join('\n');
+
+    return {
+      valid: false,
+      error: message || `Socket validation failed for ${socketPath}`,
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return {
+      valid: false,
+      error: message.includes('bind source path does not exist')
+        ? `Socket not found at ${socketPath}. Make sure Bitcoin Core is running with IPC enabled.`
+        : message,
+    };
+  } finally {
+    if (container) {
+      try {
+        await container.remove({ force: true });
+      } catch {
+        // Best effort cleanup for short-lived validation containers.
+      }
+    }
+  }
 }
 
 const LOG_CONTAINER_NAMES: Record<LogContainerRole, string> = {

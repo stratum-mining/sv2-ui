@@ -22,7 +22,9 @@ import {
   ensureDockerAvailable,
   getDockerConnectionInfo,
   expandHomePath,
-  readContainerLogs
+  readContainerLogs,
+  isRunningInsideDocker,
+  probeHostBitcoinSocketWithDocker
 } from './docker.js';
 import { getLogDiagnostics, getLogStreams, readCollatedLogLines } from './logs/diagnostics.js';
 
@@ -188,15 +190,39 @@ function probeUnixSocket(socketPath: string, timeoutMs = 1000): Promise<{ valid:
  * POST /api/validate/bitcoin-socket - Check if a Bitcoin Core IPC socket is listening
  */
 app.post('/api/validate/bitcoin-socket', async (req, res) => {
-  const { socket_path } = req.body;
+  const { socket_path, network, core_version } = req.body;
   if (!socket_path || typeof socket_path !== 'string') {
     return res.status(400).json({ valid: false, error: 'socket_path is required' });
   }
 
-  const resolved = expandHomePath(socket_path);
-  const result = await probeUnixSocket(resolved);
+  const result = await validateBitcoinSocket(socket_path, {
+    network: network === 'mainnet' || network === 'testnet4' ? network : undefined,
+    coreVersion: core_version === '30.2' || core_version === '31.0' ? core_version : null,
+  });
   return res.json(result);
 });
+
+async function validateBitcoinSocket(
+  socketPath: string,
+  options: { network?: 'mainnet' | 'testnet4'; coreVersion?: '30.2' | '31.0' | null } = {}
+): Promise<{ valid: true } | { valid: false; error: string }> {
+  const resolved = expandHomePath(socketPath);
+  return isRunningInsideDocker()
+    ? await probeHostBitcoinSocketWithDocker(resolved, 1000, options)
+    : await probeUnixSocket(resolved);
+}
+
+async function getBitcoinSocketStartupError(data: SetupData): Promise<string | null> {
+  if (data.mode !== 'jd' || !data.bitcoin) {
+    return null;
+  }
+
+  const result = await validateBitcoinSocket(data.bitcoin.socket_path, {
+    network: data.bitcoin.network,
+    coreVersion: data.bitcoin.core_version,
+  });
+  return result.valid ? null : result.error;
+}
 
 /**
  * PUT /api/config - Update configuration and restart with new values
@@ -238,6 +264,11 @@ app.put('/api/config', async (req, res) => {
     }
 
     await ensureDockerAvailable();
+
+    const bitcoinSocketError = await getBitcoinSocketStartupError(newData);
+    if (bitcoinSocketError) {
+      return res.status(400).json({ success: false, error: bitcoinSocketError });
+    }
 
     await fs.mkdir(CONFIG_DIR, { recursive: true });
 
@@ -368,6 +399,11 @@ app.post('/api/setup', async (req, res) => {
 
     await ensureDockerAvailable();
 
+    const bitcoinSocketError = await getBitcoinSocketStartupError(data);
+    if (bitcoinSocketError) {
+      return res.status(400).json({ success: false, error: bitcoinSocketError });
+    }
+
     // Generate config files
     await fs.mkdir(CONFIG_DIR, { recursive: true });
 
@@ -455,6 +491,13 @@ app.post('/api/restart', async (_req, res) => {
     const bitcoinCoreVersionError = getBitcoinCoreVersionError(state.data);
     if (bitcoinCoreVersionError) {
       return res.status(400).json({ success: false, error: bitcoinCoreVersionError });
+    }
+
+    await ensureDockerAvailable();
+
+    const bitcoinSocketError = await getBitcoinSocketStartupError(state.data);
+    if (bitcoinSocketError) {
+      return res.status(400).json({ success: false, error: bitcoinSocketError });
     }
 
     await stopStack();

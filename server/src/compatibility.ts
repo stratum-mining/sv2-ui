@@ -21,19 +21,15 @@ export interface CompatibilityProfile {
 }
 
 export const SV2_APP_IMAGES = {
-  // Development uses the latest Translator image for no-JD stacks. Release
-  // branches must replace this with the matching published sv2-apps release tag.
-  translatorNoJd: 'stratumv2/translator_sv2:main',
+  translatorNoJd: 'stratumv2/translator_sv2:v0.4.0',
   byBitcoinCore: {
     '30.2': {
       jdc: 'stratumv2/jd_client_sv2:v0.3.5',
       translator: 'stratumv2/translator_sv2:v0.3.5',
     },
     '31.0': {
-      // Development uses the latest sv2-apps images. Release branches must
-      // replace these with the matching published sv2-apps release tags.
-      jdc: 'stratumv2/jd_client_sv2:main',
-      translator: 'stratumv2/translator_sv2:main',
+      jdc: 'stratumv2/jd_client_sv2:v0.4.0',
+      translator: 'stratumv2/translator_sv2:v0.4.0',
     },
   },
 } as const satisfies {

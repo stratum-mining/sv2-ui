@@ -11,7 +11,7 @@ docker run --rm \
   -e HOST_HOME=$HOME \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v sv2-config:/app/data/config \
-  stratumv2/sv2-ui:main
+  stratumv2/sv2-ui:v0.2.1
 ```
 
 Then open **http://localhost:8080**. On first run, you'll be guided through the setup wizard.
@@ -31,7 +31,7 @@ docker run --rm --name sv2-ui -p 8080:8080 \
   -e HOST_HOME=$HOME \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v sv2-config:/app/data/config \
-  stratumv2/sv2-ui:main
+  stratumv2/sv2-ui:v0.2.1
 ```
 
 ### macOS (Colima / OrbStack)
@@ -44,14 +44,14 @@ docker run --rm --name sv2-ui -p 8080:8080 \
   -e HOST_HOME=$HOME \
   -v $HOME/.colima/default/docker.sock:/var/run/docker.sock \
   -v sv2-config:/app/data/config \
-  stratumv2/sv2-ui:main
+  stratumv2/sv2-ui:v0.2.1
 
 # OrbStack
 docker run --rm --name sv2-ui -p 8080:8080 \
   -e HOST_HOME=$HOME \
   -v $HOME/.orbstack/run/docker.sock:/var/run/docker.sock \
   -v sv2-config:/app/data/config \
-  stratumv2/sv2-ui:main
+  stratumv2/sv2-ui:v0.2.1
 ```
 
 ## Development
@@ -161,16 +161,16 @@ sv2-ui/
 
 ## Docker Images Used
 
-`sv2-ui` uses `stratumv2/translator_sv2:main` for no-JD stacks on development branches. JD stacks select JDC and Translator Proxy images from the Bitcoin Core compatibility table.
+`sv2-ui` uses `stratumv2/translator_sv2:v0.4.0` for no-JD stacks. JD stacks select JDC and Translator Proxy images from the Bitcoin Core compatibility table.
 
-Release branches should pin all sv2-apps image tags in `server/src/compatibility.ts` before publishing.
+This release pins all sv2-apps image tags in `server/src/compatibility.ts`.
 
 ## Bitcoin Core Compatibility
 
 | Bitcoin Core | JDC image | Translator Proxy image | Status | Reference |
 |--------------|-----------|------------------------|--------|-----------|
 | 30.2 | `stratumv2/jd_client_sv2:v0.3.5` | `stratumv2/translator_sv2:v0.3.5` | Supported | [`release/v0.1.4`](https://github.com/stratum-mining/sv2-ui/tree/release/v0.1.4) |
-| 31.0 | `stratumv2/jd_client_sv2:main` | `stratumv2/translator_sv2:main` | Supported using development images | Release branches pin matching sv2-apps release tags |
+| 31.0 | `stratumv2/jd_client_sv2:v0.4.0` | `stratumv2/translator_sv2:v0.4.0` | Supported | [`release/v0.2.1`](https://github.com/stratum-mining/sv2-ui/tree/release/v0.2.1) |
 
 ## Compatibility Notes
 

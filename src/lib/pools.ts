@@ -2,6 +2,31 @@
  * Shared pool preset definitions used by both the Setup Wizard and Settings.
  */
 
+import type { PoolConfig } from '@/components/setup/types';
+import { isValidPoolAuthorityPubkey } from '@/lib/utils';
+
+export const EMPTY_CUSTOM_POOL: PoolConfig = {
+  name: 'Custom Pool',
+  address: '',
+  port: 34254,
+  authority_public_key: '',
+};
+
+// Two pools are the same iff their full SV2 endpoint triplet matches.
+// Address+port alone isn't enough — a typo'd or malicious pubkey on the
+// same host:port is a different security context, not a duplicate.
+export function isSamePool(a: PoolConfig, b: PoolConfig): boolean {
+  return (
+    a.address.toLowerCase() === b.address.toLowerCase() &&
+    a.port === b.port &&
+    a.authority_public_key === b.authority_public_key
+  );
+}
+
+export function isPoolValid(p: PoolConfig): boolean {
+  return p.address.length > 0 && isValidPoolAuthorityPubkey(p.authority_public_key);
+}
+
 export interface KnownPool {
   id: string;
   name: string;

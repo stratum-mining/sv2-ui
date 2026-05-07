@@ -166,9 +166,9 @@ export function SetupWizard() {
     if (idx > 0) {
       const prevStep = steps[idx - 1];
       if (prevStep === 'mining-mode') {
-        updateData({ miningMode: null, mode: null, pool: null, bitcoin: null, jdc: null, translator: null });
+        updateData({ miningMode: null, mode: null, pool: null, fallbackPools: [], bitcoin: null, jdc: null, translator: null });
       } else if (prevStep === 'template-mode') {
-        updateData({ pool: null, bitcoin: null, jdc: null, translator: null });
+        updateData({ pool: null, fallbackPools: [], bitcoin: null, jdc: null, translator: null });
       }
       setCurrentStep(prevStep);
     }

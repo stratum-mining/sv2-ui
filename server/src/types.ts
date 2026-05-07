@@ -42,6 +42,7 @@ export interface SetupData {
   miningMode: MiningMode;
   mode: SetupMode;
   pool: PoolConfig | null;
+  fallbackPools: PoolConfig[];
   bitcoin: BitcoinConfig | null;
   jdc: JdcConfig | null;
   translator: TranslatorConfig;

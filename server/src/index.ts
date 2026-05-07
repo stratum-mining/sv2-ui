@@ -25,6 +25,7 @@ import {
   readContainerLogs
 } from './docker.js';
 import { getLogDiagnostics, getLogStreams, readCollatedLogLines } from './logs/diagnostics.js';
+import { getCurrentUpstreamPoolName } from './logs/current-upstream.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -52,7 +53,17 @@ app.use(express.static(UI_DIR));
 async function loadState(): Promise<{ configured: boolean; miningMode: 'solo' | 'pool' | null; mode: 'jd' | 'no-jd' | null; data: SetupData | null }> {
   try {
     const content = await fs.readFile(STATE_FILE, 'utf-8');
-    return JSON.parse(content);
+    const parsed = JSON.parse(content);
+    if (parsed.data) {
+      // Migrate legacy single-fallback shape to fallbackPools array.
+      if (!Array.isArray(parsed.data.fallbackPools)) {
+        parsed.data.fallbackPools = parsed.data.fallbackPool
+          ? [parsed.data.fallbackPool]
+          : [];
+      }
+      delete parsed.data.fallbackPool;
+    }
+    return parsed;
   } catch {
     return { configured: false, miningMode: null, mode: null, data: null };
   }
@@ -107,14 +118,25 @@ app.get('/api/status', async (_req, res) => {
         (containers.jdc?.status === 'healthy' || containers.jdc?.status === 'starting')
       : (containers.translator?.status === 'healthy' || containers.translator?.status === 'starting');
 
+    const isSovereignSolo = state.data?.miningMode === 'solo' && state.data?.mode === 'jd';
+    let poolName: string | null;
+    if (isSovereignSolo) {
+      poolName = 'Sovereign Solo Mining';
+    } else if (running) {
+      const container = state.mode === 'jd' ? 'jdc' : 'translator';
+      poolName = (await getCurrentUpstreamPoolName(container, state.data))
+        ?? state.data?.pool?.name
+        ?? null;
+    } else {
+      poolName = state.data?.pool?.name ?? null;
+    }
+
     const response: StatusResponse = {
       configured: state.configured,
       running,
       miningMode: state.miningMode,
       mode: state.mode,
-      poolName: state.data?.miningMode === 'solo' && state.data?.mode === 'jd'
-        ? 'Sovereign Solo Mining'
-        : (state.data?.pool?.name ?? null),
+      poolName,
       containers,
     };
 
@@ -217,6 +239,9 @@ app.put('/api/config', async (req, res) => {
       mode: updates.mode ?? currentData.mode,
       miningMode: updates.miningMode ?? currentData.miningMode,
       pool: updates.pool ?? currentData.pool,
+      fallbackPools: Array.isArray(updates.fallbackPools)
+        ? updates.fallbackPools
+        : currentData.fallbackPools,
       bitcoin: updates.bitcoin ?? currentData.bitcoin,
       jdc: updates.jdc ?? currentData.jdc,
       translator: updates.translator ?? currentData.translator,

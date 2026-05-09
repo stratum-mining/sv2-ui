@@ -122,19 +122,28 @@ export function UnifiedDashboard() {
   const diagnostics = logDiagnostics?.diagnostics ?? [];
 
   const [isStarting, setIsStarting] = useState(false);
+  const [startError, setStartError] = useState<string | null>(null);
 
   const handleStartMining = async () => {
     setIsStarting(true);
+    setStartError(null);
     try {
       const response = await fetch('/api/restart', { method: 'POST' });
-      if (response.ok) {
-        // Give containers time to start, then refresh health checks
-        setTimeout(() => {
-          window.location.reload();
-        }, 3000);
+      const errorData = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(
+          errorData.error || errorData.message || `Failed (${response.status})`,
+        );
       }
+      // Give containers time to start, then refresh health checks
+      setTimeout(() => {
+        window.location.reload();
+      }, 3000);
     } catch (error) {
       console.error('Failed to start mining:', error);
+      setStartError(
+        error instanceof Error ? error.message : 'Failed to start mining services',
+      );
       setIsStarting(false);
     }
   };
@@ -467,26 +476,52 @@ export function UnifiedDashboard() {
 
       {/* Start Mining Banner (configured but stopped) */}
       {configuredButStopped && showError && (
-        <div className="flex items-center justify-between gap-3 rounded-xl border border-primary/40 bg-primary/10 px-5 py-4 text-sm">
-          <div className="flex items-center gap-3">
-            <Play className="h-4 w-4 shrink-0 text-primary" />
-            <span>Mining services are stopped.</span>
+        startError ? (
+          <div className="flex flex-col gap-3 rounded-xl border border-red-500/40 bg-red-500/10 px-5 py-4 text-sm text-red-500 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-start gap-3">
+              <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
+              <div className="flex flex-col gap-1">
+                <span className="font-medium">Could not start mining services</span>
+                <span>{startError}</span>
+              </div>
+            </div>
+            <button
+              onClick={handleStartMining}
+              disabled={isStarting}
+              className="inline-flex h-9 shrink-0 items-center justify-center gap-2 rounded-full bg-red-500 px-4 font-medium text-white transition-colors hover:bg-red-600 disabled:opacity-50 sm:ml-4"
+            >
+              {isStarting ? (
+                <>
+                  <div className="h-4 w-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  Starting...
+                </>
+              ) : (
+                'Try again'
+              )}
+            </button>
           </div>
-          <button
-            onClick={handleStartMining}
-            disabled={isStarting}
-            className="h-9 px-4 rounded-full bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors font-medium flex items-center gap-2"
-          >
-            {isStarting ? (
-              <>
-                <div className="h-4 w-4 border-2 border-primary-foreground/30 border-t-primary-foreground rounded-full animate-spin" />
-                Starting...
-              </>
-            ) : (
-              'Start Mining'
-            )}
-          </button>
-        </div>
+        ) : (
+          <div className="flex items-center justify-between gap-3 rounded-xl border border-primary/40 bg-primary/10 px-5 py-4 text-sm">
+            <div className="flex items-center gap-3">
+              <Play className="h-4 w-4 shrink-0 text-primary" />
+              <span>Mining services are stopped.</span>
+            </div>
+            <button
+              onClick={handleStartMining}
+              disabled={isStarting}
+              className="h-9 px-4 rounded-full bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors font-medium flex items-center gap-2"
+            >
+              {isStarting ? (
+                <>
+                  <div className="h-4 w-4 border-2 border-primary-foreground/30 border-t-primary-foreground rounded-full animate-spin" />
+                  Starting...
+                </>
+              ) : (
+                'Start Mining'
+              )}
+            </button>
+          </div>
+        )
       )}
 
       {/* Connection Error Banner (not configured or unknown error) */}

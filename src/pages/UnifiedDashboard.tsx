@@ -81,6 +81,7 @@ export function UnifiedDashboard() {
     miningMode,
     mode: templateMode,
     poolName: configPoolName,
+    dockerReachable,
   } = useSetupStatus();
 
   // Header connection status (shared with Settings via hook)
@@ -476,7 +477,32 @@ export function UnifiedDashboard() {
 
       {/* Start Mining Banner (configured but stopped) */}
       {configuredButStopped && showError && (
-        startError ? (
+        dockerReachable === false ? (
+          <div className="flex flex-col gap-3 rounded-xl border border-red-500/40 bg-red-500/10 px-5 py-4 text-sm text-red-500 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-start gap-3">
+              <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
+              <div className="flex flex-col gap-1">
+                <span className="font-medium">Docker isn't running</span>
+                <span>We couldn't reach the Docker daemon, so mining services can't start.</span>
+                <span className="text-current/80">Start Docker Desktop or Docker Engine, then click Start Mining.</span>
+              </div>
+            </div>
+            <button
+              onClick={handleStartMining}
+              disabled={isStarting}
+              className="inline-flex h-9 shrink-0 items-center justify-center gap-2 rounded-full bg-red-500 px-4 font-medium text-white transition-colors hover:bg-red-600 disabled:opacity-50 sm:ml-4"
+            >
+              {isStarting ? (
+                <>
+                  <div className="h-4 w-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  Starting...
+                </>
+              ) : (
+                'Start Mining'
+              )}
+            </button>
+          </div>
+        ) : startError ? (
           <div className="flex flex-col gap-3 rounded-xl border border-red-500/40 bg-red-500/10 px-5 py-4 text-sm text-red-500 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-start gap-3">
               <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />

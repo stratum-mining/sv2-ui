@@ -66,6 +66,9 @@ export interface StatusResponse {
     translator: ContainerStatus | null;
     jdc: ContainerStatus | null;
   };
+  docker: {
+    reachable: boolean;
+  };
 }
 
 export interface SetupResponse {

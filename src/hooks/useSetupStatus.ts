@@ -10,6 +10,9 @@ export interface SetupStatus {
     translator: { id: string; name: string; status: string } | null;
     jdc: { id: string; name: string; status: string } | null;
   };
+  docker?: {
+    reachable: boolean;
+  };
 }
 
 /**
@@ -73,6 +76,8 @@ export function useSetupStatus() {
     mode: status?.mode ?? null,
     poolName: status?.poolName ?? null,
     containers: status?.containers ?? { translator: null, jdc: null },
+    // null when standalone or before first status response; true/false from the backend.
+    dockerReachable: status?.docker?.reachable ?? null,
     // User needs setup if: orchestrated mode AND not yet configured
     needsSetup: status !== null && status !== undefined && !status.configured,
     refetch: query.refetch,

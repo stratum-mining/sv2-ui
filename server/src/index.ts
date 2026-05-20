@@ -103,7 +103,14 @@ app.get('/api/status', async (_req, res) => {
   try {
     const state = await loadState();
     const containers = await getStackStatus(state.mode);
-    
+
+    // Cap the Docker reachability probe so a slow daemon ping does not stall
+    // the /api/status response. The frontend has its own 1.5s abort on top.
+    const dockerReachable = await Promise.race([
+      isDockerAvailable(),
+      new Promise<boolean>((resolve) => setTimeout(() => resolve(false), 500)),
+    ]);
+
     const running = state.mode === 'jd'
       ? (containers.translator?.status === 'healthy' || containers.translator?.status === 'starting') &&
         (containers.jdc?.status === 'healthy' || containers.jdc?.status === 'starting')
@@ -118,6 +125,7 @@ app.get('/api/status', async (_req, res) => {
         ? 'Sovereign Solo Mining'
         : (state.data?.pool?.name ?? null),
       containers,
+      docker: { reachable: dockerReachable },
     };
 
     res.json(response);

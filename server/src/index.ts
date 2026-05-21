@@ -160,7 +160,7 @@ app.post('/api/validate/bitcoin-socket', async (req, res) => {
 /**
  * POST /api/validate/bitcoin-rpc - Auto-discover Bitcoin Core RPC nodes
  */
-app.post('/api/validate/bitcoin-rpc', async (_req, res) => {
+app.get('/api/validate/bitcoin-rpc', async (_req, res) => {
   const results = await autoDiscoverBitcoinRpc();
   return res.json(results);
 });

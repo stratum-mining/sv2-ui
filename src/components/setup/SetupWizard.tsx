@@ -27,6 +27,7 @@ import { MiningIdentityStep } from './steps/MiningIdentityStep';
 import { BitcoinPrereqStep } from './steps/BitcoinPrereqStep';
 import { ReviewStart } from './steps/ReviewStart';
 import { getCurrentConfig } from '@/hooks/useControlApi';
+import { useBitcoinRpcDiscovery } from '@/hooks/useBitcoinRpcDiscovery';
 
 function ThemeToggle({ isDark, toggle }: { isDark: boolean; toggle: () => void }) {
   return (
@@ -88,6 +89,7 @@ export function SetupWizard() {
   const [isReconfiguring, setIsReconfiguring] = useState(false);
   const [loadingConfig, setLoadingConfig] = useState(true);
   const [bitcoinSetupNotice, setBitcoinSetupNotice] = useState<string | null>(null);
+  const { results: discoveredNodes, isLoading: isDiscovering, retry: retryDiscovery } = useBitcoinRpcDiscovery();
   // White flash: 0 = invisible, 1 = full white
   const [flashOpacity, setFlashOpacity] = useState(0);
   const flashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -275,12 +277,20 @@ export function SetupWizard() {
             )}
             {currentStep === 'template-mode'  && <TemplateModeSelection {...stepProps} />}
             {currentStep === 'pool'            && <PoolConfigStep {...stepProps} />}
-            {currentStep === 'bitcoin-prereq'  && <BitcoinPrereqStep {...stepProps} />}
+            {currentStep === 'bitcoin-prereq'  && (
+              <BitcoinPrereqStep
+                {...stepProps}
+                discoveredNodes={discoveredNodes}
+                isDiscovering={isDiscovering}
+                onRetryDiscovery={retryDiscovery}
+              />
+            )}
             {currentStep === 'bitcoin'         && (
               <BitcoinSetup
                 {...stepProps}
                 notice={bitcoinSetupNotice}
                 onDismissNotice={() => setBitcoinSetupNotice(null)}
+                discoveredNodes={discoveredNodes}
               />
             )}
             {currentStep === 'hashrate'        && <HashrateStep {...stepProps} />}

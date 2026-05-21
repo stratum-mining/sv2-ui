@@ -1,8 +1,26 @@
 import { useState } from 'react';
-import { StepProps } from '../types';
-import { Copy, Check, ExternalLink } from 'lucide-react';
+import { StepProps, BitcoinCoreVersion } from '../types';
+import { Copy, Check, ExternalLink, Loader2, RotateCw, CheckCircle2, AlertCircle } from 'lucide-react';
+import type { BitcoinRpcDiscoveryResult } from '@/hooks/useBitcoinRpcDiscovery';
 
-export function BitcoinPrereqStep({ onNext }: StepProps) {
+const SUPPORTED_BITCOIN_CORE_VERSIONS: BitcoinCoreVersion[] = ['30.2', '31.0'];
+
+function rpcVersionToCoreVersion(rpcVersion: number): BitcoinCoreVersion | null {
+  const major = Math.floor(rpcVersion / 10000);
+  const minor = Math.floor((rpcVersion % 10000) / 100);
+  const versionStr = `${major}.${minor}`;
+  return SUPPORTED_BITCOIN_CORE_VERSIONS.includes(versionStr as BitcoinCoreVersion)
+    ? versionStr as BitcoinCoreVersion
+    : null;
+}
+
+interface BitcoinPrereqStepProps extends StepProps {
+  discoveredNodes: BitcoinRpcDiscoveryResult[];
+  isDiscovering: boolean;
+  onRetryDiscovery: () => void;
+}
+
+export function BitcoinPrereqStep({ onNext, discoveredNodes, isDiscovering, onRetryDiscovery }: BitcoinPrereqStepProps) {
   const [copiedMainnet, setCopiedMainnet] = useState(false);
   const [copiedTestnet, setCopiedTestnet] = useState(false);
 
@@ -23,6 +41,12 @@ export function BitcoinPrereqStep({ onNext }: StepProps) {
 
   const mainnetCmd = 'bitcoin -m node -ipcbind=unix';
   const testnetCmd = 'bitcoin -m node -ipcbind=unix -testnet4';
+
+  const hasDiscovered = discoveredNodes.length > 0;
+  const primaryNode = discoveredNodes.find(n => n.network === 'mainnet') ?? discoveredNodes[0];
+  const isSyncing = hasDiscovered && discoveredNodes.some(n => n.initialBlockDownload);
+  const detectedCoreVersion = primaryNode ? rpcVersionToCoreVersion(primaryNode.version) : null;
+  const isUnsupportedVersion = hasDiscovered && !detectedCoreVersion;
 
   return (
     <div className="space-y-8 text-center">
@@ -137,11 +161,99 @@ export function BitcoinPrereqStep({ onNext }: StepProps) {
         </div>
       </div>
 
+      {isDiscovering && (
+        <div
+          className="p-3 rounded-lg bg-muted/50 text-sm text-muted-foreground flex gap-3 items-center justify-center"
+          role="status"
+          aria-live="polite"
+        >
+          <Loader2 className="h-4 w-4 animate-spin flex-shrink-0" aria-hidden="true" />
+          <span>Detecting Bitcoin Core...</span>
+        </div>
+      )}
+
+      {hasDiscovered && primaryNode && isUnsupportedVersion && (
+        <div
+          className="p-3 rounded-lg bg-destructive/[0.08] border border-destructive/20 text-sm text-destructive flex gap-3 items-start"
+          role="alert"
+          aria-live="assertive"
+        >
+          <AlertCircle className="h-4 w-4 flex-shrink-0 mt-0.5" aria-hidden="true" />
+          <div className="text-left">
+            <span className="font-medium">Bitcoin Core detected but version is unsupported</span>
+            <p className="text-xs mt-1 opacity-80">
+              Detected version: {rpcVersionToCoreVersion(primaryNode.version)}. Only Bitcoin Core 30.2 and 31.0 are supported.
+            </p>
+            <p className="text-xs mt-2">
+              Please upgrade your Bitcoin Core node to a supported version to continue.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {hasDiscovered && primaryNode && !isUnsupportedVersion && isSyncing && (
+        <div
+          className="p-3 rounded-lg bg-warning/[0.08] border border-warning/20 text-sm text-warning flex gap-3 items-start"
+          role="status"
+          aria-live="polite"
+        >
+          <CheckCircle2 className="h-4 w-4 flex-shrink-0 mt-0.5" aria-hidden="true" />
+          <div className="text-left">
+            <span className="font-medium">Bitcoin Core detected but syncing is in progress</span>
+            <p className="text-xs mt-1 opacity-80">
+              Network: {primaryNode.network} • Version: {detectedCoreVersion ?? primaryNode.version} • Syncing...
+            </p>
+            <p className="text-xs mt-2">
+              Your node is still downloading the blockchain. Please wait for the initial block download to finish before continuing.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {hasDiscovered && primaryNode && !isUnsupportedVersion && !isSyncing && detectedCoreVersion && (
+        <div
+          className="p-3 rounded-lg bg-success/10 border border-success/20 text-sm text-success flex gap-3 items-start"
+          role="status"
+          aria-live="polite"
+        >
+          <CheckCircle2 className="h-4 w-4 flex-shrink-0 mt-0.5" aria-hidden="true" />
+          <div className="text-left">
+            <span className="font-medium">Bitcoin Core detected</span>
+            <p className="text-xs mt-1 opacity-80">
+              Network: {primaryNode.network} • Version: {detectedCoreVersion} • Synced
+            </p>
+          </div>
+        </div>
+      )}
+
+      {!isDiscovering && !hasDiscovered && (
+        <div
+          className="p-3 rounded-lg bg-warning/[0.08] border border-warning/20 text-sm text-warning flex gap-3 items-start"
+          role="alert"
+          aria-live="assertive"
+        >
+          <div className="flex-1 min-w-0 space-y-3">
+            <span className="block">
+              We couldn’t automatically detect your Bitcoin Core node. If it’s still starting, wait a moment and retry. If it’s already running, you can continue and enter the connection details manually.
+            </span>
+            <button
+              type="button"
+              onClick={onRetryDiscovery}
+              className="inline-flex h-8 items-center gap-2 rounded-md border border-warning/30 bg-background px-3 text-xs font-medium text-warning transition-colors hover:bg-warning/[0.06] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-warning/30"
+            >
+              <RotateCw className="h-3.5 w-3.5" aria-hidden="true" />
+              Retry
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className="flex justify-center">
         <button
           type="button"
           onClick={onNext}
-          className="h-11 px-10 rounded-full bg-primary text-primary-foreground hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 transition-colors font-medium"
+          disabled={isDiscovering || isSyncing || isUnsupportedVersion}
+          className="h-11 px-10 rounded-full bg-primary text-primary-foreground hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
         >
           Configure Connection
         </button>

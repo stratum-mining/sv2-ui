@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { StepProps, BitcoinConfig, BitcoinCoreVersion, OperatingSystem } from '../types';
 import { Bitcoin, Apple, Terminal, Pencil, Check, Loader2, AlertCircle, CheckCircle2, RotateCw } from 'lucide-react';
 import { useBitcoinSocketValidation } from '@/hooks/useBitcoinSocketValidation';
+import type { BitcoinRpcDiscoveryResult } from '@/hooks/useBitcoinRpcDiscovery';
 
 function getDefaultDataDir(os: OperatingSystem): string {
   return os === 'linux' ? '~/.bitcoin' : '~/Library/Application Support/Bitcoin';
@@ -17,20 +18,48 @@ function computeSocketPath(os: OperatingSystem, network: 'mainnet' | 'testnet4',
 
 const SUPPORTED_BITCOIN_CORE_VERSIONS: BitcoinCoreVersion[] = ['30.2', '31.0'];
 
+function rpcVersionToCoreVersion(rpcVersion: number): BitcoinCoreVersion | null {
+  const major = Math.floor(rpcVersion / 10000);
+  const minor = Math.floor((rpcVersion % 10000) / 100);
+  const versionStr = `${major}.${minor}`;
+  return SUPPORTED_BITCOIN_CORE_VERSIONS.includes(versionStr as BitcoinCoreVersion)
+    ? versionStr as BitcoinCoreVersion
+    : null;
+}
+
 interface BitcoinSetupProps extends StepProps {
   notice?: string | null;
   onDismissNotice?: () => void;
+  discoveredNodes?: BitcoinRpcDiscoveryResult[];
 }
 
-export function BitcoinSetup({ data, updateData, onNext, notice, onDismissNotice }: BitcoinSetupProps) {
+export function BitcoinSetup({ data, updateData, onNext, notice, onDismissNotice, discoveredNodes }: BitcoinSetupProps) {
   const [coreVersion, setCoreVersion] = useState<BitcoinCoreVersion | null>(data.bitcoin?.core_version ?? null);
   const [os, setOs] = useState<OperatingSystem>(data.bitcoin?.os || 'linux');
   const [network, setNetwork] = useState<'mainnet' | 'testnet4'>(data.bitcoin?.network || 'mainnet');
   const [customDataDir, setCustomDataDir] = useState(data.bitcoin?.customDataDir || '');
   const [manualSocketPath, setManualSocketPath] = useState(data.bitcoin?.socket_path || '');
   const [isEditingPath, setIsEditingPath] = useState(false);
+  const [discoveryApplied, setDiscoveryApplied] = useState(false);
   const computedSocketPath = computeSocketPath(os, network, customDataDir);
   const socketPath = manualSocketPath || computedSocketPath;
+
+  useEffect(() => {
+    if (discoveredNodes && discoveredNodes.length > 0 && !discoveryApplied) {
+      const primary = discoveredNodes.find(n => n.network === 'mainnet') ?? discoveredNodes[0];
+      const inferredOs: OperatingSystem = primary.dataDir.includes('Library/Application Support')
+        ? 'macos'
+        : 'linux';
+      const detectedVersion = rpcVersionToCoreVersion(primary.version);
+
+      setOs(inferredOs);
+      setNetwork(primary.network);
+      if (detectedVersion) {
+        setCoreVersion(detectedVersion);
+      }
+      setDiscoveryApplied(true);
+    }
+  }, [discoveredNodes, discoveryApplied]);
 
   useEffect(() => {
     updateData({
@@ -40,9 +69,10 @@ export function BitcoinSetup({ data, updateData, onNext, notice, onDismissNotice
         network,
         customDataDir,
         socket_path: socketPath,
+        ...(discoveryApplied && discoveredNodes?.length ? { discoveredLogPath: (discoveredNodes.find(n => n.network === network) ?? discoveredNodes[0])?.logpath } : {}),
       } as BitcoinConfig,
     });
-  }, [coreVersion, os, network, customDataDir, socketPath, updateData]);
+  }, [coreVersion, os, network, customDataDir, socketPath, updateData, discoveryApplied, discoveredNodes]);
 
   const {
     isChecking,
@@ -56,8 +86,7 @@ export function BitcoinSetup({ data, updateData, onNext, notice, onDismissNotice
   const resetPath = () => { setManualSocketPath(''); setIsEditingPath(false); };
 
   const selBtn = (active: boolean) =>
-    `relative p-4 rounded-xl border transition-all flex flex-col items-center gap-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 ${
-      active ? 'border-primary bg-primary/[0.04]' : 'border-border bg-card hover:border-primary/45 hover:bg-primary/[0.02]'
+    `relative p-4 rounded-xl border transition-all flex flex-col items-center gap-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 ${active ? 'border-primary bg-primary/[0.04]' : 'border-border bg-card hover:border-primary/45 hover:bg-primary/[0.02]'
     }`;
 
   return (
@@ -73,6 +102,22 @@ export function BitcoinSetup({ data, updateData, onNext, notice, onDismissNotice
           Bitcoin Core IPC is currently available on Linux and macOS only. Windows is not supported yet.
         </p>
       </div>
+
+      {discoveryApplied && (
+        <div
+          className="p-3 rounded-lg bg-success/10 border border-success/20 text-sm text-success flex gap-3 items-start"
+          role="status"
+          aria-live="polite"
+        >
+          <CheckCircle2 className="h-4 w-4 flex-shrink-0 mt-0.5" aria-hidden="true" />
+          <div>
+            <span className="font-medium">Pre-filled from detected node</span>
+            <p className="text-xs mt-1 opacity-80">
+              Network: {network} • Version: {rpcVersionToCoreVersion(discoveredNodes?.find(n => n.network === network)?.version ?? discoveredNodes?.[0]?.version ?? 0) ?? 'Unknown'}
+            </p>
+          </div>
+        </div>
+      )}
 
       <div role="group" aria-labelledby="os-label">
         <p id="os-label" className="block text-sm font-medium mb-3">Operating System</p>

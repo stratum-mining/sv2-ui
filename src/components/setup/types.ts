@@ -21,6 +21,7 @@ export interface BitcoinConfig {
   os: OperatingSystem;
   customDataDir: string;
   socket_path: string;
+  discoveredLogPath?: string;
 }
 
 export interface JdcConfig {

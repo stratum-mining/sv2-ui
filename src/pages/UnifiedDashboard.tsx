@@ -490,7 +490,7 @@ export function UnifiedDashboard() {
       )}
 
       {/* Connection Error Banner (not configured or unknown error) */}
-      {showError && !configuredButStopped && (
+      {showError && !configuredButStopped && diagnostics.length === 0 && (
         <div className="flex items-center gap-3 rounded-xl border border-red-500/40 bg-red-500/10 px-5 py-4 text-sm text-red-500">
           <AlertTriangle className="h-4 w-4 shrink-0" />
           <span>

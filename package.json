@@ -5,7 +5,8 @@
   "private": true,
   "type": "module",
   "workspaces": [
-    "server"
+    "server",
+    "shared"
   ],
   "scripts": {
     "dev": "concurrently --kill-signal SIGTERM --kill-others-on-fail \"vite\" \"npm run dev --prefix server\"",

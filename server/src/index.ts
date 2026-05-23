@@ -12,7 +12,7 @@ import { fileURLToPath } from 'url';
 
 import type { SetupData, StatusResponse, SetupResponse } from './types.js';
 import { generateTranslatorConfig, generateJdcConfig, normalizeSetupData } from './config-generator.js';
-import { isSupportedBitcoinCoreVersion } from './compatibility.js';
+import { isSupportedBitcoinCoreVersion } from '@sv2-ui/shared';
 import {
   startStack,
   stopStack,

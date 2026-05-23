@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { SV2_APP_IMAGES } from '@sv2-ui/shared';
 import {
   getImageSelectionForSetup,
-  SV2_APP_IMAGES,
 } from './compatibility.js';
 import type { SetupData } from './types.js';
 

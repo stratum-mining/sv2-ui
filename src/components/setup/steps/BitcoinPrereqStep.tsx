@@ -1,19 +1,10 @@
 import { useState, useEffect, useRef } from 'react';
-import type { BitcoinCoreVersion, OperatingSystem } from '@sv2-ui/shared';
-import { StepProps, type BitcoinConfig } from '../types';
+import { rpcVersionToCoreVersion, type OperatingSystem } from '@sv2-ui/shared';
+import { BITCOIN_MESSAGES } from '@/lib/messages';
+import { StepProps } from '../types';
 import { Copy, Check, ExternalLink, Loader2, RotateCw, CheckCircle2, AlertCircle } from 'lucide-react';
 import type { BitcoinRpcDiscoveryResult } from '@/hooks/useBitcoinRpcDiscovery';
-
-const SUPPORTED_BITCOIN_CORE_VERSIONS: BitcoinCoreVersion[] = ['30.2', '31.0'];
-
-function rpcVersionToCoreVersion(rpcVersion: number): BitcoinCoreVersion | null {
-  const major = Math.floor(rpcVersion / 10000);
-  const minor = Math.floor((rpcVersion % 10000) / 100);
-  const versionStr = `${major}.${minor}`;
-  return SUPPORTED_BITCOIN_CORE_VERSIONS.includes(versionStr as BitcoinCoreVersion)
-    ? versionStr as BitcoinCoreVersion
-    : null;
-}
+import type { BitcoinConfig } from '../types';
 
 function getDefaultDataDir(os: OperatingSystem): string {
   return os === 'linux' ? '~/.bitcoin' : '~/Library/Application Support/Bitcoin';
@@ -137,13 +128,13 @@ export function BitcoinPrereqStep({ onNext, discoveredNodes, isDiscovering, onRe
     <div className="space-y-8 text-center">
       <div>
         <h2 className="text-2xl md:text-3xl font-semibold tracking-tight mb-3">
-          Start Bitcoin Core
+          {BITCOIN_MESSAGES.prereqHeading}
         </h2>
         <p className="text-lg text-muted-foreground">
-          Job Declaration requires Bitcoin Core 30.2 or 31.0 running with IPC enabled
+          {BITCOIN_MESSAGES.versionRequirement}
         </p>
         <p className="text-sm text-muted-foreground mt-3">
-          Bitcoin Core IPC is currently supported on Linux and macOS only. Windows is not supported yet.
+          {BITCOIN_MESSAGES.platformInfo}
         </p>
       </div>
 
@@ -153,10 +144,10 @@ export function BitcoinPrereqStep({ onNext, discoveredNodes, isDiscovering, onRe
           <div className="w-7 h-7 rounded-full bg-primary/10 text-primary text-xs flex items-center justify-center font-mono flex-shrink-0 mt-0.5">1</div>
           <div className="flex-1 min-w-0">
             <div className="font-medium text-sm mb-1">
-              Install a supported Bitcoin Core release
+              {BITCOIN_MESSAGES.installStep}
             </div>
             <p className="text-xs text-muted-foreground mb-2">
-              Use Bitcoin Core 30.2 or 31.0. If your node runs another version, upgrade to a supported release to get all SV2 features.
+              {BITCOIN_MESSAGES.upgradePrompt}
             </p>
             <a
               href="https://bitcoincore.org/en/download/"
@@ -253,7 +244,7 @@ export function BitcoinPrereqStep({ onNext, discoveredNodes, isDiscovering, onRe
           aria-live="polite"
         >
           <Loader2 className="h-4 w-4 animate-spin flex-shrink-0" aria-hidden="true" />
-          <span>Detecting Bitcoin Core...</span>
+          <span>{BITCOIN_MESSAGES.detecting}</span>
         </div>
       )}
 
@@ -265,12 +256,12 @@ export function BitcoinPrereqStep({ onNext, discoveredNodes, isDiscovering, onRe
         >
           <AlertCircle className="h-4 w-4 flex-shrink-0 mt-0.5" aria-hidden="true" />
           <div className="text-left">
-            <span className="font-medium">Bitcoin Core detected but version is unsupported</span>
+            <span className="font-medium">{BITCOIN_MESSAGES.unsupportedHeading}</span>
             <p className="text-xs mt-1 opacity-80">
-              Detected version: {rpcVersionToCoreVersion(primaryNode.version)}. Only Bitcoin Core 30.2 and 31.0 are supported.
+              {BITCOIN_MESSAGES.unsupportedDetected(String(rpcVersionToCoreVersion(primaryNode.version)))}
             </p>
             <p className="text-xs mt-2">
-              Please upgrade your Bitcoin Core node to a supported version to continue.
+              {BITCOIN_MESSAGES.upgradeNode}
             </p>
           </div>
         </div>
@@ -284,7 +275,7 @@ export function BitcoinPrereqStep({ onNext, discoveredNodes, isDiscovering, onRe
         >
           <CheckCircle2 className="h-4 w-4 flex-shrink-0 mt-0.5" aria-hidden="true" />
           <div className="text-left">
-            <span className="font-medium">Bitcoin Core detected but syncing is in progress</span>
+            <span className="font-medium">{BITCOIN_MESSAGES.syncingHeading}</span>
             <p className="text-xs mt-1 opacity-80">
               Network: {primaryNode.network} • Version: {detectedCoreVersion ?? primaryNode.version} • Syncing...
             </p>
@@ -303,9 +294,11 @@ export function BitcoinPrereqStep({ onNext, discoveredNodes, isDiscovering, onRe
         >
           <CheckCircle2 className="h-4 w-4 flex-shrink-0 mt-0.5" aria-hidden="true" />
           <div className="text-left">
-            <span className="font-medium">Bitcoin Core detected</span>
+            <span className="font-medium">{BITCOIN_MESSAGES.detectedHeading}</span>
             <p className="text-xs mt-1 opacity-80">
-              Network: {primaryNode.network} • Version: {detectedCoreVersion} • Synced
+              {detectedCoreVersion !== null
+              ? `Network: ${primaryNode.network} • Version: ${detectedCoreVersion} • Synced`
+              : `Network: ${primaryNode.network} • Version: ${primaryNode.version} • Synced`}
             </p>
           </div>
         </div>

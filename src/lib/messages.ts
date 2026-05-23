@@ -1,0 +1,26 @@
+import { formatSupportedVersions } from '@sv2-ui/shared';
+
+export const BITCOIN_MESSAGES = {
+  prereqHeading: 'Start Bitcoin Core',
+  versionRequirement: `Job Declaration requires Bitcoin Core ${formatSupportedVersions()} running with IPC enabled`,
+  platformInfo: 'Bitcoin Core IPC is currently supported on Linux and macOS only. Windows is not supported yet.',
+  installStep: 'Install a supported Bitcoin Core release',
+  upgradePrompt: `Use Bitcoin Core ${formatSupportedVersions()}. If your node runs another version, upgrade to a supported release to get all SV2 features.`,
+  windowsSupport: 'Windows IPC support is still in progress',
+  mainnetLabel: 'Mainnet',
+  testnet4Label: 'Testnet4',
+  detecting: 'Detecting Bitcoin Core...',
+  unsupportedHeading: 'Bitcoin Core detected but version is unsupported',
+  unsupportedDetected: (detected: string) => `Detected version: ${detected}. Only Bitcoin Core ${formatSupportedVersions()} are supported.`,
+  upgradeNode: 'Please upgrade your Bitcoin Core node to a supported version to continue.',
+  syncingHeading: 'Bitcoin Core detected but syncing is in progress',
+  detectedHeading: 'Bitcoin Core detected',
+  connectionHeading: 'Bitcoin Core Connection',
+  connectionPrompt: 'Tell us how to connect to your running Bitcoin node',
+  versionLabel: 'Bitcoin Core Version',
+  selectPlaceholder: 'Select a supported version',
+  genericUpgrade: 'If your node runs another Bitcoin Core version, upgrade to a supported release to get all SV2 features.',
+  selectVersionPrompt: 'Select your Bitcoin Core version to continue.',
+  versionMismatchNotice: 'Bitcoin Core version mismatch detected. Select the version your running node is actually using.',
+  windowsOmitted: 'Windows is intentionally omitted here because Bitcoin Core IPC support is still in progress.',
+} as const;

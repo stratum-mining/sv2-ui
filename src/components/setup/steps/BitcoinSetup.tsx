@@ -1,32 +1,16 @@
 import { useState, useEffect } from 'react';
-import type { BitcoinCoreVersion, OperatingSystem } from '@sv2-ui/shared';
+import {
+  DEFAULT_BITCOIN_PATHS,
+  SUPPORTED_BITCOIN_CORE_VERSIONS,
+  computeDefaultSocketPath,
+  rpcVersionToCoreVersion,
+} from '@sv2-ui/shared';
+import type { BitcoinCoreVersion, OperatingSystem, BitcoinNetwork } from '@sv2-ui/shared';
+import { BITCOIN_MESSAGES } from '@/lib/messages';
 import { StepProps, BitcoinConfig } from '../types';
 import { Bitcoin, Apple, Terminal, Pencil, Check, Loader2, AlertCircle, CheckCircle2, RotateCw } from 'lucide-react';
 import { useBitcoinSocketValidation } from '@/hooks/useBitcoinSocketValidation';
 import type { BitcoinRpcDiscoveryResult } from '@/hooks/useBitcoinRpcDiscovery';
-
-function getDefaultDataDir(os: OperatingSystem): string {
-  return os === 'linux' ? '~/.bitcoin' : '~/Library/Application Support/Bitcoin';
-}
-
-// Bitcoin Core places its IPC socket under the data directory: mainnet at the
-// datadir root, other networks under a <network>/ subdirectory. Validation is
-// network-agnostic — only the default path differs.
-function computeSocketPath(os: OperatingSystem, network: 'mainnet' | 'testnet4', customDataDir: string): string {
-  const dataDir = customDataDir.trim() || getDefaultDataDir(os);
-  return network === 'mainnet' ? `${dataDir}/node.sock` : `${dataDir}/testnet4/node.sock`;
-}
-
-const SUPPORTED_BITCOIN_CORE_VERSIONS: BitcoinCoreVersion[] = ['30.2', '31.0'];
-
-function rpcVersionToCoreVersion(rpcVersion: number): BitcoinCoreVersion | null {
-  const major = Math.floor(rpcVersion / 10000);
-  const minor = Math.floor((rpcVersion % 10000) / 100);
-  const versionStr = `${major}.${minor}`;
-  return SUPPORTED_BITCOIN_CORE_VERSIONS.includes(versionStr as BitcoinCoreVersion)
-    ? versionStr as BitcoinCoreVersion
-    : null;
-}
 
 interface BitcoinSetupProps extends StepProps {
   notice?: string | null;
@@ -37,12 +21,13 @@ interface BitcoinSetupProps extends StepProps {
 export function BitcoinSetup({ data, updateData, onNext, notice, onDismissNotice, discoveredNodes }: BitcoinSetupProps) {
   const [coreVersion, setCoreVersion] = useState<BitcoinCoreVersion | null>(data.bitcoin?.core_version ?? null);
   const [os, setOs] = useState<OperatingSystem>(data.bitcoin?.os || 'linux');
-  const [network, setNetwork] = useState<'mainnet' | 'testnet4'>(data.bitcoin?.network || 'mainnet');
+  const [network, setNetwork] = useState<BitcoinNetwork>(data.bitcoin?.network || 'mainnet');
   const [customDataDir, setCustomDataDir] = useState(data.bitcoin?.customDataDir || '');
   const [manualSocketPath, setManualSocketPath] = useState(data.bitcoin?.socket_path || '');
   const [isEditingPath, setIsEditingPath] = useState(false);
   const [discoveryApplied, setDiscoveryApplied] = useState(false);
-  const computedSocketPath = computeSocketPath(os, network, customDataDir);
+  const dataDir = customDataDir.trim() || DEFAULT_BITCOIN_PATHS[os];
+  const computedSocketPath = computeDefaultSocketPath(dataDir, network);
   const socketPath = manualSocketPath || computedSocketPath;
 
   useEffect(() => {
@@ -100,7 +85,7 @@ export function BitcoinSetup({ data, updateData, onNext, notice, onDismissNotice
           Tell us how to connect to your running Bitcoin node
         </p>
         <p className="text-sm text-muted-foreground mt-3">
-          Bitcoin Core IPC is currently available on Linux and macOS only. Windows is not supported yet.
+          {BITCOIN_MESSAGES.platformInfo}
         </p>
       </div>
 
@@ -145,13 +130,13 @@ export function BitcoinSetup({ data, updateData, onNext, notice, onDismissNotice
           </button>
         </div>
         <p className="text-xs text-muted-foreground mt-2">
-          Windows is intentionally omitted here because Bitcoin Core IPC support is still in progress.
+          {BITCOIN_MESSAGES.windowsOmitted}
         </p>
       </div>
 
       <div>
         <label htmlFor="core-version" className="block text-sm font-medium mb-3">
-          Bitcoin Core Version
+          {BITCOIN_MESSAGES.versionLabel}
         </label>
         {notice && (
           <div
@@ -172,7 +157,7 @@ export function BitcoinSetup({ data, updateData, onNext, notice, onDismissNotice
           }}
           className="w-full h-10 px-3 rounded-lg border border-input bg-background text-sm focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/15 outline-none transition-all"
         >
-          <option value="" disabled>Select a supported version</option>
+          <option value="" disabled>{BITCOIN_MESSAGES.selectPlaceholder}</option>
           {SUPPORTED_BITCOIN_CORE_VERSIONS.map((version) => (
             <option key={version} value={version}>
               Bitcoin Core {version}
@@ -180,11 +165,11 @@ export function BitcoinSetup({ data, updateData, onNext, notice, onDismissNotice
           ))}
         </select>
         <p className="text-xs text-muted-foreground mt-2">
-          If your node runs another Bitcoin Core version, upgrade to a supported release to get all SV2 features.
+          {BITCOIN_MESSAGES.genericUpgrade}
         </p>
         {!coreVersion && (
           <p className="text-xs text-destructive mt-2">
-            Select your Bitcoin Core version to continue.
+            {BITCOIN_MESSAGES.selectVersionPrompt}
           </p>
         )}
       </div>
@@ -228,7 +213,7 @@ export function BitcoinSetup({ data, updateData, onNext, notice, onDismissNotice
           type="text"
           value={customDataDir}
           onChange={(e) => { setCustomDataDir(e.target.value); resetPath(); }}
-          placeholder={getDefaultDataDir(os)}
+          placeholder={DEFAULT_BITCOIN_PATHS[os]}
           autoComplete="off"
           className="w-full h-10 px-3 rounded-lg border border-input bg-background font-mono text-sm focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/15 outline-none transition-all"
         />

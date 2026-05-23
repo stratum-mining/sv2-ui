@@ -3,6 +3,7 @@ import { useLocation } from 'wouter';
 import { ArrowLeft, AlertCircle, Sun, Moon } from 'lucide-react';
 import { SetupStep, SetupData, initialSetupData } from './types';
 import { shouldAggregateTranslatorChannels } from './poolRules';
+import { BITCOIN_MESSAGES } from '@/lib/messages';
 
 function useTheme() {
   const [isDark, setIsDark] = useState(() => {
@@ -78,8 +79,7 @@ function computeSteps(data: SetupData): SetupStep[] {
 }
 
 const SETUP_TARGET_STEP_STORAGE_KEY = 'sv2-ui-setup-target-step';
-const BITCOIN_CORE_VERSION_MISMATCH_NOTICE =
-  'Bitcoin Core version mismatch detected. Select the version your running node is actually using.';
+const BITCOIN_CORE_VERSION_MISMATCH_NOTICE = BITCOIN_MESSAGES.versionMismatchNotice;
 
 export function SetupWizard() {
   const { isDark, toggle } = useTheme();

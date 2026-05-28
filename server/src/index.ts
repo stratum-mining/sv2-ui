@@ -22,8 +22,8 @@ import {
   getDockerConnectionInfo,
   expandHomePath,
   readContainerLogs,
-
-  probeBitcoinSocketWithDocker
+  probeBitcoinSocketWithDocker,
+  autoDiscoverBitcoinRpc
 } from './docker.js';
 import { getLogDiagnostics, getLogStreams, readCollatedLogLines } from './logs/diagnostics.js';
 
@@ -155,6 +155,14 @@ app.post('/api/validate/bitcoin-socket', async (req, res) => {
   const resolved = expandHomePath(socket_path);
   const result = await probeBitcoinSocketWithDocker(resolved);
   return res.json(result);
+});
+
+/**
+ * POST /api/validate/bitcoin-rpc - Auto-discover Bitcoin Core RPC nodes
+ */
+app.get('/api/validate/bitcoin-rpc', async (_req, res) => {
+  const results = await autoDiscoverBitcoinRpc();
+  return res.json(results);
 });
 
 async function getBitcoinSocketStartupError(data: SetupData): Promise<string | null> {

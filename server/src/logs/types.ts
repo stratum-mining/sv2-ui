@@ -1,4 +1,4 @@
-import type { SetupMode, LogContainerRole, LogOutputStream, LogSourceKind, LogStreamId, DiagnosticSeverity, ContainerLogLine, DiagnosticEvidence, LogDiagnostic, LogStreamDefinition, LogDiagnosticsResponse, ContainerLogsResponse } from '@sv2-ui/shared';
+import type { LogContainerRole, LogOutputStream, LogSourceKind, LogStreamId, DiagnosticSeverity, ContainerLogLine, DiagnosticEvidence, LogDiagnostic, LogStreamDefinition, LogDiagnosticsResponse, ContainerLogsResponse } from '@sv2-ui/shared';
 
 export type { LogContainerRole, LogOutputStream, LogSourceKind, LogStreamId, DiagnosticSeverity, ContainerLogLine, DiagnosticEvidence, LogDiagnostic, LogStreamDefinition, LogDiagnosticsResponse, ContainerLogsResponse };
 

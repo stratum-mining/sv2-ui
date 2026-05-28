@@ -1,4 +1,4 @@
-import type { MiningMode, SetupMode, OperatingSystem, BitcoinCoreVersion, BitcoinNetwork, HealthStatus, PoolConfig, BitcoinConfig, JdcConfig, TranslatorConfig, SetupData } from '@sv2-ui/shared';
+import type { MiningMode, SetupMode, HealthStatus, PoolConfig, BitcoinConfig, JdcConfig, TranslatorConfig, SetupData } from '@sv2-ui/shared';
 
 export type { PoolConfig, BitcoinConfig, JdcConfig, TranslatorConfig, SetupData };
 

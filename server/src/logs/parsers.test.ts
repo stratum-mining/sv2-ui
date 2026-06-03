@@ -204,6 +204,60 @@ test('jdcBitcoinCoreInitialBlockDownloadParser requires explicit IBD hint', () =
   assert.equal(result, null);
 });
 
+test('jdcBitcoinCoreInitialBlockDownloadParser clears stale IBD after readiness', () => {
+  const lines = [
+    createLogLine(
+      'jdc',
+      'WARN jd_client_sv2::channel_manager: Waiting for initial template and prevhash from Template Provider...'
+    ),
+    createLogLine(
+      'jdc',
+      'WARN jd_client_sv2::channel_manager: Is the Bitcoin node undergoing IBD?'
+    ),
+    createLogLine(
+      'jdc',
+      'INFO jd_client_sv2::channel_manager: Required template data received, ready to accept connections'
+    ),
+  ];
+
+  const result = jdcBitcoinCoreInitialBlockDownloadParser(lines);
+
+  assert.equal(result, null);
+});
+
+test('jdcBitcoinCoreInitialBlockDownloadParser reappears after newer IBD hint', () => {
+  const lines = [
+    createLogLine(
+      'jdc',
+      'WARN jd_client_sv2::channel_manager: Is the Bitcoin node undergoing IBD?'
+    ),
+    createLogLine(
+      'jdc',
+      'INFO jd_client_sv2::channel_manager: Required template data received, ready to accept connections'
+    ),
+    createLogLine(
+      'jdc',
+      'WARN jd_client_sv2::channel_manager: Waiting for initial template and prevhash from Template Provider...'
+    ),
+    createLogLine(
+      'jdc',
+      'WARN jd_client_sv2::channel_manager: Is the Bitcoin node undergoing IBD?'
+    ),
+  ];
+
+  const result = jdcBitcoinCoreInitialBlockDownloadParser(lines);
+
+  assert.ok(result !== null);
+  assert.equal(result?.code, 'jdc-bitcoin-core-initial-block-download');
+  assert.equal(result?.evidence.length, 2);
+  assert.ok(
+    result?.evidence.every((item) =>
+      item.line.includes('Waiting for initial template') ||
+      item.line.includes('Is the Bitcoin node undergoing IBD?')
+    )
+  );
+});
+
 test('jdcBitcoinCoreInitialBlockDownloadParser returns null when wrong container', () => {
   const lines = [
     createLogLine(
@@ -315,6 +369,27 @@ test('collectDiagnostics includes Bitcoin Core IBD diagnostics', () => {
     diagnostics[0]?.message,
     'Your Bitcoin Core node is in initial block download, so it cannot provide block templates yet.'
   );
+});
+
+test('collectDiagnostics clears stale Bitcoin Core IBD diagnostics after readiness', () => {
+  const lines = [
+    createLogLine(
+      'jdc',
+      'WARN jd_client_sv2::channel_manager: Waiting for initial template and prevhash from Template Provider...'
+    ),
+    createLogLine(
+      'jdc',
+      'WARN jd_client_sv2::channel_manager: Is the Bitcoin node undergoing IBD?'
+    ),
+    createLogLine(
+      'jdc',
+      'INFO jd_client_sv2::channel_manager: Required template data received, ready to accept connections'
+    ),
+  ];
+
+  const diagnostics = collectDiagnostics(lines);
+
+  assert.equal(diagnostics.length, 0);
 });
 
 test('invalidCertificateParser: detects InvalidCertificate in translator', () => {

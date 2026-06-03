@@ -18,6 +18,9 @@ const JDC_BITCOIN_CORE_IBD_HINT_REGEX =
 const JDC_BITCOIN_CORE_IBD_CONTEXT_REGEX =
   /(Waiting for initial template and prevhash from Template Provider|Is the Bitcoin node undergoing IBD\?)/;
 
+const JDC_BITCOIN_CORE_IBD_RECOVERY_REGEX =
+  /Required template data received, ready to accept connections/;
+
 const JDC_BITCOIN_CORE_UNSUPPORTED_MINING_INTERFACE_REGEX =
   /(Old mining interface \(@[^)]+\) not supported\. Please update your client!|Failed to create BitcoinCoreToSv2: CapnpError\(Error \{ kind: Unimplemented, extra: "remote exception: Method not implemented\.; interfaceName = capnp\/init\.capnp:Init; typeId = \d+; methodId = \d+" \}\))/;
 
@@ -95,17 +98,37 @@ export function jdcBitcoinCoreDisconnectedParser(
 export function jdcBitcoinCoreInitialBlockDownloadParser(
   lines: ContainerLogLine[]
 ): LogDiagnostic | null {
-  const ibdMatches = lines.filter(
-    ({ container, message }) =>
-      container === 'jdc' && JDC_BITCOIN_CORE_IBD_HINT_REGEX.test(message)
-  );
+  let latestIbdHintIndex = -1;
+  let latestRecoveryIndex = -1;
 
-  if (ibdMatches.length === 0) {
+  lines.forEach(({ container, message }, index) => {
+    if (container !== 'jdc') {
+      return;
+    }
+
+    if (JDC_BITCOIN_CORE_IBD_HINT_REGEX.test(message)) {
+      latestIbdHintIndex = index;
+    }
+
+    if (JDC_BITCOIN_CORE_IBD_RECOVERY_REGEX.test(message)) {
+      latestRecoveryIndex = index;
+    }
+  });
+
+  if (latestIbdHintIndex === -1 || latestRecoveryIndex > latestIbdHintIndex) {
     return null;
   }
 
+  const ibdMatches = lines.filter(
+    ({ container, message }, index) =>
+      index > latestRecoveryIndex &&
+      container === 'jdc' &&
+      JDC_BITCOIN_CORE_IBD_HINT_REGEX.test(message)
+  );
+
   const matches = lines.filter(
-    ({ container, message }) =>
+    ({ container, message }, index) =>
+      index > latestRecoveryIndex &&
       container === 'jdc' && JDC_BITCOIN_CORE_IBD_CONTEXT_REGEX.test(message)
   );
 
@@ -125,7 +148,7 @@ export function jdcBitcoinCoreInitialBlockDownloadParser(
     message:
       'Your Bitcoin Core node is in initial block download, so it cannot provide block templates yet.',
     recommendation:
-      'Wait until Bitcoin Core finishes syncing, then restart the mining services.',
+      'Wait until Bitcoin Core finishes syncing; this warning will clear once JDC receives template data.',
     streamId: 'mining-services',
     containers: ['jdc'],
     detectedAt: ibdMatches[0].timestamp,

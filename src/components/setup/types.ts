@@ -5,6 +5,7 @@ export const initialSetupData: SetupData = {
   miningMode: null,
   mode: null,
   pool: null,
+  fallbackPools: [],
   bitcoin: null,
   jdc: null,
   translator: null,

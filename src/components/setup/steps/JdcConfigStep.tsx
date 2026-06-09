@@ -6,7 +6,6 @@ import { isValidBitcoinAddress, getBitcoinAddressError, getBitcoinAddressPlaceho
 export function JdcConfigStep({ data, updateData, onNext }: StepProps) {
   const [config, setConfig] = useState<JdcConfig>(
     data.jdc || {
-      user_identity: 'miner.worker1',
       jdc_signature: '',
       coinbase_reward_address: '',
     }
@@ -23,9 +22,7 @@ export function JdcConfigStep({ data, updateData, onNext }: StepProps) {
   const network = data.bitcoin?.network ?? 'mainnet';
   const bitcoinAddressPlaceholder = getBitcoinAddressPlaceholder(network);
 
-  const isValid =
-    config.user_identity.length > 0 &&
-    isValidBitcoinAddress(config.coinbase_reward_address, network);
+  const isValid = isValidBitcoinAddress(config.coinbase_reward_address, network);
 
   return (
     <div className="space-y-8">
@@ -51,26 +48,6 @@ export function JdcConfigStep({ data, updateData, onNext }: StepProps) {
       </div>
 
       <div className="space-y-4">
-        <div>
-          <label htmlFor="jdc-user-identity" className="block text-sm font-medium mb-2">
-            User Identity <span className="text-primary" aria-hidden="true">*</span>
-            <span className="sr-only">(required)</span>
-          </label>
-          <input
-            id="jdc-user-identity"
-            type="text"
-            value={config.user_identity}
-            onChange={(e) => handleChange('user_identity', e.target.value)}
-            placeholder="miner.worker1"
-            aria-required="true"
-            autoComplete="off"
-            className="w-full h-10 px-3 rounded-lg border border-input bg-background focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/15 outline-none transition-all"
-          />
-          <p className="text-xs text-muted-foreground mt-2">
-            Your mining identity (e.g., username.workername)
-          </p>
-        </div>
-
         <div>
           <label htmlFor="jdc-coinbase-address" className="block text-sm font-medium mb-2">
             Coinbase Reward Address <span className="text-primary" aria-hidden="true">*</span>

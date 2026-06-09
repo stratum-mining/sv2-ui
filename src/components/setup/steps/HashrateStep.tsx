@@ -127,7 +127,6 @@ export function HashrateStep({ data, updateData, onNext }: StepProps) {
     updateData({
       translator: {
         ...data.translator,
-        user_identity: data.translator?.user_identity || '',
         enable_vardiff: true,
         aggregate_channels: data.translator?.aggregate_channels ?? false,
         min_hashrate: hashrate,

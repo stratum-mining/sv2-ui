@@ -13,9 +13,15 @@ export function TemplateModeSelection({ data, updateData, onNext }: StepProps) {
   const secondaryFooter = isSoloMode ? 'Simpler setup with a solo pool' : 'Simpler setup';
 
   const handleSelect = (mode: 'jd' | 'no-jd') => {
+    if (mode === data.mode) {
+      // Same mode — preserve everything (Reconfigure walk-through).
+      onNext();
+      return;
+    }
     updateData({
       mode,
       pool: mode === 'jd' ? null : data.pool,
+      fallbackPools: mode === 'jd' ? [] : data.fallbackPools,
       bitcoin: mode === 'jd' ? data.bitcoin : null,
       jdc: mode === 'jd' ? data.jdc : null,
     });

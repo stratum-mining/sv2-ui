@@ -3,7 +3,7 @@ import type { MiningMode } from '@sv2-ui/shared';
 import type { StepProps } from '../types';
 import { Miner3D, type MinerPhase } from './Miner3D';
 
-export function MiningModeSelection({ updateData, onNext }: StepProps) {
+export function MiningModeSelection({ data, updateData, onNext }: StepProps) {
   const [phase, setPhase] = useState<MinerPhase>('idle');
   const [selectedMode, setSelectedMode] = useState<MiningMode | null>(null);
   const nextRef = useRef(onNext);
@@ -19,7 +19,11 @@ export function MiningModeSelection({ updateData, onNext }: StepProps) {
   const handleSelect = (miningMode: MiningMode) => {
     if (phase !== 'idle') return;
     setSelectedMode(miningMode);
-    updateData({ miningMode, mode: null, pool: null, bitcoin: null, jdc: null, translator: null });
+    // Only reset downstream state if the user actually changed mode. Picking
+    // the same mode (Reconfigure flow) preserves existing pool/fallback work.
+    if (miningMode !== data.miningMode) {
+      updateData({ miningMode, mode: null, pool: null, fallbackPools: [], bitcoin: null, jdc: null, translator: null });
+    }
     setPhase('arming');
   };
 

@@ -12,6 +12,7 @@ export interface PoolConfig {
   address: string;
   port: number;
   authority_public_key: string;
+  user_identity?: string;
 }
 
 export interface BitcoinConfig {
@@ -24,13 +25,11 @@ export interface BitcoinConfig {
 }
 
 export interface JdcConfig {
-  user_identity: string;
   jdc_signature: string;
   coinbase_reward_address: string;
 }
 
 export interface TranslatorConfig {
-  user_identity: string;
   enable_vardiff: boolean;
   aggregate_channels: boolean;
   min_hashrate: number;
@@ -42,6 +41,7 @@ export interface SetupData {
   miningMode: MiningMode | null;
   mode: SetupMode | null;
   pool: PoolConfig | null;
+  fallbackPools: PoolConfig[];
   bitcoin: BitcoinConfig | null;
   jdc: JdcConfig | null;
   translator: TranslatorConfig | null;

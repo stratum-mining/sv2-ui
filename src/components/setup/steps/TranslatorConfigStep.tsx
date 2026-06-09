@@ -3,14 +3,11 @@ import { StepProps, TranslatorConfig } from '../types';
 import { Switch } from '@/components/ui/switch';
 import { Info } from 'lucide-react';
 import { TRANSLATOR_PORT } from '@/lib/ports';
-import { isValidBitcoinAddress, getBitcoinAddressError, getBitcoinAddressPlaceholder } from '@/lib/utils';
-
 export function TranslatorConfigStep({ data, updateData, onNext }: StepProps) {
   const isSoloMode = data.miningMode === 'solo';
   
   const [config, setConfig] = useState<TranslatorConfig>(
     data.translator || {
-      user_identity: '',
       enable_vardiff: false,
       aggregate_channels: false,
       min_hashrate: 0,
@@ -25,34 +22,6 @@ export function TranslatorConfigStep({ data, updateData, onNext }: StepProps) {
 
   const handleChange = (field: keyof TranslatorConfig, value: string | boolean) => {
     setConfig({ ...config, [field]: value });
-  };
-
-  const network = data.bitcoin?.network ?? 'mainnet';
-  const bitcoinAddressPlaceholder = getBitcoinAddressPlaceholder(network);
-
-  const isValid = isSoloMode
-    ? isValidBitcoinAddress(config.user_identity, network)
-    : config.user_identity.length > 0;
-
-  const getUserIdentityLabel = () => {
-    if (isSoloMode) {
-      return 'Bitcoin Address';
-    }
-    return 'Pool Username';
-  };
-
-  const getUserIdentityPlaceholder = () => {
-    if (isSoloMode) {
-      return bitcoinAddressPlaceholder;
-    }
-    return 'username.worker1';
-  };
-
-  const getUserIdentityDescription = () => {
-    if (isSoloMode) {
-      return 'Your Bitcoin address where you want to receive mining rewards';
-    }
-    return 'Your pool account username (e.g., username.workername)';
   };
 
   return (
@@ -79,29 +48,6 @@ export function TranslatorConfigStep({ data, updateData, onNext }: StepProps) {
       </div>
 
       <div className="space-y-4">
-        <div>
-          <label htmlFor="translator-identity" className="block text-sm font-medium mb-2">
-            {getUserIdentityLabel()} <span className="text-primary" aria-hidden="true">*</span>
-            <span className="sr-only">(required)</span>
-          </label>
-          <input
-            id="translator-identity"
-            type="text"
-            value={config.user_identity}
-            onChange={(e) => handleChange('user_identity', e.target.value)}
-            placeholder={getUserIdentityPlaceholder()}
-            aria-required="true"
-            autoComplete="off"
-            className="w-full h-10 px-3 rounded-lg border border-input bg-background focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/15 outline-none transition-all font-mono text-sm"
-          />
-          {isSoloMode && getBitcoinAddressError(config.user_identity, network) && (
-            <p className="text-xs text-destructive mt-1">{getBitcoinAddressError(config.user_identity, network)}</p>
-          )}
-          <p className="text-xs text-muted-foreground mt-2">
-            {getUserIdentityDescription()}
-          </p>
-        </div>
-
         <div className="p-6 rounded-xl border border-border bg-muted space-y-4">
           <div className="text-sm font-semibold mb-4">Advanced Options</div>
 
@@ -144,7 +90,7 @@ export function TranslatorConfigStep({ data, updateData, onNext }: StepProps) {
         <button
           type="button"
           onClick={onNext}
-          disabled={!isValid}
+          disabled={false}
           className="h-11 px-10 rounded-full bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 transition-colors font-medium"
         >
           Continue

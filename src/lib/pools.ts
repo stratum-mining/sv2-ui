@@ -2,6 +2,31 @@
  * Shared pool preset definitions used by both the Setup Wizard and Settings.
  */
 
+import type { PoolConfig } from '@/components/setup/types';
+import { isValidPoolAuthorityPubkey } from '@/lib/utils';
+
+export const EMPTY_CUSTOM_POOL: PoolConfig = {
+  name: 'Custom Pool',
+  address: '',
+  port: 34254,
+  authority_public_key: '',
+};
+
+// Two pools are the same iff their full SV2 endpoint triplet matches.
+// Address+port alone isn't enough — a typo'd or malicious pubkey on the
+// same host:port is a different security context, not a duplicate.
+export function isSamePool(a: PoolConfig, b: PoolConfig): boolean {
+  return (
+    a.address.toLowerCase() === b.address.toLowerCase() &&
+    a.port === b.port &&
+    a.authority_public_key === b.authority_public_key
+  );
+}
+
+export function isPoolValid(p: PoolConfig): boolean {
+  return p.address.length > 0 && isValidPoolAuthorityPubkey(p.authority_public_key);
+}
+
 export interface KnownPool {
   id: string;
   name: string;
@@ -86,4 +111,22 @@ export function getPoolsForMode(miningMode: string | null, templateMode: string 
   if (miningMode === 'solo') return SOLO_POOLS;
   if (templateMode === 'jd') return POOL_MINING_JD;
   return POOL_MINING_NO_JD;
+}
+
+export function knownPoolToConfig(p: KnownPool): PoolConfig {
+  return { name: p.name, address: p.address, port: p.port, authority_public_key: p.authority_public_key };
+}
+
+export function knownPoolsForSlot(
+  pools: KnownPool[],
+  primary: PoolConfig | null,
+  fallbacks: PoolConfig[],
+  slotIndex: number,
+): KnownPool[] {
+  return pools.filter((kp) => {
+    const kpAsConfig = knownPoolToConfig(kp);
+    if (isSamePool(fallbacks[slotIndex], kpAsConfig)) return true;
+    if (primary && isSamePool(primary, kpAsConfig)) return false;
+    return !fallbacks.some((other, j) => j !== slotIndex && isSamePool(other, kpAsConfig));
+  });
 }

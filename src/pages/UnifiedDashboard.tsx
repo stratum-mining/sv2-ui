@@ -78,6 +78,7 @@ export function UnifiedDashboard() {
     isOrchestrated,
     isConfigured,
     isRunning,
+    autoStarting,
     miningMode,
     mode: templateMode,
     poolName: configPoolName,
@@ -497,23 +498,28 @@ export function UnifiedDashboard() {
       {configuredButStopped && showError && (
         <div className="flex flex-col gap-3 rounded-xl border border-primary/40 bg-primary/10 px-5 py-4 text-sm sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-3">
-            <Play className="h-4 w-4 shrink-0 text-primary" />
-            <span>Mining services are stopped.</span>
-          </div>
-          <button
-            onClick={handleStartMining}
-            disabled={isStarting}
-            className="flex h-9 items-center gap-2 self-start rounded-full bg-primary px-4 font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50 sm:self-auto"
-          >
-            {isStarting ? (
-              <>
-                <div className="h-4 w-4 border-2 border-primary-foreground/30 border-t-primary-foreground rounded-full animate-spin" />
-                Starting...
-              </>
+            {autoStarting || isStarting ? (
+              <div className="h-4 w-4 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
             ) : (
-              'Start Mining'
+              <Play className="h-4 w-4 shrink-0 text-primary" />
             )}
-          </button>
+            <span>
+              {autoStarting
+                ? 'Mining services are starting...'
+                : isStarting
+                  ? 'Starting mining services...'
+                  : 'Mining services are stopped.'}
+            </span>
+          </div>
+          {!autoStarting && !isStarting && (
+            <button
+              onClick={handleStartMining}
+              disabled={isStarting}
+              className="flex h-9 items-center gap-2 self-start rounded-full bg-primary px-4 font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50 sm:self-auto"
+            >
+              Start Mining
+            </button>
+          )}
         </div>
       )}
 

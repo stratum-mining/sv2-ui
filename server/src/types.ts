@@ -12,6 +12,7 @@ export interface ContainerStatus {
 export interface StatusResponse {
   configured: boolean;
   running: boolean;
+  autoStarting?: boolean;
   miningMode: MiningMode | null;
   mode: SetupMode | null;
   poolName: string | null;

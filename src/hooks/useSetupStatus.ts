@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 export interface SetupStatus {
   configured: boolean;
   running: boolean;
+  autoStarting?: boolean;
   miningMode: 'solo' | 'pool' | null;
   mode: 'jd' | 'no-jd' | null;
   poolName: string | null;
@@ -69,6 +70,7 @@ export function useSetupStatus() {
     isOrchestrated: status !== null && status !== undefined,
     isConfigured: status?.configured ?? false,
     isRunning: status?.running ?? false,
+    autoStarting: status?.autoStarting ?? false,
     miningMode: status?.miningMode ?? null,
     mode: status?.mode ?? null,
     poolName: status?.poolName ?? null,

@@ -36,6 +36,8 @@ const PORT = process.env.PORT || 3001;
 const CONFIG_DIR = process.env.CONFIG_DIR || path.join(__dirname, '../../data/config');
 const STATE_FILE = path.join(CONFIG_DIR, 'state.json');
 
+let isAutoStarting = false;
+
 // Middleware
 app.use(cors());
 app.use(express.json());
@@ -112,6 +114,7 @@ app.get('/api/status', async (_req, res) => {
     const response: StatusResponse = {
       configured: state.configured,
       running,
+      autoStarting: isAutoStarting,
       miningMode: state.miningMode,
       mode: state.mode,
       poolName: state.data?.miningMode === 'solo' && state.data?.mode === 'jd'
@@ -442,6 +445,10 @@ app.post('/api/stop', async (_req, res) => {
  */
 app.post('/api/restart', async (_req, res) => {
   try {
+    if (isAutoStarting) {
+      return res.status(409).json({ success: false, error: 'Mining services are already starting. Please wait.' });
+    }
+
     const state = await loadState();
     if (!state.configured || !state.data) {
       return res.status(400).json({ success: false, error: 'Not configured' });
@@ -559,6 +566,53 @@ app.get('*', (_req, res) => {
   res.sendFile(path.join(UI_DIR, 'index.html'));
 });
 
+async function autoStartIfConfigured(): Promise<void> {
+  isAutoStarting = true;
+  try {
+    const state = await loadState();
+    if (!state.configured || !state.data) {
+      console.log('Auto-start skipped: not configured');
+      return;
+    }
+
+    const containers = await getStackStatus(state.mode);
+    const bothHealthyOrStarting = (status: string | undefined) =>
+      status === 'healthy' || status === 'starting';
+    const alreadyRunning = state.mode === 'jd'
+      ? bothHealthyOrStarting(containers.translator?.status) &&
+      bothHealthyOrStarting(containers.jdc?.status)
+      : bothHealthyOrStarting(containers.translator?.status);
+
+    if (alreadyRunning) {
+      console.log('Auto-start skipped: containers already running');
+      return;
+    }
+
+    console.log('Auto-start: configured but stopped — starting containers...');
+
+    const versionError = getBitcoinCoreVersionError(state.data);
+    if (versionError) {
+      console.error('Auto-start aborted:', versionError);
+      return;
+    }
+
+    if (state.data.mode === 'jd') {
+      const socketError = await getBitcoinSocketStartupError(state.data);
+      if (socketError) {
+        console.error('Auto-start aborted:', socketError);
+        return;
+      }
+    }
+
+    await startStack(state.data, CONFIG_DIR);
+    console.log('Auto-start: containers started successfully');
+  } catch (error) {
+    console.error('Auto-start failed:', error);
+  } finally {
+    isAutoStarting = false;
+  }
+}
+
 // Start server
 const isProduction = process.env.NODE_ENV === 'production';
 
@@ -580,6 +634,9 @@ app.listen(PORT, () => {
     console.log('└─────────────────────────────────────────────────────┘');
     console.log('');
   }
+
+  // fire-and-forget: restart the mining stack if configured but stopped
+  autoStartIfConfigured();
 });
 
 // Graceful shutdown: stop mining containers when sv2-ui exits

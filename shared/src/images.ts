@@ -17,15 +17,15 @@ export interface CompatibilityProfile {
 }
 
 export const SV2_APP_IMAGES = {
-  translatorNoJd: 'stratumv2/translator_sv2:main',
+  translatorNoJd: 'stratumv2/translator_sv2:v0.5.0',
   byBitcoinCore: {
     '30.2': {
       jdc: 'stratumv2/jd_client_sv2:v0.3.5',
       translator: 'stratumv2/translator_sv2:v0.3.5',
     },
     '31.0': {
-      jdc: 'stratumv2/jd_client_sv2:main',
-      translator: 'stratumv2/translator_sv2:main',
+      jdc: 'stratumv2/jd_client_sv2:v0.5.0',
+      translator: 'stratumv2/translator_sv2:v0.5.0',
     },
   },
 } as const satisfies {

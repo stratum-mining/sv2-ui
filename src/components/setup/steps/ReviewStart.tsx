@@ -256,6 +256,19 @@ export function ReviewStart({ data, onComplete, onGoToStep }: ReviewStartProps) 
                   will not track workers individually.
                 </div>
               )}
+              {data.fallbackPools.map((fp, i) => (
+                <div key={i} className="mt-3 pt-3 border-t border-border">
+                  <div className="text-[11px] uppercase tracking-wider text-muted-foreground/70 font-medium mb-1">
+                    Fallback {i + 1}
+                  </div>
+                  <div className="font-mono text-xs">
+                    {fp.address}:{fp.port}
+                  </div>
+                  <div className="font-mono text-xs truncate text-muted-foreground/70">
+                    {fp.authority_public_key}
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
         )}
@@ -312,7 +325,7 @@ export function ReviewStart({ data, onComplete, onGoToStep }: ReviewStartProps) 
           <div className="text-sm text-muted-foreground space-y-1 pl-7">
             {(() => {
               const identity =
-                data.translator?.user_identity ?? data.jdc?.user_identity ?? "";
+                data.pool?.user_identity ?? data.jdc?.jdc_signature ?? "";
               if (!identity) return <div className="font-mono text-xs">—</div>;
 
               if (

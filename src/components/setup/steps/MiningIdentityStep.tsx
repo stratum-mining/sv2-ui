@@ -78,7 +78,7 @@ export function MiningIdentityStep({ data, updateData, onNext }: StepProps) {
   const useSriConventions = isSoloMode && !isJdMode && isSriPool;
   const isAggregatedTproxy = !isSoloMode && shouldAggregateTranslatorChannels(data.pool);
 
-  const existingIdentity = data.translator?.user_identity || data.jdc?.user_identity || '';
+  const existingIdentity = data.pool?.user_identity || '';
   const parsed = useSriConventions ? parseSriIdentity(existingIdentity) : { address: '', workerName: '', donationPercent: 0 };
 
   const [payoutAddress, setPayoutAddress] = useState(useSriConventions ? parsed.address : '');
@@ -98,13 +98,14 @@ export function MiningIdentityStep({ data, updateData, onNext }: StepProps) {
 
   useEffect(() => {
     updateData({
+      pool: data.pool ? { ...data.pool, user_identity: finalIdentity } : null,
+      fallbackPools: data.fallbackPools.map(fp => ({ ...fp, user_identity: fp.user_identity ?? finalIdentity })),
       jdc: isJdMode
-        ? { user_identity: finalIdentity, coinbase_reward_address: coinbaseAddress, jdc_signature: finalJdcSignature }
+        ? { coinbase_reward_address: coinbaseAddress, jdc_signature: finalJdcSignature }
         : null,
       translator: data.translator
-        ? { ...data.translator, user_identity: finalIdentity, enable_vardiff: true }
+        ? { ...data.translator, enable_vardiff: true }
         : {
-            user_identity: finalIdentity,
             enable_vardiff: true,
             aggregate_channels: false,
             min_hashrate: 0,
@@ -112,7 +113,7 @@ export function MiningIdentityStep({ data, updateData, onNext }: StepProps) {
             downstream_extranonce2_size: 4,
           },
     });
-  // intentionally excluded: data.translator and updateData cause infinite loop when included
+  // intentionally excluded: data.pool, data.fallbackPools, data.translator, updateData cause infinite loop
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [finalIdentity, coinbaseAddress, isJdMode, finalJdcSignature]);
 

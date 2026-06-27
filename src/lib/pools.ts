@@ -42,6 +42,15 @@ export const POOL_MINING_JD: KnownPool[] = [
 
 export const SOLO_POOLS: KnownPool[] = [
   {
+    id: 'pyblockpool',
+    name: 'PyBLOCK',
+    address: 'pool.pyblock.xyz',
+    port: 5555,
+    authority_public_key: '9anZZb1uaJDqubvJhekPiNRHA2tuShcNaugDmFxtnTq54sDvTf5',
+    description: 'Solo mining pool by PyBLOCK',
+    logoUrl: '/pyblock.svg',
+  },
+  {
     id: 'blitzpool',
     name: 'Blitzpool',
     address: 'blitzpool.yourdevice.ch',
@@ -63,7 +72,7 @@ export const SOLO_POOLS: KnownPool[] = [
     id: 'publicpool',
     name: 'PublicPool',
     address: 'public-pool.io',
-    port: 3333,
+    port: 23330,
     authority_public_key: '9c4zpyJ2ndm4e8sP2uNc1VNCGxYjqaxWS6wUCjk8zFj6njFquH6',
     description: 'Solo mining pool by PublicPool',
     logoUrl: '/public-pool-logo.svg',

@@ -48,7 +48,7 @@ export const SOLO_POOLS: KnownPool[] = [
     port: 5555,
     authority_public_key: '9anZZb1uaJDqubvJhekPiNRHA2tuShcNaugDmFxtnTq54sDvTf5',
     description: 'Solo mining pool by PyBLOCK',
-    logoUrl: '/pyblock.svg',
+    logoUrl: '/pyblockpool.svg',
   },
   {
     id: 'blitzpool',

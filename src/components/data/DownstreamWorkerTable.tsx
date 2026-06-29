@@ -11,6 +11,7 @@ import { InfoPopover } from '@/components/ui/info-popover';
 import { cn, formatDifficulty, formatHashrate } from '@/lib/utils';
 
 export type ChannelType = 'sv1' | 'sv2_standard' | 'sv2_extended';
+export type WorkerHashrateSource = 'miner_telemetry' | 'estimated' | 'unavailable';
 
 export interface DownstreamWorkerRow {
   connection_id: number;
@@ -18,6 +19,7 @@ export interface DownstreamWorkerRow {
   channel_type: ChannelType;
   user_identity: string;
   estimated_hashrate: number | null;
+  hashrate_source: WorkerHashrateSource;
   best_diff: number | null;
 }
 
@@ -75,6 +77,12 @@ function getChannelTypeClassName(channelType: ChannelType) {
     case 'sv2_extended':
       return 'bg-sky-500/10 text-sky-500 border-sky-500/20';
   }
+}
+
+function formatWorkerHashrate(worker: DownstreamWorkerRow) {
+  if (worker.estimated_hashrate === null) return '-';
+  const prefix = worker.hashrate_source === 'estimated' ? '~' : '';
+  return `${prefix}${formatHashrate(worker.estimated_hashrate)}`;
 }
 
 /**
@@ -135,15 +143,11 @@ export function DownstreamWorkerTable({
               </TableHead>
               <TableHead className="text-right cursor-pointer select-none" onClick={() => onSort('estimated_hashrate')}>
                 <span className="flex items-center justify-end gap-1 hover:text-foreground transition-colors">
-                  Estimated Hashrate
+                  Hashrate
                   <SortIcon column="estimated_hashrate" sortKey={sortKey} sortDir={sortDir} />
                   <InfoPopover>
-                    Your proxy cannot directly measure how fast your miner is hashing. It estimates
-                    hashrate indirectly: it knows the difficulty of the work it assigned you, and it
-                    counts the valid shares you submit. From those two values it calculates how much
-                    hashing you must be doing. This is your estimated hashrate. Sampled every 5
-                    seconds. May take up to 60 seconds to reflect your miner's actual output after
-                    connecting.
+                    Uses miner-reported telemetry when available. Otherwise falls back to the
+                    proxy's vardiff estimate from submitted shares.
                   </InfoPopover>
                 </span>
               </TableHead>
@@ -182,7 +186,7 @@ export function DownstreamWorkerTable({
                   {worker.user_identity || '-'}
                 </TableCell>
                 <TableCell className="text-right font-mono font-medium">
-                  {worker.estimated_hashrate !== null ? `~${formatHashrate(worker.estimated_hashrate)}` : '-'}
+                  {formatWorkerHashrate(worker)}
                 </TableCell>
                 {showBestDiff && (
                   <TableCell className="text-right font-mono text-muted-foreground whitespace-nowrap">

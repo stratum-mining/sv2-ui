@@ -13,6 +13,7 @@ export type {
   Sv2ClientsSummary,
   GlobalInfo,
   HealthResponse,
+  MinerTelemetry,
   ServerExtendedChannelInfo,
   ServerStandardChannelInfo,
   ServerChannelsResponse,

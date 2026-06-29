@@ -126,6 +126,58 @@ export interface HealthResponse {
   timestamp: number;
 }
 
+/**
+ * Telemetry reported by the miner's management interface.
+ */
+export interface MinerTelemetry {
+  /**
+     * Average miner temperature in degrees Celsius.
+     * @nullable
+     */
+  average_temperature_c?: number | null;
+  /**
+     * Miner efficiency in joules per terahash.
+     * @nullable
+     */
+  efficiency_j_per_th?: number | null;
+  /**
+     * Firmware version reported by the miner, when exposed.
+     * @nullable
+     */
+  firmware_version?: string | null;
+  /**
+     * Whether the miner reports that hashing is currently running.
+     * @nullable
+     */
+  is_mining?: boolean | null;
+  /**
+     * Miner manufacturer or brand reported by the management interface.
+     * @nullable
+     */
+  make?: string | null;
+  /**
+     * Miner model reported by the management interface.
+     * @nullable
+     */
+  model?: string | null;
+  /**
+     * Current miner power consumption in watts.
+     * @nullable
+     */
+  power_consumption_w?: number | null;
+  /**
+     * Miner-reported hashrate in hashes per second.
+     * @nullable
+     */
+  reported_hashrate_hs?: number | null;
+  /**
+     * Total miner system uptime in seconds.
+     * @minimum 0
+     * @nullable
+     */
+  uptime_secs?: number | null;
+}
+
 export type ServerExtendedChannelInfoSharesRejectedByReason = {[key: string]: number};
 
 /**
@@ -268,11 +320,13 @@ export interface Sv1ClientInfo {
   channel_id?: number | null;
   /** @minimum 0 */
   client_id: number;
+  connection_ip: string;
   extranonce1_hex: string;
   /** @minimum 0 */
   extranonce2_len: number;
   /** @nullable */
   hashrate?: number | null;
+  miner_telemetry?: null | MinerTelemetry;
   stable_hashrate: boolean;
   target_hex: string;
   user_identity: string;
@@ -314,6 +368,7 @@ export interface Sv2ClientInfo {
   /** @minimum 0 */
   client_id: number;
   extended_channels: ExtendedChannelInfo[];
+  miner_telemetry?: null | MinerTelemetry;
   standard_channels: StandardChannelInfo[];
 }
 
@@ -325,6 +380,7 @@ export interface Sv2ClientMetadata {
   client_id: number;
   /** @minimum 0 */
   extended_channels_count: number;
+  miner_telemetry?: null | MinerTelemetry;
   /** @minimum 0 */
   standard_channels_count: number;
   total_hashrate: number;
@@ -335,6 +391,7 @@ export interface Sv2ClientResponse {
   client_id: number;
   /** @minimum 0 */
   extended_channels_count: number;
+  miner_telemetry?: null | MinerTelemetry;
   /** @minimum 0 */
   standard_channels_count: number;
   total_hashrate: number;

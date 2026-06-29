@@ -30,6 +30,7 @@ import { isAggregatedTproxyPoolName } from '@/components/setup/poolRules';
 import { useSetupStatus } from '@/hooks/useSetupStatus';
 import { useConnectionStatus } from '@/hooks/useConnectionStatus';
 import { useLogDiagnostics } from '@/hooks/useLogDiagnostics';
+import { resolveMinerHashrate } from '@/lib/minerTelemetry';
 import { formatHashrate, formatDifficulty, formatNumber } from '@/lib/utils';
 import type { Sv1ClientInfo } from '@/types/api';
 
@@ -171,7 +172,9 @@ export function UnifiedDashboard() {
   // Translator SV1 worker stats
   const allSv1Clients = useMemo(() => sv1Data?.items || [], [sv1Data?.items]);
   const activeSv1Clients = useMemo(
-    () => allSv1Clients.filter((client: Sv1ClientInfo) => client.hashrate !== null),
+    () => allSv1Clients.filter((client: Sv1ClientInfo) =>
+      resolveMinerHashrate(client.miner_telemetry, client.hashrate).hashrate !== null
+    ),
     [allSv1Clients]
   );
   const sv1TotalClients = sv1Data?.total || 0;
@@ -179,8 +182,23 @@ export function UnifiedDashboard() {
 
   // Calculate total hashrate from SV1 clients
   const sv1TotalHashrate = useMemo(() => {
-    return allSv1Clients.reduce((sum, client) => sum + (client.hashrate || 0), 0);
+    return allSv1Clients.reduce((sum, client) => {
+      const { hashrate } = resolveMinerHashrate(client.miner_telemetry, client.hashrate);
+      return sum + (hashrate ?? 0);
+    }, 0);
   }, [allSv1Clients]);
+
+  const sv2TotalHashrate = useMemo(() => {
+    if (!sv2Clients) return undefined;
+
+    return sv2Clients.reduce((sum, client) => {
+      const { hashrate } = resolveMinerHashrate(
+        client.miner_telemetry,
+        client.total_hashrate
+      );
+      return sum + (hashrate ?? 0);
+    }, 0);
+  }, [sv2Clients]);
 
   const translatedUserIdentities = useMemo(
     () => new Set(
@@ -237,24 +255,40 @@ export function UnifiedDashboard() {
     if (!sv2Clients) return [];
 
     return sv2Clients.flatMap((client) => [
-      ...client.extended_channels.map((channel) => ({
-        connection_id: client.client_id,
-        channel_id: channel.channel_id,
-        channel_type: translatedConnectionIds.has(client.client_id)
-          ? 'sv1' as const
-          : 'sv2_extended' as const,
-        user_identity: channel.user_identity,
-        estimated_hashrate: channel.nominal_hashrate,
-        best_diff: channel.best_diff,
-      })),
-      ...client.standard_channels.map((channel) => ({
-        connection_id: client.client_id,
-        channel_id: channel.channel_id,
-        channel_type: 'sv2_standard' as const,
-        user_identity: channel.user_identity,
-        estimated_hashrate: channel.nominal_hashrate,
-        best_diff: channel.best_diff,
-      })),
+      ...client.extended_channels.map((channel) => {
+        const resolvedHashrate = resolveMinerHashrate(
+          client.miner_telemetry,
+          channel.nominal_hashrate
+        );
+
+        return {
+          connection_id: client.client_id,
+          channel_id: channel.channel_id,
+          channel_type: translatedConnectionIds.has(client.client_id)
+            ? 'sv1' as const
+            : 'sv2_extended' as const,
+          user_identity: channel.user_identity,
+          estimated_hashrate: resolvedHashrate.hashrate,
+          hashrate_source: resolvedHashrate.source,
+          best_diff: channel.best_diff,
+        };
+      }),
+      ...client.standard_channels.map((channel) => {
+        const resolvedHashrate = resolveMinerHashrate(
+          client.miner_telemetry,
+          channel.nominal_hashrate
+        );
+
+        return {
+          connection_id: client.client_id,
+          channel_id: channel.channel_id,
+          channel_type: 'sv2_standard' as const,
+          user_identity: channel.user_identity,
+          estimated_hashrate: resolvedHashrate.hashrate,
+          hashrate_source: resolvedHashrate.source,
+          best_diff: channel.best_diff,
+        };
+      }),
     ]);
   }, [sv2Clients, translatedConnectionIds]);
 
@@ -285,11 +319,11 @@ export function UnifiedDashboard() {
   const workerTableLoading = isJdMode ? isSv2ClientsLoading : sv1Loading;
 
   // Total hashrate:
-  // - JD mode: from SV2 client channels (poolGlobal.sv2_clients.total_hashrate)
-  // - Translator-only mode: from SV1 clients (poolGlobal.sv1_clients.total_hashrate or calculated)
+  // - JD mode: from SV2 client telemetry when available, falling back to vardiff totals
+  // - Translator-only mode: from SV1 client telemetry when available, falling back to vardiff totals
   const totalHashrate = isJdMode 
-    ? (poolGlobal?.sv2_clients?.total_hashrate || 0)
-    : (poolGlobal?.sv1_clients?.total_hashrate || sv1TotalHashrate);
+    ? (sv2TotalHashrate ?? poolGlobal?.sv2_clients?.total_hashrate ?? 0)
+    : (sv1Data ? sv1TotalHashrate : (poolGlobal?.sv1_clients?.total_hashrate ?? 0));
 
   const totalClientChannels = isJdMode 
     ? downstreamWorkerCount
@@ -433,21 +467,26 @@ export function UnifiedDashboard() {
       }));
     }
 
-    return allSv1Clients.map((client) => ({
-      connection_id: client.client_id,
-      channel_id: client.channel_id ?? null,
-      channel_type: 'sv1' as ChannelType,
-      user_identity: client.user_identity,
-      estimated_hashrate: client.hashrate ?? null,
-      best_diff: null,
-      search_text: [
-        client.authorized_worker_name || '',
-        client.user_identity,
-        client.client_id.toString(),
-        client.channel_id?.toString() || '',
-        'sv1',
-      ].join(' ').toLowerCase(),
-    }));
+    return allSv1Clients.map((client) => {
+      const resolvedHashrate = resolveMinerHashrate(client.miner_telemetry, client.hashrate);
+
+      return {
+        connection_id: client.client_id,
+        channel_id: client.channel_id ?? null,
+        channel_type: 'sv1' as ChannelType,
+        user_identity: client.user_identity,
+        estimated_hashrate: resolvedHashrate.hashrate,
+        hashrate_source: resolvedHashrate.source,
+        best_diff: null,
+        search_text: [
+          client.authorized_worker_name || '',
+          client.user_identity,
+          client.client_id.toString(),
+          client.channel_id?.toString() || '',
+          'sv1',
+        ].join(' ').toLowerCase(),
+      };
+    });
   }, [isJdMode, downstreamWorkers, allSv1Clients]);
 
   const filteredWorkers = useMemo(() => {
@@ -574,12 +613,13 @@ export function UnifiedDashboard() {
       {/* Hero Stats Section */}
       <div className={isSovereignSolo ? 'grid gap-4 md:grid-cols-2 lg:grid-cols-4' : 'grid gap-4 md:grid-cols-2 lg:grid-cols-5'}>
         <StatCard
-          title="Total Estimated Hashrate"
+          title="Total Hashrate"
           value={formatHashrate(totalHashrate)}
           subtitle={`${totalClientChannels} client channel(s)`}
           info={
             <InfoPopover>
-              Estimated hashrate sampled every 5 seconds. May take a few minutes to reflect your miner's actual output.
+              Uses miner-reported telemetry when available. Otherwise falls back to the proxy's
+              vardiff estimate from submitted shares.
             </InfoPopover>
           }
         />
@@ -718,7 +758,8 @@ export function UnifiedDashboard() {
         onTimeRangeChange={setTimeRange}
         info={
           <InfoPopover>
-            Estimated hashrate sampled every 5 seconds. May take a few minutes to reflect your miner's actual output.
+            Uses miner-reported telemetry when available. Otherwise falls back to the proxy's
+            vardiff estimate from submitted shares.
           </InfoPopover>
         }
       />

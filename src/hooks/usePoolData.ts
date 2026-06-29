@@ -6,7 +6,7 @@ import type {
   Sv1ClientsResponse,
   Sv2ClientsResponse,
   Sv2ClientChannelsResponse,
-  Sv2ClientInfo,
+  Sv2ClientMetadata,
   ExtendedChannelInfo,
   StandardChannelInfo,
 } from '@/types/api';
@@ -20,6 +20,12 @@ export interface AggregatedClientChannels {
   extended_channels: ExtendedChannelInfo[];
   standard_channels: StandardChannelInfo[];
 }
+
+// UI-local shape composed from /clients metadata plus /clients/{id}/channels details.
+export type Sv2ClientWithChannels = Sv2ClientMetadata & {
+  extended_channels: ExtendedChannelInfo[];
+  standard_channels: StandardChannelInfo[];
+};
 
 /**
  * Template mode from configuration.
@@ -85,7 +91,7 @@ function templateModeToInternalMode(templateMode: TemplateMode): 'jdc' | 'transl
 /**
  * Collapse detailed Sv2 client data into a single channel aggregate.
  */
-function aggregateSv2ClientChannels(clients: Sv2ClientInfo[]): AggregatedClientChannels {
+function aggregateSv2ClientChannels(clients: Sv2ClientWithChannels[]): AggregatedClientChannels {
   return clients.reduce<AggregatedClientChannels>((aggregated, client) => {
     aggregated.total_extended += client.extended_channels.length;
     aggregated.total_standard += client.standard_channels.length;
@@ -103,7 +109,7 @@ function aggregateSv2ClientChannels(clients: Sv2ClientInfo[]): AggregatedClientC
 /**
  * Fetch all Sv2 clients plus their channels.
  */
-async function fetchAllSv2Clients(baseUrl: string): Promise<Sv2ClientInfo[]> {
+async function fetchAllSv2Clients(baseUrl: string): Promise<Sv2ClientWithChannels[]> {
   const clientsResponse = await fetchWithTimeout<Sv2ClientsResponse>(`${baseUrl}/clients?offset=0&limit=100`);
 
   if (clientsResponse.items.length === 0) {

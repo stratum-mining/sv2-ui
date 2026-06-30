@@ -69,12 +69,9 @@ export function PoolConfigStep({ data, updateData, onNext }: StepProps) {
   return (
     <div className="space-y-8">
       <div className="text-center">
-        <h2 className="text-2xl md:text-3xl font-semibold tracking-tight mb-3">
+        <h2 className="text-2xl md:text-3xl font-semibold tracking-tight">
           {isSoloMode ? 'Select Solo Pool' : 'Select Pool'}
         </h2>
-        <p className="text-lg text-muted-foreground">
-          {isSoloMode ? 'Choose a solo mining pool to connect to' : isJdMode ? 'Choose a pool that supports Job Declaration' : 'Choose your mining pool'}
-        </p>
       </div>
 
       <div className="space-y-2">
@@ -116,9 +113,8 @@ export function PoolConfigStep({ data, updateData, onNext }: StepProps) {
                 <PoolIcon logoUrl={pool.logoUrl} logoOnDark={pool.logoOnDark} name={pool.name} />
                 <div className="flex-1 min-w-0 pr-8">
                   <div className={`font-medium text-sm mb-1 ${isSelected ? 'text-primary' : ''}`}>{pool.name}</div>
-                  <div className="text-xs text-muted-foreground leading-relaxed">{pool.description}</div>
                   {pool.address && (
-                    <div className="text-xs text-muted-foreground font-mono mt-1">{pool.address}:{pool.port}</div>
+                    <div className="text-xs text-muted-foreground font-mono">{pool.address}:{pool.port}</div>
                   )}
                 </div>
               </div>
@@ -144,8 +140,7 @@ export function PoolConfigStep({ data, updateData, onNext }: StepProps) {
               </div>
             )}
             <div className="pr-8">
-              <div className={`font-medium text-sm mb-1 ${isCustom ? 'text-primary' : ''}`}>Custom Pool</div>
-              <div className="text-xs text-muted-foreground leading-relaxed">Configure your own pool connection</div>
+              <div className={`font-medium text-sm ${isCustom ? 'text-primary' : ''}`}>Custom Pool</div>
             </div>
           </button>
       </div>

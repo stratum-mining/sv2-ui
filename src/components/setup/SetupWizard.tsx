@@ -24,7 +24,7 @@ import { TemplateModeSelection } from './steps/TemplateModeSelection';
 import { PoolConfigStep } from './steps/PoolConfigStep';
 import { BitcoinSetup } from './steps/BitcoinSetup';
 import { HashrateStep } from './steps/HashrateStep';
-import { MiningIdentityStep } from './steps/MiningIdentityStep';
+import { JdcConfigStep } from './steps/JdcConfigStep';
 import { BitcoinPrereqStep } from './steps/BitcoinPrereqStep';
 import { ReviewStart } from './steps/ReviewStart';
 import { getCurrentConfig } from '@/hooks/useControlApi';
@@ -61,7 +61,9 @@ function computeSteps(data: SetupData): SetupStep[] {
       steps.push('pool');
     }
     if (data.mode) {
-      steps.push('hashrate', 'identity', 'review');
+      steps.push('hashrate');
+      if (isJdMode) steps.push('jdc');
+      steps.push('review');
     }
     return steps;
   }
@@ -69,9 +71,9 @@ function computeSteps(data: SetupData): SetupStep[] {
   if (isPoolMode) {
     steps.push('template-mode');
     if (data.mode === 'jd') {
-      steps.push('pool', 'bitcoin-prereq', 'bitcoin', 'hashrate', 'identity', 'review');
+      steps.push('pool', 'bitcoin-prereq', 'bitcoin', 'hashrate', 'jdc', 'review');
     } else if (data.mode === 'no-jd') {
-      steps.push('pool', 'hashrate', 'identity', 'review');
+      steps.push('pool', 'hashrate', 'review');
     }
   }
 
@@ -303,7 +305,7 @@ export function SetupWizard() {
               />
             )}
             {currentStep === 'hashrate'        && <HashrateStep {...stepProps} />}
-            {currentStep === 'identity'        && <MiningIdentityStep {...stepProps} />}
+            {currentStep === 'jdc'             && <JdcConfigStep {...stepProps} />}
             {currentStep === 'review'          && (
               <ReviewStart
                 {...stepProps}

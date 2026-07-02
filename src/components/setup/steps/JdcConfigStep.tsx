@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { StepProps, JdcConfig } from '../types';
 import { Info } from 'lucide-react';
-import { isValidBitcoinAddress, getBitcoinAddressError, getBitcoinAddressPlaceholder } from '@/lib/utils';
+import { isValidBitcoinAddress, getBitcoinAddressError, getBitcoinAddressPlaceholder, isTomlSafeIdentifier, getIdentifierError } from '@/lib/utils';
 
 export function JdcConfigStep({ data, updateData, onNext }: StepProps) {
   const [config, setConfig] = useState<JdcConfig>(
@@ -22,7 +22,8 @@ export function JdcConfigStep({ data, updateData, onNext }: StepProps) {
   const network = data.bitcoin?.network ?? 'mainnet';
   const bitcoinAddressPlaceholder = getBitcoinAddressPlaceholder(network);
 
-  const isValid = isValidBitcoinAddress(config.coinbase_reward_address, network);
+  const isSignatureValid = !config.jdc_signature || isTomlSafeIdentifier(config.jdc_signature);
+  const isValid = isValidBitcoinAddress(config.coinbase_reward_address, network) && isSignatureValid;
 
   return (
     <div className="space-y-8">
@@ -68,6 +69,27 @@ export function JdcConfigStep({ data, updateData, onNext }: StepProps) {
           )}
           <p className="text-xs text-muted-foreground mt-2">
             Bitcoin address for receiving mining rewards (fallback for solo mining)
+          </p>
+        </div>
+        <div>
+          <label htmlFor="jdc-signature" className="block text-sm font-medium mb-2">
+            Miner Signature{' '}
+            <span className="text-muted-foreground font-normal text-xs">(optional)</span>
+          </label>
+          <input
+            id="jdc-signature"
+            type="text"
+            value={config.jdc_signature}
+            onChange={(e) => handleChange('jdc_signature', e.target.value)}
+            placeholder="my-miner-tag"
+            autoComplete="off"
+            className="w-full h-10 px-3 rounded-lg border border-input bg-background font-mono text-sm focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/15 outline-none transition-all"
+          />
+          {getIdentifierError(config.jdc_signature) && (
+            <p className="text-xs text-destructive mt-1">{getIdentifierError(config.jdc_signature)}</p>
+          )}
+          <p className="text-xs text-muted-foreground mt-2">
+            Short tag embedded in coinbase scriptSig to identify your blocks
           </p>
         </div>
       </div>

@@ -81,6 +81,7 @@ const FALLBACK_1: PoolConfig = {
   address: 'pool-b.example.com',
   port: 4444,
   authority_public_key: '9bCoFxTszKCuffyywH5uS5o6WcU4vsjTH2axxc7wE86y2HhvULU',
+  user_identity: 'fallback1.worker',
 };
 
 const FALLBACK_2: PoolConfig = {
@@ -88,6 +89,7 @@ const FALLBACK_2: PoolConfig = {
   address: 'pool-c.example.com',
   port: 5555,
   authority_public_key: '9cDpGyTtaLDvggzzxI6vT6p7XdV5wtkUI3byyd8xF97z3IiwVMV',
+  user_identity: 'fallback2.worker',
 };
 
 function countOccurrences(haystack: string, needle: string): number {
@@ -133,15 +135,15 @@ test('translator config emits N+1 [[upstreams]] blocks for N fallbacks, in order
   assert.ok(primaryIdx < f1Idx && f1Idx < f2Idx, 'upstreams must appear in declaration order');
 });
 
-test('translator config in JD mode emits empty user_identity when pool has none set', () => {
+test('translator config in JD mode emits empty user_identity when pool identity is blank', () => {
   const data = baseData({
     mode: 'jd',
-    pool: { name: 'Primary', address: 'pool-a.example.com', port: 3333, authority_public_key: '9awtMD5KQgvRUh2yFbjVeT7b6hjipWcAsQHd6wEhgtDT9soosna' },
+    pool: { name: 'Primary', address: 'pool-a.example.com', port: 3333, authority_public_key: '9awtMD5KQgvRUh2yFbjVeT7b6hjipWcAsQHd6wEhgtDT9soosna', user_identity: '' },
     bitcoin: { core_version: '31', network: 'mainnet', os: 'linux', customDataDir: '', socket_path: '/tmp/x' },
     jdc: { jdc_signature: '', coinbase_reward_address: 'bc1q' },
   });
   const toml = generateTranslatorConfig(data);
-  assert.match(toml, /user_identity = ""/, 'empty identity emitted — MiningIdentityStep must populate pool.user_identity before setup');
+  assert.match(toml, /user_identity = ""/, 'generator emits whatever identity is stored on the pool');
 });
 
 test('translator config in JD mode never emits fallbacks — JDC handles failover', () => {
@@ -279,39 +281,35 @@ test('translator fallback block emits user_identity when set on fallback pool', 
   assert.ok(!toml.slice(f2Idx).includes('user_identity = "bc1qtest.worker1"'));
 });
 
-test('translator fallback block uses primary pool identity when fallback has none', () => {
+test('translator fallback block emits its own user_identity', () => {
   const toml = generateTranslatorConfig(baseData({ fallbackPools: [FALLBACK_1] }));
   const f1Idx = toml.indexOf(FALLBACK_1.address);
   const afterF1 = toml.slice(f1Idx);
-  assert.ok(afterF1.includes(`user_identity = "${PRIMARY.user_identity}"`), 'fallback uses primary identity when unset');
+  assert.ok(afterF1.includes(`user_identity = "${FALLBACK_1.user_identity}"`), 'fallback emits its own identity');
 });
 
-test('jdc config emits user_identity per upstream when set', () => {
-  const primaryWithId: PoolConfig = { ...PRIMARY, user_identity: 'bc1qprimary.worker' };
-  const fallbackWithId: PoolConfig = { ...FALLBACK_1, user_identity: 'bc1qfallback.worker' };
+test('jdc config emits user_identity per upstream', () => {
   const data = baseData({
     mode: 'jd',
-    pool: primaryWithId,
-    fallbackPools: [fallbackWithId, FALLBACK_2],
+    pool: PRIMARY,
+    fallbackPools: [FALLBACK_1, FALLBACK_2],
     bitcoin: { core_version: '31', network: 'mainnet', os: 'linux', customDataDir: '', socket_path: '/tmp/x' },
     jdc: { jdc_signature: 'sig', coinbase_reward_address: 'bc1q' },
   });
   const toml = generateJdcConfig(data);
   assert.ok(toml);
-  // primary upstream has per-upstream identity
   const primaryIdx = toml!.indexOf(PRIMARY.address);
-  const primaryIdIdx = toml!.indexOf('user_identity = "bc1qprimary.worker"');
+  const primaryIdIdx = toml!.indexOf(`user_identity = "${PRIMARY.user_identity}"`);
   assert.ok(primaryIdIdx > primaryIdx, 'primary user_identity after primary address');
-  // fallback 1 has per-upstream identity
   const f1Idx = toml!.indexOf(FALLBACK_1.address);
-  const f1IdIdx = toml!.indexOf('user_identity = "bc1qfallback.worker"');
+  const f1IdIdx = toml!.indexOf(`user_identity = "${FALLBACK_1.user_identity}"`);
   assert.ok(f1IdIdx > f1Idx, 'fallback1 user_identity after fallback1 address');
   const f2Idx = toml!.indexOf(FALLBACK_2.address);
-  const afterF2 = toml!.slice(f2Idx);
-  assert.ok(afterF2.includes('user_identity = "bc1qprimary.worker"'), 'fallback2 uses primary pool identity');
+  const f2IdIdx = toml!.indexOf(`user_identity = "${FALLBACK_2.user_identity}"`);
+  assert.ok(f2IdIdx > f2Idx, 'fallback2 user_identity after fallback2 address');
 });
 
-test('jdc config uses primary pool identity for upstreams when not explicitly set', () => {
+test('jdc config emits each upstream with its own user_identity', () => {
   const data = baseData({
     mode: 'jd',
     fallbackPools: [FALLBACK_1],
@@ -320,9 +318,8 @@ test('jdc config uses primary pool identity for upstreams when not explicitly se
   });
   const toml = generateJdcConfig(data);
   assert.ok(toml);
-  const upstreamsIdx = toml!.indexOf('[[upstreams]]');
-  const afterUpstreams = toml!.slice(upstreamsIdx);
-  assert.ok(afterUpstreams.includes(`user_identity = "${PRIMARY.user_identity}"`), 'upstreams use primary pool identity');
+  assert.match(toml!, new RegExp(`user_identity = "${PRIMARY.user_identity}"`));
+  assert.match(toml!, new RegExp(`user_identity = "${FALLBACK_1.user_identity}"`));
 });
 
 test('normalization backfills advanced defaults for old saved configs', () => {

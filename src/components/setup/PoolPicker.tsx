@@ -1,9 +1,10 @@
 import { Check } from 'lucide-react';
 import { PoolIcon } from '@/components/ui/pool-icon';
-import { EMPTY_CUSTOM_POOL, isSamePool, knownPoolToConfig, type KnownPool } from '@/lib/pools';
+import { EMPTY_CUSTOM_POOL, findKnownPool, knownPoolToConfig, type KnownPool } from '@/lib/pools';
 import type { PoolConfig } from './types';
 import {
   getPoolAuthorityPubkeyError,
+  getIdentifierError,
   stripWrappingQuotes,
 } from '@/lib/utils';
 
@@ -12,24 +13,17 @@ interface PoolPickerProps {
   value: PoolConfig;
   onChange: (value: PoolConfig) => void;
   formIdPrefix: string;
+  identityLabel?: string;
+  identityPlaceholder?: string;
 }
 
-function matchKnownPool(pools: KnownPool[], value: PoolConfig): KnownPool | undefined {
-  return pools.find((p) => isSamePool(knownPoolToConfig(p), value));
-}
-
-export function PoolPicker({ pools, value, onChange, formIdPrefix }: PoolPickerProps) {
-  const matched = matchKnownPool(pools, value);
+export function PoolPicker({ pools, value, onChange, formIdPrefix, identityLabel, identityPlaceholder }: PoolPickerProps) {
+  const matched = findKnownPool(pools, value);
   const isCustom = !matched;
 
   const selectKnown = (pool: KnownPool) => {
     if (pool.badge === 'coming-soon') return;
-    onChange({
-      name: pool.name,
-      address: pool.address,
-      port: pool.port,
-      authority_public_key: pool.authority_public_key,
-    });
+    onChange({ ...knownPoolToConfig(pool) });
   };
 
   const selectCustom = () => {
@@ -38,11 +32,10 @@ export function PoolPicker({ pools, value, onChange, formIdPrefix }: PoolPickerP
   };
 
   const updateCustomField = (field: keyof PoolConfig, val: string | number) => {
-    let normalized: string | number | undefined =
+    const normalized: string | number =
       field === 'authority_public_key' && typeof val === 'string'
         ? stripWrappingQuotes(val)
         : val;
-    if (field === 'user_identity' && normalized === '') normalized = undefined;
     onChange({ ...value, [field]: normalized });
   };
 
@@ -176,25 +169,29 @@ export function PoolPicker({ pools, value, onChange, formIdPrefix }: PoolPickerP
             )}
             <p id={`${formIdPrefix}-pubkey-hint`} className="text-xs text-muted-foreground mt-2">The pool's public key for Noise protocol authentication</p>
           </div>
-          <div>
-            <label htmlFor={`${formIdPrefix}-identity`} className="block text-sm font-medium mb-2">
-              Identity Override{' '}
-              <span className="text-muted-foreground font-normal text-xs">(optional)</span>
-            </label>
-            <input
-              id={`${formIdPrefix}-identity`}
-              type="text"
-              value={value.user_identity ?? ''}
-              onChange={(e) =>
-                updateCustomField('user_identity', e.target.value)
-              }
-              placeholder="Payout address or username for this pool"
-              autoComplete="off"
-              className="w-full h-10 px-3 rounded-lg border border-input bg-background focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/15 outline-none transition-all"
-            />
-          </div>
         </div>
       )}
+
+      <div>
+        <label htmlFor={`${formIdPrefix}-identity`} className="block text-sm font-medium mb-2">
+          {identityLabel ?? 'Pool Username'}{' '}
+          <span className="text-primary" aria-hidden="true">*</span>
+          <span className="sr-only">(required)</span>
+        </label>
+        <input
+          id={`${formIdPrefix}-identity`}
+          type="text"
+          value={value.user_identity}
+          onChange={(e) => onChange({ ...value, user_identity: e.target.value })}
+          placeholder={identityPlaceholder ?? 'your.username'}
+          aria-required="true"
+          autoComplete="off"
+          className="w-full h-10 px-3 rounded-lg border border-input bg-background focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/15 outline-none transition-all"
+        />
+        {getIdentifierError(value.user_identity) && (
+          <p className="text-xs text-destructive mt-1">{getIdentifierError(value.user_identity)}</p>
+        )}
+      </div>
     </div>
   );
 }

@@ -7,6 +7,7 @@ import { shouldAggregateTranslatorChannels } from "../poolRules";
 import { isBitcoinSocketError } from "@/lib/bitcoinSocketErrors";
 import { formatHashrate } from "@/lib/utils";
 import { formatBitcoinCoreVersion, normalizeBitcoinCoreVersion } from "@sv2-ui/shared";
+import { parseSriIdentity } from "@/lib/pools";
 
 interface ReviewStartProps extends StepProps {
   onComplete: () => void;
@@ -326,64 +327,30 @@ export function ReviewStart({ data, onComplete, onGoToStep }: ReviewStartProps) 
           <SectionLabel n={nextSection()} label="Mining Identity" />
           <div className="text-sm text-muted-foreground space-y-1 pl-7">
             {(() => {
-              const identity =
-                data.pool?.user_identity ?? data.jdc?.jdc_signature ?? "";
+              const identity = data.pool?.user_identity ?? "";
               if (!identity) return <div className="font-mono text-xs">—</div>;
 
-              if (
-                isSoloMode &&
-                (identity.startsWith("sri/solo/") ||
-                  identity.startsWith("sri/donate"))
-              ) {
-                let addr = "";
-                let worker = "";
-                let donation = "";
-
-                if (identity.startsWith("sri/solo/")) {
-                  const rest = identity.slice("sri/solo/".length);
-                  const idx = rest.indexOf("/");
-                  addr = idx === -1 ? rest : rest.slice(0, idx);
-                  worker = idx === -1 ? "" : rest.slice(idx + 1);
-                  donation = "0%";
-                } else if (identity === "sri/donate") {
-                  donation = "100%";
-                } else if (identity.startsWith("sri/donate/")) {
-                  const rest = identity.slice("sri/donate/".length);
-                  const parts = rest.split("/");
-                  const pct = parseInt(parts[0], 10);
-                  if (
-                    !isNaN(pct) &&
-                    String(pct) === parts[0] &&
-                    parts.length >= 2
-                  ) {
-                    donation = `${pct}%`;
-                    addr = parts[1];
-                    worker = parts.slice(2).join("/");
-                  } else {
-                    donation = "100%";
-                    worker = rest;
-                  }
-                }
-
+              const sri = isSoloMode ? parseSriIdentity(identity) : null;
+              if (sri) {
                 return (
                   <>
-                    {addr && (
+                    {sri.addr && (
                       <div>
                         <span className="text-muted-foreground text-xs">
                           Payout Address:
                         </span>{" "}
                         <span className="font-mono text-xs text-foreground">
-                          {addr}
+                          {sri.addr}
                         </span>
                       </div>
                     )}
-                    {worker && (
+                    {sri.worker && (
                       <div>
                         <span className="text-muted-foreground text-xs">
                           Worker:
                         </span>{" "}
                         <span className="font-mono text-xs text-foreground">
-                          {worker}
+                          {sri.worker}
                         </span>
                       </div>
                     )}
@@ -392,7 +359,7 @@ export function ReviewStart({ data, onComplete, onGoToStep }: ReviewStartProps) 
                         Donation:
                       </span>{" "}
                       <span className="text-xs text-foreground">
-                        {donation}
+                        {sri.donation}
                       </span>
                     </div>
                     <div className="font-mono text-xs text-muted-foreground/70 break-all">

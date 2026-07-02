@@ -7,7 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { PoolIcon } from '@/components/ui/pool-icon';
 import { useSetupStatus } from '@/hooks/useSetupStatus';
 import { useControlApi, getCurrentConfig } from '@/hooks/useControlApi';
-import { getPoolsForMode, EMPTY_CUSTOM_POOL, isPoolValid, isSamePool, knownPoolToConfig, knownPoolsForSlot, type KnownPool } from '@/lib/pools';
+import { getPoolsForMode, EMPTY_CUSTOM_POOL, isPoolValid, isSamePool, knownPoolToConfig, knownPoolsForSlot, findKnownPool, parseSriIdentity, type KnownPool } from '@/lib/pools';
 import {
   getIdentifierError,
   getPoolAuthorityPubkeyError,
@@ -248,6 +248,7 @@ export function ConfigurationTab() {
     if (!editFallbacks || !config?.pool) return -1;
     const all = [config.pool, ...editFallbacks];
     for (let i = 1; i < all.length; i++) {
+      if (!isPoolValid(all[i])) continue;
       for (let j = 0; j < i; j++) {
         if (isSamePool(all[i], all[j])) return i - 1;
       }
@@ -588,6 +589,7 @@ export function ConfigurationTab() {
                           address: pool.address,
                           port: pool.port,
                           authority_public_key: pool.authority_public_key,
+                          user_identity: editPool?.user_identity ?? '',
                         });
                       }}
                     />
@@ -596,7 +598,7 @@ export function ConfigurationTab() {
                     type="button"
                     onClick={() => {
                       setIsCustomPool(true);
-                      setEditPool({ name: 'Custom Pool', address: '', port: DEFAULT_POOL_PORT, authority_public_key: '' });
+                      setEditPool({ name: 'Custom Pool', address: '', port: DEFAULT_POOL_PORT, authority_public_key: '', user_identity: '' });
                     }}
                     className={`w-full p-3 rounded-lg border transition-all text-left ${
                       isCustomPool
@@ -706,53 +708,28 @@ export function ConfigurationTab() {
           )}
 
           {/* Username / Identity */}
-          {config.pool?.user_identity && (() => {
-            const identity = config.pool?.user_identity || '';
+          {config.pool && (() => {
+            const identity = config.pool.user_identity;
 
-            if (isSoloMode && (identity.startsWith('sri/solo/') || identity.startsWith('sri/donate'))) {
-              let addr = '';
-              let worker = '';
-              let donation = '';
-
-              if (identity.startsWith('sri/solo/')) {
-                const rest = identity.slice('sri/solo/'.length);
-                const idx = rest.indexOf('/');
-                addr = idx === -1 ? rest : rest.slice(0, idx);
-                worker = idx === -1 ? '' : rest.slice(idx + 1);
-                donation = '0%';
-              } else if (identity === 'sri/donate') {
-                donation = '100%';
-              } else if (identity.startsWith('sri/donate/')) {
-                const rest = identity.slice('sri/donate/'.length);
-                const parts = rest.split('/');
-                const pct = parseInt(parts[0], 10);
-                if (!isNaN(pct) && String(pct) === parts[0] && parts.length >= 2) {
-                  donation = `${pct}%`;
-                  addr = parts[1];
-                  worker = parts.slice(2).join('/');
-                } else {
-                  donation = '100%';
-                  worker = rest;
-                }
-              }
-
+            const sri = isSoloMode ? parseSriIdentity(identity) : null;
+            if (sri) {
               return (
                 <div className="p-4 rounded-lg border border-border/50 bg-muted/20 space-y-2">
-                  {addr && (
+                  {sri.addr && (
                     <div>
                       <p className="font-medium mb-1">Payout Address</p>
-                      <p className="font-mono text-sm truncate">{addr}</p>
+                      <p className="font-mono text-sm truncate">{sri.addr}</p>
                     </div>
                   )}
-                  {worker && (
+                  {sri.worker && (
                     <div>
                       <p className="font-medium mb-1">Worker Name</p>
-                      <p className="font-mono text-sm">{worker}</p>
+                      <p className="font-mono text-sm">{sri.worker}</p>
                     </div>
                   )}
                   <div>
                     <p className="font-medium mb-1">Donation</p>
-                    <p className="text-sm">{donation}</p>
+                    <p className="text-sm">{sri.donation}</p>
                   </div>
                   <div>
                     <p className="text-xs text-muted-foreground mb-1">User Identity</p>
@@ -1053,10 +1030,6 @@ function PoolOption({
   );
 }
 
-function matchKnownByPool(pools: KnownPool[], p: DraftPool): KnownPool | undefined {
-  return pools.find((kp) => isSamePool(knownPoolToConfig(kp), p));
-}
-
 function FallbackListEditor({
   value,
   onChange,
@@ -1094,7 +1067,7 @@ function FallbackListEditor({
     <div className="space-y-3">
       {value.map((fp, i) => {
         const slotPools = knownPoolsForSlot(pools, primary, value, i);
-        const matched = matchKnownByPool(slotPools, fp);
+        const matched = findKnownPool(slotPools, fp);
         const isCustom = !matched;
         return (
           <div key={i} className="space-y-2 p-3 rounded-lg border border-border bg-muted/20">
@@ -1138,7 +1111,7 @@ function FallbackListEditor({
                   key={kp.id}
                   pool={kp}
                   selected={matched?.id === kp.id}
-                  onSelect={() => replaceAt(i, knownPoolToConfig(kp))}
+                  onSelect={() => replaceAt(i, { ...knownPoolToConfig(kp), user_identity: fp.user_identity })}
                 />
               ))}
               <button
@@ -1204,23 +1177,24 @@ function FallbackListEditor({
                     </p>
                   )}
                 </div>
-                <div>
-                  <label className="block text-xs font-medium mb-1">
-                    Identity Override{' '}
-                    <span className="text-muted-foreground font-normal">(optional)</span>
-                  </label>
-                  <input
-                    type="text"
-                    value={fp.user_identity ?? ''}
-                    onChange={(e) =>
-                      update(i, { user_identity: e.target.value || undefined })
-                    }
-                    placeholder="Payout address or username for this pool"
-                    className="w-full h-9 px-3 rounded-lg border border-input bg-background text-sm focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/15 outline-none transition-all"
-                  />
-                </div>
               </div>
             )}
+
+            <div>
+              <label className="block text-xs font-medium mb-1">
+                Pool Username{' '}
+                <span className="text-primary" aria-hidden="true">*</span>
+              </label>
+              <input
+                type="text"
+                value={fp.user_identity}
+                onChange={(e) =>
+                  update(i, { user_identity: e.target.value })
+                }
+                placeholder="your.username"
+                className="w-full h-9 px-3 rounded-lg border border-input bg-background text-sm focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/15 outline-none transition-all"
+              />
+            </div>
 
             {duplicateIndex === i && (
               <p className="text-xs text-destructive">

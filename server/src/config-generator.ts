@@ -38,9 +38,7 @@ function shouldVerifyPayout(data: SetupData): boolean {
   // verify_payout is a single translator-wide flag, but each upstream carries its
   // own identity — only verify when no upstream is a full-donation identity, since
   // donated coinbases pay the pool and would fail verification after a failover.
-  return ![data.pool, ...data.fallbackPools].some((p) =>
-    isFullDonationIdentity(p.user_identity ?? ''),
-  );
+  return ![data.pool, ...data.fallbackPools].some((p) => isFullDonationIdentity(p.user_identity));
 }
 
 export function normalizeSetupData(data: SetupData): SetupData {
@@ -100,15 +98,12 @@ export function generateTranslatorConfig(data: SetupData): string {
   // Fallback upstreams are only emitted in no-jd mode (JDC handles failover in jd mode).
   const fallbackBlocks = !isJdMode
     ? fallbackPools
-        .map((p) => {
-          const identity = p.user_identity || primaryIdentity;
-          return `\n[[upstreams]]
+        .map((p) => `\n[[upstreams]]
 address = "${p.address}"
 port = ${p.port}
 authority_pubkey = "${p.authority_public_key}"
-user_identity = "${identity}"
-`;
-        })
+user_identity = "${p.user_identity}"
+`)
         .join('')
     : '';
 
@@ -181,18 +176,14 @@ export function generateJdcConfig(data: SetupData): string | null {
   // Fee threshold and min interval for template provider
   const feeThreshold = '1000';
   const minInterval = '5';
-  const jdcPrimaryIdentity = pool?.user_identity ?? '';
-  const renderUpstream = (p: NonNullable<typeof pool>): string => {
-    const identity = p.user_identity || jdcPrimaryIdentity;
-    return `[[upstreams]]
+  const renderUpstream = (p: NonNullable<typeof pool>): string => `[[upstreams]]
 authority_pubkey = "${p.authority_public_key}"
 pool_address = "${p.address}"
 pool_port = ${p.port}
 jds_address = "${p.address}"
 jds_port = 3334
-user_identity = "${identity}"
+user_identity = "${p.user_identity}"
 `;
-  };
 
   let upstreamsConfig: string;
   if (isSovereignSolo || !pool) {

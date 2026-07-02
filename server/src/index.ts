@@ -112,6 +112,15 @@ async function loadState(): Promise<SavedState> {
           : [];
       }
       delete parsed.data.fallbackPool;
+      // Migrate pool configs saved before user_identity moved from JdcConfig/TranslatorConfig to PoolConfig.
+      if (parsed.data.pool && parsed.data.pool.user_identity === undefined) {
+        parsed.data.pool.user_identity =
+          parsed.data.jdc?.user_identity ?? parsed.data.translator?.user_identity ?? '';
+      }
+      parsed.data.fallbackPools = parsed.data.fallbackPools.map(
+        (fp: { user_identity?: string }) =>
+          fp.user_identity === undefined ? { ...fp, user_identity: '' } : fp
+      );
     }
     return normalizeSavedState(parsed as Partial<SavedState>);
   } catch {

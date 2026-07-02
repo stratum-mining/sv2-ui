@@ -3,13 +3,15 @@
  */
 
 import type { PoolConfig } from '@/components/setup/types';
-import { isValidPoolAuthorityPubkey } from '@/lib/utils';
+import type { BitcoinNetwork } from '@sv2-ui/shared';
+import { isValidPoolAuthorityPubkey, isTomlSafeIdentifier, isValidBitcoinAddress } from '@/lib/utils';
 
 export const EMPTY_CUSTOM_POOL: PoolConfig = {
   name: 'Custom Pool',
   address: '',
   port: 34254,
   authority_public_key: '',
+  user_identity: '',
 };
 
 // Two pools are the same iff their full SV2 endpoint triplet matches.
@@ -24,7 +26,7 @@ export function isSamePool(a: PoolConfig, b: PoolConfig): boolean {
 }
 
 export function isPoolValid(p: PoolConfig): boolean {
-  return p.address.length > 0 && isValidPoolAuthorityPubkey(p.authority_public_key);
+  return p.address.length > 0 && isValidPoolAuthorityPubkey(p.authority_public_key) && isTomlSafeIdentifier(p.user_identity);
 }
 
 export interface KnownPool {
@@ -114,7 +116,47 @@ export function getPoolsForMode(miningMode: string | null, templateMode: string 
 }
 
 export function knownPoolToConfig(p: KnownPool): PoolConfig {
-  return { name: p.name, address: p.address, port: p.port, authority_public_key: p.authority_public_key };
+  return { name: p.name, address: p.address, port: p.port, authority_public_key: p.authority_public_key, user_identity: '' };
+}
+
+export interface SriIdentityParts {
+  addr: string;
+  worker: string;
+  donation: string;
+}
+
+export function parseSriIdentity(identity: string): SriIdentityParts | null {
+  if (identity.startsWith('sri/solo/')) {
+    const rest = identity.slice('sri/solo/'.length);
+    const idx = rest.indexOf('/');
+    return {
+      addr: idx === -1 ? rest : rest.slice(0, idx),
+      worker: idx === -1 ? '' : rest.slice(idx + 1),
+      donation: '0%',
+    };
+  }
+  if (identity === 'sri/donate') {
+    return { addr: '', worker: '', donation: '100%' };
+  }
+  if (identity.startsWith('sri/donate/')) {
+    const rest = identity.slice('sri/donate/'.length);
+    const parts = rest.split('/');
+    const pct = parseInt(parts[0], 10);
+    if (!isNaN(pct) && String(pct) === parts[0] && parts.length >= 2) {
+      return { addr: parts[1], worker: parts.slice(2).join('/'), donation: `${pct}%` };
+    }
+    return { addr: '', worker: rest, donation: '100%' };
+  }
+  return null;
+}
+
+export function isValidSoloIdentity(identity: string, network: BitcoinNetwork): boolean {
+  if (identity.startsWith('sri/')) return parseSriIdentity(identity) !== null;
+  return isValidBitcoinAddress(identity, network);
+}
+
+export function findKnownPool(pools: KnownPool[], value: PoolConfig): KnownPool | undefined {
+  return pools.find((p) => isSamePool(knownPoolToConfig(p), value));
 }
 
 export function knownPoolsForSlot(

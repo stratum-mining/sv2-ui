@@ -18,7 +18,7 @@ export type SetupStep =
   | 'bitcoin-prereq'
   | 'bitcoin'
   | 'hashrate'
-  | 'identity'
+  | 'jdc'
   | 'review';
 
 export interface StepProps {

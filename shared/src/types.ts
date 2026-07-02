@@ -12,7 +12,7 @@ export interface PoolConfig {
   address: string;
   port: number;
   authority_public_key: string;
-  user_identity?: string;
+  user_identity: string;
 }
 
 export interface BitcoinConfig {

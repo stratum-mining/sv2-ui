@@ -7,6 +7,7 @@ import {
   SOLO_POOLS,
   EMPTY_CUSTOM_POOL,
   isPoolValid,
+  isValidSoloIdentity,
   isSamePool,
   knownPoolToConfig,
   knownPoolsForSlot,
@@ -21,6 +22,9 @@ export function PoolConfigStep({ data, updateData, onNext }: StepProps) {
 
   const first = pools.find((p) => p.badge !== 'coming-soon');
   const defaultPrimary: PoolConfig = first ? knownPoolToConfig(first) : EMPTY_CUSTOM_POOL;
+  const identityLabel = isSoloMode ? 'Mining Identity' : 'Pool Username';
+  const identityPlaceholder = isSoloMode ? 'bc1q...' : 'your.username';
+  const network = data.bitcoin?.network ?? 'mainnet';
 
   const primary: PoolConfig = data.pool ?? defaultPrimary;
   useEffect(() => {
@@ -70,7 +74,13 @@ export function PoolConfigStep({ data, updateData, onNext }: StepProps) {
   })();
   const hasDuplicate = duplicateIndex !== -1;
 
-  const isValid = isPoolValid(primary) && fallbacks.every(isPoolValid) && !hasDuplicate;
+  const isIdentityValid = (p: PoolConfig) =>
+    !isSoloMode || isValidSoloIdentity(p.user_identity, network);
+  const isValid =
+    isPoolValid(primary) &&
+    isIdentityValid(primary) &&
+    fallbacks.every((fp) => isPoolValid(fp) && isIdentityValid(fp)) &&
+    !hasDuplicate;
 
   return (
     <div className="space-y-8">
@@ -92,6 +102,8 @@ export function PoolConfigStep({ data, updateData, onNext }: StepProps) {
         value={primary}
         onChange={setPrimary}
         formIdPrefix="primary-pool"
+        identityLabel={identityLabel}
+        identityPlaceholder={identityPlaceholder}
       />
 
       {!isSovereignSolo && (
@@ -141,6 +153,8 @@ export function PoolConfigStep({ data, updateData, onNext }: StepProps) {
                 value={fp}
                 onChange={(pool) => setFallback(index, pool)}
                 formIdPrefix={`fallback-${index}`}
+                identityLabel={identityLabel}
+                identityPlaceholder={identityPlaceholder}
               />
               {duplicateIndex === index && (
                 <p className="text-xs text-destructive">

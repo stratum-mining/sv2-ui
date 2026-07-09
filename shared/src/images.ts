@@ -1,10 +1,10 @@
 import type { SetupData } from './types.js';
 
 export const SV2_APP_IMAGES = {
-  translatorNoJd: 'stratumv2/translator_sv2:main',
+  translatorNoJd: 'stratumv2/translator_sv2:v0.6.0',
   jd: {
-    jdc: 'stratumv2/jd_client_sv2:main',
-    translator: 'stratumv2/translator_sv2:main',
+    jdc: 'stratumv2/jd_client_sv2:v0.6.0',
+    translator: 'stratumv2/translator_sv2:v0.6.0',
   },
 } as const satisfies {
   translatorNoJd: string;

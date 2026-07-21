@@ -53,6 +53,10 @@ test('rejects invalid ports and oversized identities', () => {
     /port must be between/i,
   );
   assert.match(
+    getPoolConfigError({ ...VALID_POOL, jds_port: 65536 }, 'Primary pool') ?? '',
+    /JD port must be between/i,
+  );
+  assert.match(
     getPoolConfigError({ ...VALID_POOL, user_identity: 'a'.repeat(513) }, 'Primary pool') ?? '',
     /username/i,
   );

@@ -154,6 +154,7 @@ test('jdc config uses shared shares-per-minute and miner signature', () => {
 
   assert.ok(config);
   assert.match(config, /shares_per_minute = 12\.5/);
+  assert.match(config, /reserved_downstream_rollable_extranonce_size = 8/);
   assert.match(config, /jdc_signature = "custom-miner-tag"/);
   assert.match(config, /monitoring_cache_refresh_secs = 5/);
   assert.match(config, /\[miner_telemetry\]\ncidrs = \["192\.168\.1\.0\/24"\]/);
@@ -171,6 +172,19 @@ test('miner telemetry config is omitted when LAN CIDR is blank', () => {
   assert.doesNotMatch(translatorConfig, /\[miner_telemetry\]/);
   assert.ok(jdcConfig);
   assert.doesNotMatch(jdcConfig, /\[miner_telemetry\]/);
+});
+
+test('jdc config reserves the configured downstream extranonce size', () => {
+  const config = generateJdcConfig({
+    ...BASE_DATA_31,
+    translator: {
+      ...BASE_DATA_31.translator!,
+      downstream_extranonce2_size: 2,
+    },
+  });
+
+  assert.ok(config);
+  assert.match(config, /reserved_downstream_rollable_extranonce_size = 2/);
 });
 
 test('normalization backfills advanced defaults for old saved configs', () => {

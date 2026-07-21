@@ -333,6 +333,32 @@ test('jdc in pool mode puts user_identity inside [[upstreams]]', () => {
   assert.match(config, /\[\[upstreams\]\][\s\S]*user_identity = "miner\.worker1"/);
 });
 
+test('jdc config uses a custom JD port and keeps the default when omitted', () => {
+  const config = generateJdcConfig({
+    ...BASE_DATA_30,
+    pool: {
+      ...BASE_DATA_30.pool!,
+      jds_port: 3337,
+    },
+    fallbackPools: [
+      {
+        name: 'Fallback Pool',
+        address: 'fallback.pool.com',
+        port: 4444,
+        authority_public_key: 'fallback-key',
+        user_identity: 'miner.fallback',
+      },
+    ],
+  });
+
+  assert.ok(config);
+  const fallbackIdx = config.indexOf('pool_address = "fallback.pool.com"');
+
+  assert.ok(fallbackIdx > 0);
+  assert.match(config.slice(0, fallbackIdx), /jds_port = 3337/);
+  assert.match(config.slice(fallbackIdx), /jds_port = 3334/);
+});
+
 test('jdc config writes Bitcoin Core IPC version', () => {
   const config30 = generateJdcConfig(BASE_DATA_30);
   const config31 = generateJdcConfig(BASE_DATA_31);

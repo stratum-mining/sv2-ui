@@ -8,6 +8,9 @@ export function isPoolConnectionComplete(pool: PoolConfig | null | undefined): b
     Number.isInteger(pool.port) &&
     pool.port > 0 &&
     pool.port <= 65535 &&
+    (pool.jds_port === undefined || (
+      Number.isInteger(pool.jds_port) && pool.jds_port > 0 && pool.jds_port <= 65535
+    )) &&
     isValidPoolAuthorityPubkey(pool.authority_public_key),
   );
 }

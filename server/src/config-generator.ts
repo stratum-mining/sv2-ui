@@ -60,6 +60,7 @@ function normalizePool(pool: PoolConfig | null | undefined, fallbackIdentity: st
     name: legacyPool.name ?? 'Custom Pool',
     address: legacyPool.address ?? '',
     port: legacyPool.port ?? 0,
+    jds_port: legacyPool.jds_port,
     authority_public_key: legacyPool.authority_public_key ?? '',
     user_identity: legacyPool.user_identity || fallbackIdentity,
   };
@@ -300,7 +301,7 @@ authority_pubkey = "${upstream.authority_public_key}"
 pool_address = "${upstream.address}"
 pool_port = ${upstream.port}
 jds_address = "${upstream.address}"
-jds_port = 3334
+jds_port = ${upstream.jds_port ?? 3334}
 user_identity = "${upstream.user_identity}"
 `).join('\n')}
 `

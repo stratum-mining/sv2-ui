@@ -11,6 +11,7 @@ export interface PoolConfig {
   name: string;
   address: string;
   port: number;
+  jds_port?: number;
   authority_public_key: string;
   user_identity: string;
 }

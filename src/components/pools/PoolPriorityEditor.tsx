@@ -15,6 +15,7 @@ interface PoolPriorityEditorProps {
   presets: KnownPool[];
   pools: PoolConfig[];
   miningMode: MiningMode | null;
+  isJdMode: boolean;
   onChange: (pools: PoolConfig[]) => void;
 }
 
@@ -26,6 +27,7 @@ export function PoolPriorityEditor({
   presets,
   pools,
   miningMode,
+  isJdMode,
   onChange,
 }: PoolPriorityEditorProps) {
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
@@ -210,6 +212,7 @@ export function PoolPriorityEditor({
               <CustomPoolFields
                 pool={pool}
                 idPrefix={`custom-pool-${index}`}
+                isJdMode={isJdMode}
                 onChange={(nextPool) => updatePool(index, nextPool)}
               />
             )}
@@ -284,10 +287,12 @@ export function PoolPriorityEditor({
 function CustomPoolFields({
   pool,
   idPrefix,
+  isJdMode,
   onChange,
 }: {
   pool: PoolConfig;
   idPrefix: string;
+  isJdMode: boolean;
   onChange: (pool: PoolConfig) => void;
 }) {
   const updateField = (field: keyof PoolConfig, value: string | number) => {
@@ -301,7 +306,11 @@ function CustomPoolFields({
 
   return (
     <div className="border-t border-border bg-muted/20 p-3">
-      <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_7rem_minmax(0,1.4fr)]">
+      <div className={`grid gap-2 ${
+        isJdMode
+          ? 'md:grid-cols-[minmax(0,1fr)_7rem_minmax(0,0.65fr)]'
+          : 'md:grid-cols-[minmax(0,1fr)_7rem_minmax(0,1.4fr)]'
+      }`}>
         <div>
           <label htmlFor={`${idPrefix}-address`} className="mb-1 block text-xs font-medium text-muted-foreground">
             Address
@@ -320,7 +329,7 @@ function CustomPoolFields({
 
         <div>
           <label htmlFor={`${idPrefix}-port`} className="mb-1 block text-xs font-medium text-muted-foreground">
-            Port
+            {isJdMode ? 'Pool Port' : 'Port'}
           </label>
           <input
             id={`${idPrefix}-port`}
@@ -334,7 +343,31 @@ function CustomPoolFields({
           />
         </div>
 
-        <div>
+        {isJdMode && (
+          <div>
+            <label htmlFor={`${idPrefix}-jds-port`} className="mb-1 block text-xs font-medium text-muted-foreground">
+              JD Port (optional)
+            </label>
+            <input
+              id={`${idPrefix}-jds-port`}
+              type="number"
+              min={1}
+              max={65535}
+              value={pool.jds_port ?? ''}
+              onChange={(event) => onChange({
+                ...pool,
+                jds_port: event.target.value === '' ? undefined : Number(event.target.value),
+              })}
+              placeholder="3334"
+              className="h-9 w-full rounded-lg border border-input bg-background px-3 text-sm outline-none transition-all focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/15"
+            />
+            <p className="mt-1 text-xs text-muted-foreground">
+              Use the separate JD port supplied by your pool. Leave blank for 3334.
+            </p>
+          </div>
+        )}
+
+        <div className={isJdMode ? 'md:col-span-3' : undefined}>
           <label htmlFor={`${idPrefix}-pubkey`} className="mb-1 block text-xs font-medium text-muted-foreground">
             Authority Public Key
           </label>

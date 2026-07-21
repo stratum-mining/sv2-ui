@@ -636,6 +636,7 @@ export function ConfigurationTab() {
                     presets={pools}
                     pools={editPools ?? []}
                     miningMode={activeMiningMode}
+                    isJdMode={isJdMode}
                     onChange={(nextPools) => {
                       setEditPools((currentPools) => normalizePoolPriorityIdentities(
                         nextPools,

@@ -157,6 +157,7 @@ export function PoolConfigStep({ data, updateData, onNext }: PoolConfigStepProps
           presets={pools}
           pools={selectedPools}
           miningMode={data.miningMode}
+          isJdMode={data.mode === 'jd'}
           onChange={updateSelectedPools}
         />
       </div>

@@ -111,7 +111,9 @@ test('runs each pool, records measurements, and restores the original setup', as
     },
     measureLatency: async (pool) => pool.name === 'Alpha' ? 10 : 20,
     sampleIntervalMs: 1,
-    maxLatencySamples: 2,
+    // Multi-sample scheduling is covered separately. Keep this orchestration
+    // test independent of sub-millisecond timer precision on slower CI hosts.
+    maxLatencySamples: 1,
     activePoolPollIntervalMs: 1,
     activePoolTimeoutMs: 20,
     onSettled: () => {

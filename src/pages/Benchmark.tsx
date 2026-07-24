@@ -286,6 +286,7 @@ export function Benchmark() {
                     presets={presets}
                     pools={pools}
                     miningMode={miningMode}
+                    isJdMode={mode === 'jd'}
                     onChange={setPools}
                     priorityLabel={(index) => `Run ${index + 1}`}
                   />

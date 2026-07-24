@@ -2,7 +2,6 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation } from 'wouter';
 import {
   AlertTriangle,
-  Gauge,
   Loader2,
   Play,
   Square,
@@ -226,10 +225,7 @@ export function Benchmark() {
     >
       <div className="space-y-6">
         <div>
-          <div className="flex items-center gap-2">
-            <Gauge className="h-6 w-6 text-primary" />
-            <h1 className="text-2xl font-bold tracking-tight">Pool Benchmark</h1>
-          </div>
+          <h1 className="text-2xl font-bold tracking-tight">Pool Benchmark</h1>
           <p className="mt-2 max-w-3xl text-muted-foreground">
             Compare what works best for this setup using average TCP connection latency
             and upstream share outcomes observed during equal mining intervals.

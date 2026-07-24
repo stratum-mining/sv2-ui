@@ -12,7 +12,9 @@ import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
+import { useExperimentalFeatures } from '@/hooks/useExperimentalFeatures';
 import { useTelegram, type TelegramSettings } from '@/hooks/useTelegram';
+import { useLocation } from 'wouter';
 
 const TELEGRAM_EXPERIMENT_STORAGE_KEY = 'sv2-ui-experiment-telegram-enabled';
 
@@ -44,6 +46,8 @@ function runMutation(promise: Promise<unknown>): void {
 }
 
 export function ExperimentalTab() {
+  const [, navigate] = useLocation();
+  const { features, setFeature } = useExperimentalFeatures();
   const {
     settings,
     isLoading,
@@ -145,6 +149,28 @@ export function ExperimentalTab() {
       </div>
 
       <div className="space-y-3">
+        <ExperimentToggleCard
+          id="benchmark-experiment"
+          title="Pool benchmark"
+          description="Compare configured pools using connection latency and observed share outcomes."
+          enabled={features.benchmark}
+          onEnabledChange={(enabled) => setFeature('benchmark', enabled)}
+        >
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-sm text-muted-foreground">
+              Benchmark is now available in the main navigation.
+            </p>
+            <Button
+              variant="outline"
+              size="sm"
+              className="self-start sm:self-auto"
+              onClick={() => navigate('/benchmark')}
+            >
+              Open Benchmark
+            </Button>
+          </div>
+        </ExperimentToggleCard>
+
         <ExperimentToggleCard
           id="telegram-experiment"
           title="Telegram activity updates"

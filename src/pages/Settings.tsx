@@ -20,12 +20,21 @@ import { ExperimentalTab } from '@/components/settings/ExperimentalTab';
 /**
  * Settings page with Configuration, Logs, Appearance, and Experimental tabs.
  */
+function getInitialTab(): string {
+  if (typeof window === 'undefined') return 'configuration';
+
+  const requestedTab = new URLSearchParams(window.location.search).get('tab');
+  return ['configuration', 'logs', 'appearance', 'experimental'].includes(requestedTab ?? '')
+    ? requestedTab!
+    : 'configuration';
+}
+
 export function Settings() {
   const { config, updateConfig, resetConfig } = useUiConfig();
   const { status: connectionStatus, statusLabel: connectionLabel, poolName, uptime } = useConnectionStatus();
   const { mode } = useSetupStatus();
   const isJdMode = mode === 'jd';
-  const [activeTab, setActiveTab] = useState('configuration');
+  const [activeTab, setActiveTab] = useState(getInitialTab);
   const { data: rawLogs, isLoading: logsLoading } = useContainerLogs(activeTab === 'logs');
   const logoInputRef = useRef<HTMLInputElement>(null);
 

@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { Switch, Route, useLocation } from 'wouter';
+import { Redirect, Switch, Route, useLocation } from 'wouter';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { queryClient } from '@/lib/queryClient';
 import { UnifiedDashboard } from '@/pages/UnifiedDashboard';
@@ -7,6 +7,7 @@ import { Settings } from '@/pages/Settings';
 import { Setup } from '@/pages/Setup';
 import { FAQ } from '@/pages/FAQ';
 import { Benchmark } from '@/pages/Benchmark';
+import { useExperimentalFeatures } from '@/hooks/useExperimentalFeatures';
 import { useSetupStatus } from '@/hooks/useSetupStatus';
 
 /**
@@ -27,6 +28,7 @@ import { useSetupStatus } from '@/hooks/useSetupStatus';
 function Router() {
   const [location, navigate] = useLocation();
   const { isLoading, isOrchestrated, needsSetup } = useSetupStatus();
+  const { features: experimentalFeatures } = useExperimentalFeatures();
 
   // Redirect to setup if needed (only when orchestration backend is present)
   useEffect(() => {
@@ -62,7 +64,9 @@ function Router() {
         <Settings />
       </Route>
       <Route path="/benchmark">
-        <Benchmark />
+        {experimentalFeatures.benchmark
+          ? <Benchmark />
+          : <Redirect to="/settings?tab=experimental" />}
       </Route>
       <Route path="/faq">
         <FAQ />

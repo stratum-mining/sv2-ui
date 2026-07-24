@@ -5,6 +5,7 @@ import { cn, formatUptime } from '@/lib/utils';
 import { getKnownPoolByName } from '@/lib/pools';
 import type { AppMode, AppFeatures } from '@/types/api';
 import { getAppFeatures } from '@/types/api';
+import { useExperimentalFeatures } from '@/hooks/useExperimentalFeatures';
 import { useUiConfig } from '@/hooks/useUiConfig';
 import { PoolIcon } from '@/components/ui/pool-icon';
 
@@ -36,13 +37,22 @@ interface NavItem {
   href: string;
 }
 
-function getNavItems(_features: AppFeatures, _appMode: AppMode): NavItem[] {
-  return [
+function getNavItems(
+  _features: AppFeatures,
+  _appMode: AppMode,
+  benchmarkEnabled: boolean,
+): NavItem[] {
+  const items: NavItem[] = [
     { icon: LayoutDashboard, label: 'Dashboard', href: '/' },
-    { icon: Gauge, label: 'Benchmark', href: '/benchmark' },
     { icon: HelpCircle, label: 'Support', href: '/faq' },
     { icon: Settings, label: 'Settings', href: '/settings' },
   ];
+
+  if (benchmarkEnabled) {
+    items.splice(1, 0, { icon: Gauge, label: 'Benchmark', href: '/benchmark' });
+  }
+
+  return items;
 }
 
 interface ShellProps {
@@ -65,11 +75,12 @@ export function Shell({
   const [location] = useLocation();
   const { isDark, toggle } = useTheme();
   const { config } = useUiConfig();
+  const { features: experimentalFeatures } = useExperimentalFeatures();
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
   const features = getAppFeatures(appMode);
-  const navItems = getNavItems(features, appMode);
+  const navItems = getNavItems(features, appMode, experimentalFeatures.benchmark);
   const connectedPool = getKnownPoolByName(poolName);
   const connectedStatusLabel = connectionLabel || `Connected to ${poolName || 'Pool'}`;
 

@@ -217,7 +217,7 @@ export function Shell({
                       )}
                     </span>
                   ) : connectionStatus === 'connecting'
-                    ? 'Connecting...'
+                    ? (connectionLabel || 'Connecting...')
                     : 'Disconnected'}
                 </span>
                 <span className="hidden sm:block text-xs text-muted-foreground border-l border-border pl-2 shrink-0">

@@ -236,8 +236,8 @@ export function Benchmark() {
 
   return (
     <Shell
-      connectionStatus={connectionStatus}
-      connectionLabel={connectionLabel ?? undefined}
+      connectionStatus={isActive ? 'connecting' : connectionStatus}
+      connectionLabel={isActive ? 'Benchmarking' : connectionLabel ?? undefined}
       poolName={poolName ?? undefined}
       uptime={uptime}
     >

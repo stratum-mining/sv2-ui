@@ -71,6 +71,7 @@ export interface BenchmarkPoolResult {
   startedAt: string | null;
   completedAt: string | null;
   averageLatencyMs: number | null;
+  sv2NegotiationMs: number | null;
   successfulSamples: number;
   attemptedSamples: number;
   acceptedShares: number | null;

@@ -72,7 +72,12 @@ test('an invalid attempt cannot clear a previously connected pool', () => {
   const result = detectActivePool(
     POOLS,
     [log('Trying upstream 2 of 2: attacker.example.com:4444')],
-    { activeIndex: 1, pendingIndex: null, connectedIndex: null }
+    {
+      activeIndex: 1,
+      activeNegotiatedAt: '2026-07-17T09:59:59.000Z',
+      pendingIndex: null,
+      connectedIndex: null,
+    }
   );
 
   assert.equal(result.activeIndex, 1);
@@ -139,10 +144,12 @@ test('tracker retains the connected fallback across incremental polls and log fa
   assert.deepEqual(await tracker.getActivePool('translator', POOLS), {
     name: 'Fallback',
     index: 1,
+    negotiatedAt: '2026-07-17T10:00:00.000Z',
   });
   assert.deepEqual(await tracker.getActivePool('translator', POOLS), {
     name: 'Fallback',
     index: 1,
+    negotiatedAt: '2026-07-17T10:00:00.000Z',
   });
   assert.equal(calls[0], undefined);
   assert.equal(typeof calls[1]?.since, 'number');
@@ -166,5 +173,6 @@ test('tracker carries a pending connection across incremental polls', async () =
   assert.deepEqual(await tracker.getActivePool('translator', POOLS), {
     name: 'Fallback',
     index: 1,
+    negotiatedAt: '2026-07-17T10:00:00.000Z',
   });
 });

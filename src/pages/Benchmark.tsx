@@ -13,6 +13,7 @@ import { Shell } from '@/components/layout/Shell';
 import { PoolPriorityEditor } from '@/components/pools/PoolPriorityEditor';
 import { Badge, type BadgeProps } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { InfoPopover } from '@/components/ui/info-popover';
 import {
   Card,
   CardContent,
@@ -45,8 +46,8 @@ function formatDuration(totalSeconds: number): string {
   return `${hours} hr ${minutes} min`;
 }
 
-function formatLatency(value: number | null): string {
-  return value === null ? '—' : `${value.toFixed(1)} ms`;
+function formatLatency(value: number | null | undefined): string {
+  return value == null ? '—' : `${value.toFixed(1)} ms`;
 }
 
 function formatRejectedRate(result: BenchmarkPoolResult): string | null {
@@ -87,6 +88,23 @@ function resultBadge(status: BenchmarkPoolStatus): {
 
 function endpointKey(pool: PoolConfig): string {
   return `${pool.address.toLowerCase()}:${pool.port}`;
+}
+
+function MetricHeader({
+  label,
+  description,
+}: {
+  label: string;
+  description: string;
+}) {
+  return (
+    <span className="flex items-center justify-end gap-1 whitespace-nowrap">
+      {label}
+      <InfoPopover ariaLabel={`About ${label}`}>
+        <p>{description}</p>
+      </InfoPopover>
+    </span>
+  );
 }
 
 export function Benchmark() {
@@ -227,13 +245,10 @@ export function Benchmark() {
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Pool Benchmark</h1>
           <p className="mt-2 max-w-3xl text-muted-foreground">
-            Compare what works best for this setup using average TCP connection latency
-            and upstream share outcomes observed during equal mining intervals.
+            Compare pools by connection speed and rejected shares.
           </p>
           <p className="mt-2 max-w-3xl text-sm text-muted-foreground">
-            Mining benchmarks have intrinsic variance. Latency and rejected-share rate
-            are the most useful signals here, but they are time-sensitive and say
-            nothing about a pool&apos;s internal performance.
+            Experimental feature. Results can change with network conditions and benchmark duration.
           </p>
         </div>
 
@@ -257,41 +272,16 @@ export function Benchmark() {
               </div>
             )}
 
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-lg">Benchmark setup</CardTitle>
-                <CardDescription>
-                  Select at least two pools and drag them into test order. Each duration
-                  applies per pool.
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-6">
-                {isActive && run ? (
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    {run.selectedPools.map((pool, index) => {
-                      const knownPool = getKnownPoolForConfig(pool);
-                      return (
-                        <div
-                          key={endpointKey(pool)}
-                          className="flex items-center gap-3 rounded-xl border border-border bg-muted/20 p-4"
-                        >
-                          <PoolIcon
-                            logoUrl={knownPool?.logoUrl}
-                            logoOnDark={knownPool?.logoOnDark}
-                            monogram={knownPool?.monogram}
-                            invertLogoInDarkMode={knownPool?.invertLogoInDarkMode}
-                            logoScale={knownPool?.logoScale}
-                            name={pool.name}
-                          />
-                          <div className="min-w-0">
-                            <div className="truncate text-sm font-medium">{pool.name}</div>
-                            <div className="text-xs text-muted-foreground">Run {index + 1}</div>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                ) : (
+            {!isActive && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-lg">Benchmark setup</CardTitle>
+                  <CardDescription>
+                    Select at least two pools and drag them into test order. Each duration
+                    applies per pool.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-6">
                   <PoolPriorityEditor
                     presets={presets}
                     pools={pools}
@@ -299,51 +289,35 @@ export function Benchmark() {
                     onChange={setPools}
                     priorityLabel={(index) => `Run ${index + 1}`}
                   />
-                )}
 
-                <div className="grid gap-4 border-t border-border pt-5 sm:grid-cols-[minmax(0,14rem)_1fr_auto] sm:items-end">
-                  <div>
-                    <label htmlFor="benchmark-duration" className="mb-2 block text-sm font-medium">
-                      Time per pool
-                    </label>
-                    <select
-                      id="benchmark-duration"
-                      value={durationMinutes}
-                      onChange={(event) => setDurationMinutes(Number(event.target.value))}
-                      disabled={isActive}
-                      className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-primary/30 disabled:opacity-60"
-                    >
-                      {DURATION_OPTIONS_MINUTES.map((minutes) => (
-                        <option key={minutes} value={minutes}>
-                          {minutes === 60 ? '1 hour' : `${minutes} minute${minutes === 1 ? '' : 's'}`}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div className="text-sm text-muted-foreground">
-                    Estimated total: <span className="font-medium text-foreground">
-                      {formatDuration(pools.length * durationMinutes * 60)}
-                    </span>
-                    <div className="mt-1 text-xs">
-                      Opening this page downloads nothing. Mining services are only rotated after Start is clicked.
+                  <div className="grid gap-4 border-t border-border pt-5 sm:grid-cols-[minmax(0,14rem)_1fr_auto] sm:items-end">
+                    <div>
+                      <label htmlFor="benchmark-duration" className="mb-2 block text-sm font-medium">
+                        Time per pool
+                      </label>
+                      <select
+                        id="benchmark-duration"
+                        value={durationMinutes}
+                        onChange={(event) => setDurationMinutes(Number(event.target.value))}
+                        className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+                      >
+                        {DURATION_OPTIONS_MINUTES.map((minutes) => (
+                          <option key={minutes} value={minutes}>
+                            {minutes === 60 ? '1 hour' : `${minutes} minute${minutes === 1 ? '' : 's'}`}
+                          </option>
+                        ))}
+                      </select>
                     </div>
-                  </div>
 
-                  {isActive ? (
-                    <Button
-                      variant="destructive"
-                      onClick={() => void handleStop()}
-                      disabled={isStopping || run?.status === 'stopping'}
-                    >
-                      {isStopping || run?.status === 'stopping' ? (
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      ) : (
-                        <Square className="mr-2 h-4 w-4" />
-                      )}
-                      Stop
-                    </Button>
-                  ) : (
+                    <div className="text-sm text-muted-foreground">
+                      Estimated total: <span className="font-medium text-foreground">
+                        {formatDuration(pools.length * durationMinutes * 60)}
+                      </span>
+                      <div className="mt-1 text-xs">
+                        Opening this page downloads nothing. Mining services are only rotated after Start is clicked.
+                      </div>
+                    </div>
+
                     <Button
                       onClick={() => void handleStart()}
                       disabled={isStarting || pools.length < 2}
@@ -355,10 +329,10 @@ export function Benchmark() {
                       )}
                       Start benchmark
                     </Button>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
 
             {run && (
               <Card>
@@ -372,7 +346,7 @@ export function Benchmark() {
                         {run.status === 'stopping'
                           ? 'Stopping and restoring the original pool configuration...'
                           : run.status === 'completed'
-                            ? 'Ranked by average latency. The original pool order has been restored.'
+                            ? 'Ranked by average TCP connect time. The original pool order has been restored.'
                             : run.status === 'cancelled'
                               ? 'The run was stopped and the original pool order was restored.'
                               : run.status === 'failed'
@@ -387,8 +361,22 @@ export function Benchmark() {
                     {isTerminal && rankedResults.some((result) => result.status === 'completed') && (
                       <div className="flex items-center gap-2 text-sm text-muted-foreground">
                         <Trophy className="h-4 w-4 text-primary" />
-                        Lowest average latency ranks first
+                        Lowest TCP connect time ranks first
                       </div>
+                    )}
+                    {isActive && (
+                      <Button
+                        variant="destructive"
+                        onClick={() => void handleStop()}
+                        disabled={isStopping || run.status === 'stopping'}
+                      >
+                        {isStopping || run.status === 'stopping' ? (
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        ) : (
+                          <Square className="mr-2 h-4 w-4" />
+                        )}
+                        Stop
+                      </Button>
                     )}
                   </div>
                   {isActive && currentEndsAt !== null && (
@@ -415,10 +403,31 @@ export function Benchmark() {
                         <TableHead className="w-14">Rank</TableHead>
                         <TableHead>Pool</TableHead>
                         <TableHead>Status</TableHead>
-                        <TableHead className="text-right">Avg latency</TableHead>
+                        <TableHead className="text-right">
+                          <MetricHeader
+                            label="TCP connect"
+                            description="The average time required to open a TCP connection to the pool's configured mining address and port. Ten attempts are spread across the mining interval; this tests endpoint reachability but does not include SV2 negotiation or share acknowledgement."
+                          />
+                        </TableHead>
+                        <TableHead className="text-right">
+                          <MetricHeader
+                            label="SV2 setup"
+                            description="The elapsed time from launching the pool-facing mining service until its timestamped SetupConnectionSuccess message. It includes starting the pool client, opening the network connection, the Noise handshake, and SV2 connection negotiation, but excludes stopping the previous stack and downloading images."
+                          />
+                        </TableHead>
                         <TableHead className="text-right">Samples</TableHead>
-                        <TableHead className="text-right">Accepted</TableHead>
-                        <TableHead className="text-right">Rejected (rate)</TableHead>
+                        <TableHead className="text-right">
+                          <MetricHeader
+                            label="Accepted"
+                            description="The increase in shares acknowledged by the upstream pool during this pool's mining interval. The raw count is useful context, but it should not be used to rank pools because pools may assign different share difficulty."
+                          />
+                        </TableHead>
+                        <TableHead className="text-right">
+                          <MetricHeader
+                            label="Rejected (rate)"
+                            description="The increase in shares rejected by the upstream pool during this pool's mining interval. The percentage is rejected divided by acknowledged plus rejected shares; longer runs produce a more meaningful comparison when share counts are low."
+                          />
+                        </TableHead>
                         <TableHead className="text-right">Action</TableHead>
                       </TableRow>
                     </TableHeader>
@@ -466,6 +475,9 @@ export function Benchmark() {
                               <div className="font-semibold">{formatLatency(result.averageLatencyMs)}</div>
                             </TableCell>
                             <TableCell className="text-right font-mono">
+                              <div className="font-semibold">{formatLatency(result.sv2NegotiationMs)}</div>
+                            </TableCell>
+                            <TableCell className="text-right font-mono">
                               {result.successfulSamples}/{result.attemptedSamples}
                             </TableCell>
                             <TableCell className="text-right font-mono">
@@ -501,10 +513,10 @@ export function Benchmark() {
                     </TableBody>
                   </Table>
                   <p className="mt-4 text-xs text-muted-foreground">
-                    Accepted means acknowledged by the upstream pool. Accepted totals are context,
-                    not a cross-pool score, because assigned share difficulty may differ. Average
-                    latency uses ten TCP connection attempts spread across each interval; it is not
-                    a share-ack round-trip time. A pool receives no latency rank if any attempt fails.
+                    Results reflect conditions during this run. Pools are ranked only by TCP connect
+                    time, and a pool receives no rank if any TCP attempt fails. Compare SV2 setup time
+                    and rejected-share rate separately rather than treating the rank as an overall
+                    pool-quality score.
                   </p>
                 </CardContent>
               </Card>

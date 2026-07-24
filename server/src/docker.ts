@@ -762,7 +762,11 @@ async function getContainerStatus(name: string): Promise<ContainerStatus | null>
  * - In Docker: uses shared volume (sv2-config) for config
  * - In dev: bind-mounts config file from host filesystem
  */
-async function startTranslator(configPath: string, image: string): Promise<void> {
+async function startTranslator(
+  configPath: string,
+  image: string,
+  onPoolClientStarting?: () => void
+): Promise<void> {
   await removeContainer(TRANSLATOR_CONTAINER);
 
   const binds = isRunningInDocker
@@ -790,6 +794,7 @@ async function startTranslator(configPath: string, image: string): Promise<void>
     },
   });
 
+  onPoolClientStarting?.();
   await container.start();
   console.log('Translator container started');
 }
@@ -803,7 +808,8 @@ async function startJdc(
   configPath: string,
   bitcoinSocketPath: string,
   network: string,
-  image: string
+  image: string,
+  onPoolClientStarting?: () => void
 ): Promise<void> {
   await removeContainer(JDC_CONTAINER);
 
@@ -842,6 +848,7 @@ async function startJdc(
     },
   });
 
+  onPoolClientStarting?.();
   await container.start();
   console.log('JDC container started');
 }
@@ -852,7 +859,8 @@ async function startJdc(
  */
 export async function startStack(
   data: SetupData,
-  configDir: string
+  configDir: string,
+  onPoolClientStarting?: () => void
 ): Promise<void> {
   await ensureDockerAvailable();
 
@@ -878,13 +886,23 @@ export async function startStack(
   // Start JDC first if in JD mode (Translator connects to JDC)
   if (imageSelection.mode === 'jd' && data.bitcoin) {
     const socketPath = expandHomePath(data.bitcoin.socket_path);
-    await startJdc(`${configDir}/jdc.toml`, socketPath, data.bitcoin.network, imageSelection.jdc);
+    await startJdc(
+      `${configDir}/jdc.toml`,
+      socketPath,
+      data.bitcoin.network,
+      imageSelection.jdc,
+      onPoolClientStarting
+    );
     console.log('Waiting for JDC to initialize...');
     await new Promise(resolve => setTimeout(resolve, 3000));
   }
 
   // Start Translator
-  await startTranslator(`${configDir}/translator.toml`, imageSelection.translator);
+  await startTranslator(
+    `${configDir}/translator.toml`,
+    imageSelection.translator,
+    imageSelection.mode === 'no-jd' ? onPoolClientStarting : undefined
+  );
 }
 
 /**

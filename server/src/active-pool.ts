@@ -4,6 +4,7 @@ import type { ContainerLogLine, LogContainerRole } from './logs/types.js';
 export type ActivePool = {
   name: string;
   index: number;
+  negotiatedAt: string | null;
 };
 
 export type ActivePoolLogOptions = {
@@ -17,6 +18,7 @@ export type ActivePoolLogProvider = (
 
 type DetectionState = {
   activeIndex: number | null;
+  activeNegotiatedAt: string | null;
   pendingIndex: number | null;
   connectedIndex: number | null;
 };
@@ -54,11 +56,13 @@ export function detectActivePool(
   lines: ContainerLogLine[],
   initialState: DetectionState = {
     activeIndex: null,
+    activeNegotiatedAt: null,
     pendingIndex: null,
     connectedIndex: null,
   }
 ): DetectionState {
   let activeIndex = initialState.activeIndex;
+  let activeNegotiatedAt = initialState.activeNegotiatedAt;
   let pendingIndex = initialState.pendingIndex;
   let connectedIndex = initialState.connectedIndex;
 
@@ -80,6 +84,7 @@ export function detectActivePool(
       connectedIndex = null;
       // A new attempt means the previous upstream is no longer current.
       activeIndex = null;
+      activeNegotiatedAt = null;
       continue;
     }
 
@@ -99,13 +104,14 @@ export function detectActivePool(
     if (SETUP_CONNECTION_SUCCESS_PATTERN.test(line.message)) {
       if (connectedIndex !== null && pools[connectedIndex]) {
         activeIndex = connectedIndex;
+        activeNegotiatedAt = line.timestamp;
       }
       pendingIndex = null;
       connectedIndex = null;
     }
   }
 
-  return { activeIndex, pendingIndex, connectedIndex };
+  return { activeIndex, activeNegotiatedAt, pendingIndex, connectedIndex };
 }
 
 function getConfigKey(container: LogContainerRole, pools: PoolConfig[]): string {
@@ -154,6 +160,7 @@ export class ActivePoolTracker {
       this.state = {
         configKey,
         activeIndex,
+        activeNegotiatedAt: detected.activeNegotiatedAt,
         pendingIndex: detected.pendingIndex,
         connectedIndex: detected.connectedIndex,
         // Docker's `since` value is inclusive and has one-second precision.
@@ -163,7 +170,11 @@ export class ActivePoolTracker {
 
       return activeIndex === null
         ? null
-        : { name: pools[activeIndex].name, index: activeIndex };
+        : {
+            name: pools[activeIndex].name,
+            index: activeIndex,
+            negotiatedAt: detected.activeNegotiatedAt,
+          };
     } catch {
       const activeIndex = previous?.activeIndex !== null &&
         previous?.activeIndex !== undefined &&
@@ -172,7 +183,11 @@ export class ActivePoolTracker {
         : null;
       return activeIndex === null
         ? null
-        : { name: pools[activeIndex].name, index: activeIndex };
+        : {
+            name: pools[activeIndex].name,
+            index: activeIndex,
+            negotiatedAt: previous?.activeNegotiatedAt ?? null,
+          };
     }
   }
 }

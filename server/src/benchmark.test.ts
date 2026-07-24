@@ -136,6 +136,32 @@ test('runs each pool, records measurements, and restores the original setup', as
   assert.equal(settled, 1);
 });
 
+test('records SV2 negotiation time from pool-client launch to SetupConnectionSuccess', async () => {
+  let poolClientStartedAtMs = 0;
+
+  const manager = new BenchmarkManager({
+    applyConfiguration: async (_data, onPoolClientStarting) => {
+      poolClientStartedAtMs = Date.now();
+      onPoolClientStarting?.();
+    },
+    getActivePool: async () => ({
+      index: 0,
+      negotiatedAt: new Date(poolClientStartedAtMs + 125).toISOString(),
+    }),
+    readShareCounters: async () => [],
+    measureLatency: async () => 10,
+    sampleIntervalMs: 1,
+    maxLatencySamples: 1,
+    activePoolPollIntervalMs: 1,
+    activePoolTimeoutMs: 20,
+  });
+
+  manager.start(SETUP, [POOLS[0]], 0.01);
+  await manager.waitForCompletion();
+
+  assert.equal(manager.getSnapshot()?.results[0].sv2NegotiationMs, 125);
+});
+
 test('publishes accepted and rejected share deltas while a pool is still running', async () => {
   let counterRead = 0;
   const manager = new BenchmarkManager({

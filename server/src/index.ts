@@ -190,11 +190,14 @@ async function writeStackConfigFiles(data: SetupData): Promise<void> {
   }
 }
 
-async function applyBenchmarkConfiguration(data: SetupData): Promise<void> {
+async function applyBenchmarkConfiguration(
+  data: SetupData,
+  onPoolClientStarting?: () => void
+): Promise<void> {
   await writeStackConfigFiles(data);
   activePoolTracker.reset();
   await stopStack();
-  await startStack(data, CONFIG_DIR);
+  await startStack(data, CONFIG_DIR, onPoolClientStarting);
 }
 
 async function getBenchmarkActivePool(mode: SetupMode, pools: PoolConfig[]) {

@@ -21,10 +21,14 @@ export type ShareChannelCounters = ShareCounters & {
 
 export type ActivePoolSelection = {
   index: number;
+  negotiatedAt?: string | null;
 };
 
 export type BenchmarkDependencies = {
-  applyConfiguration: (data: SetupData) => Promise<void>;
+  applyConfiguration: (
+    data: SetupData,
+    onPoolClientStarting?: () => void
+  ) => Promise<void>;
   getActivePool: (
     mode: SetupMode,
     pools: PoolConfig[]
@@ -237,6 +241,7 @@ export class BenchmarkManager {
         startedAt: null,
         completedAt: null,
         averageLatencyMs: null,
+        sv2NegotiationMs: null,
         successfulSamples: 0,
         attemptedSamples: 0,
         acceptedShares: null,
@@ -345,8 +350,16 @@ export class BenchmarkManager {
     result.startedAt = new Date().toISOString();
 
     try {
-      await this.dependencies.applyConfiguration(rotatedData);
-      await this.waitForIntendedPool(rotatedData.mode, rotatedPools, signal);
+      let poolClientStartedAtMs: number | null = null;
+      await this.dependencies.applyConfiguration(rotatedData, () => {
+        poolClientStartedAtMs = Date.now();
+      });
+      result.sv2NegotiationMs = await this.waitForIntendedPool(
+        rotatedData.mode,
+        rotatedPools,
+        poolClientStartedAtMs,
+        signal
+      );
       await this.measurePool(result, rotatedData.mode, rotatedPools, poolDurationSeconds, signal);
     } catch (error) {
       if (isAbortError(error)) throw error;
@@ -365,8 +378,9 @@ export class BenchmarkManager {
   private async waitForIntendedPool(
     mode: SetupMode | null,
     pools: PoolConfig[],
+    poolClientStartedAtMs: number | null,
     signal: AbortSignal
-  ): Promise<void> {
+  ): Promise<number> {
     if (!mode) throw new Error('Mining mode is not configured');
 
     const timeoutMs = this.dependencies.activePoolTimeoutMs ?? DEFAULT_ACTIVE_POOL_TIMEOUT_MS;
@@ -378,7 +392,18 @@ export class BenchmarkManager {
       if (signal.aborted) throw abortError();
 
       const activePool = await this.dependencies.getActivePool(mode, pools);
-      if (activePool?.index === 0) return;
+      if (activePool?.index === 0) {
+        const observedAtMs = Date.now();
+        const loggedAtMs = activePool.negotiatedAt
+          ? Date.parse(activePool.negotiatedAt)
+          : Number.NaN;
+        const completedAtMs = Number.isFinite(loggedAtMs)
+          ? loggedAtMs
+          : observedAtMs;
+        const startedAtMs = poolClientStartedAtMs ?? observedAtMs;
+
+        return Math.round(Math.max(0, completedAtMs - startedAtMs) * 10) / 10;
+      }
       if (activePool && activePool.index > 0) {
         const fallback = pools[activePool.index];
         throw new Error(

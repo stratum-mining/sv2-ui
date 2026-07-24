@@ -6,6 +6,7 @@ import { UnifiedDashboard } from '@/pages/UnifiedDashboard';
 import { Settings } from '@/pages/Settings';
 import { Setup } from '@/pages/Setup';
 import { FAQ } from '@/pages/FAQ';
+import { Benchmark } from '@/pages/Benchmark';
 import { useSetupStatus } from '@/hooks/useSetupStatus';
 
 /**
@@ -59,6 +60,9 @@ function Router() {
       </Route>
       <Route path="/settings">
         <Settings />
+      </Route>
+      <Route path="/benchmark">
+        <Benchmark />
       </Route>
       <Route path="/faq">
         <FAQ />

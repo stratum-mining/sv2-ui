@@ -50,6 +50,60 @@ export interface SetupData {
   translator: TranslatorConfig | null;
 }
 
+export type BenchmarkRunStatus =
+  | 'running'
+  | 'stopping'
+  | 'completed'
+  | 'cancelled'
+  | 'failed';
+
+export type BenchmarkPoolStatus =
+  | 'pending'
+  | 'connecting'
+  | 'running'
+  | 'completed'
+  | 'failed'
+  | 'cancelled';
+
+export interface BenchmarkPoolResult {
+  pool: PoolConfig;
+  status: BenchmarkPoolStatus;
+  startedAt: string | null;
+  completedAt: string | null;
+  averageLatencyMs: number | null;
+  minLatencyMs: number | null;
+  p95LatencyMs: number | null;
+  successfulSamples: number;
+  attemptedSamples: number;
+  acceptedShares: number | null;
+  rejectedShares: number | null;
+  error?: string;
+}
+
+export interface BenchmarkRun {
+  id: string;
+  status: BenchmarkRunStatus;
+  poolDurationSeconds: number;
+  createdAt: string;
+  startedAt: string;
+  completedAt: string | null;
+  currentPoolIndex: number | null;
+  currentPoolStartedAt: string | null;
+  currentPoolEndsAt: string | null;
+  selectedPools: PoolConfig[];
+  results: BenchmarkPoolResult[];
+  error?: string;
+}
+
+export interface BenchmarkStatusResponse {
+  run: BenchmarkRun | null;
+}
+
+export interface BenchmarkStartRequest {
+  pools: PoolConfig[];
+  poolDurationSeconds: number;
+}
+
 export type LogContainerRole = 'translator' | 'jdc';
 export type LogOutputStream = 'stdout' | 'stderr';
 export type LogSourceKind = 'docker-container-logs' | 'container-log-file';

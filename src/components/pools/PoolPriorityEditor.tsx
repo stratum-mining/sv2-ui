@@ -18,6 +18,7 @@ interface PoolPriorityEditorProps {
   miningMode: MiningMode | null;
   isJdMode: boolean;
   onChange: (pools: PoolConfig[]) => void;
+  priorityLabel?: (index: number) => string;
 }
 
 function getSelectedPreset(pool: PoolConfig, presets: KnownPool[]): KnownPool | null {
@@ -30,6 +31,7 @@ export function PoolPriorityEditor({
   miningMode,
   isJdMode,
   onChange,
+  priorityLabel,
 }: PoolPriorityEditorProps) {
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
@@ -153,7 +155,7 @@ export function PoolPriorityEditor({
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="truncate text-sm font-medium text-primary">{displayName}</span>
                     <span className="rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
-                      {index === 0 ? 'Primary' : `Fallback ${index}`}
+                      {priorityLabel?.(index) ?? (index === 0 ? 'Primary' : `Fallback ${index}`)}
                     </span>
                   </div>
                   {pool.address && (

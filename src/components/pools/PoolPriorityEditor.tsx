@@ -4,6 +4,7 @@ import { DEFAULT_POOL_PORT, type MiningMode, type PoolConfig } from '@sv2-ui/sha
 import { PoolIcon } from '@/components/ui/pool-icon';
 import {
   appendEmptyCustomPool,
+  canAddPool,
   isSamePool,
   knownPoolToConfig,
   type KnownPool,
@@ -36,6 +37,7 @@ export function PoolPriorityEditor({
   const unselectedPresets = presets.filter((preset) => (
     !pools.some((selectedPool) => isSamePool(selectedPool, preset))
   ));
+  const poolLimitReached = !canAddPool(pools);
 
   const togglePreset = (preset: KnownPool) => {
     const selectedIndex = pools.findIndex((pool) => isSamePool(pool, preset));
@@ -44,7 +46,7 @@ export function PoolPriorityEditor({
       return;
     }
 
-    if (preset.badge === 'coming-soon') return;
+    if (preset.badge === 'coming-soon' || poolLimitReached) return;
 
     onChange([
       ...pools,
@@ -208,7 +210,7 @@ export function PoolPriorityEditor({
       })}
 
       {unselectedPresets.map((preset) => {
-        const isDisabled = preset.badge === 'coming-soon';
+        const isDisabled = preset.badge === 'coming-soon' || poolLimitReached;
         return (
           <button
             key={preset.id}
@@ -258,7 +260,9 @@ export function PoolPriorityEditor({
       <button
         type="button"
         onClick={addCustomPool}
-        className="group w-full p-5 rounded-xl border border-border bg-card transition-all text-left relative hover:border-primary/45 hover:bg-primary/[0.02] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+        disabled={poolLimitReached}
+        title={poolLimitReached ? 'Maximum number of fallback pools reached' : undefined}
+        className="group w-full p-5 rounded-xl border border-border bg-card transition-all text-left relative hover:border-primary/45 hover:bg-primary/[0.02] disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
       >
         <div className="pr-8">
           <div className="font-medium text-sm">Custom Pool</div>

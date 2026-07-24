@@ -1,7 +1,11 @@
 /**
  * Shared pool preset definitions used by both the Setup Wizard and Settings.
  */
-import type { MiningMode, PoolConfig } from '@sv2-ui/shared';
+import {
+  MAX_FALLBACK_POOLS,
+  type MiningMode,
+  type PoolConfig,
+} from '@sv2-ui/shared';
 import { withCompatiblePoolIdentity } from './miningIdentity';
 
 export interface KnownPool {
@@ -153,6 +157,8 @@ export function appendEmptyCustomPool(
   pools: PoolConfig[],
   miningMode: MiningMode | null,
 ): PoolConfig[] {
+  if (!canAddPool(pools)) return pools;
+
   return [
     ...pools,
     withCompatiblePoolIdentity(
@@ -161,6 +167,10 @@ export function appendEmptyCustomPool(
       miningMode,
     ),
   ];
+}
+
+export function canAddPool(pools: PoolConfig[]): boolean {
+  return pools.length < MAX_FALLBACK_POOLS + 1;
 }
 
 export function isSamePool(a: Pick<PoolConfig, 'address' | 'port'> | null | undefined, b: Pick<PoolConfig, 'address' | 'port'> | null | undefined): boolean {

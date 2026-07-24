@@ -87,6 +87,7 @@ function snapshot(
   return {
     running: true,
     poolName: 'Primary pool',
+    activePoolIndex: 0,
     hashrate: 125_000_000_000_000,
     workers: 3,
     sharesSubmitted: 42,
@@ -193,6 +194,7 @@ test('reports only meaningful status changes', () => {
   const stopped = snapshot({
     running: false,
     poolName: null,
+    activePoolIndex: null,
     hashrate: null,
     workers: null,
     sharesSubmitted: null,
@@ -307,14 +309,35 @@ test('detects failover across a temporary unknown pool state', async (t) => {
   const { service, telegram } = await pairService(t);
 
   await service.poll(async () => snapshot());
-  await service.poll(async () => snapshot({ poolName: null }));
+  await service.poll(async () => snapshot({
+    poolName: null,
+    activePoolIndex: null,
+  }));
   assert.equal(telegram.callsFor('sendMessage').length, 1);
 
-  await service.poll(async () => snapshot({ poolName: 'Fallback pool' }));
+  await service.poll(async () => snapshot({
+    poolName: 'Fallback pool',
+    activePoolIndex: 1,
+  }));
   const alert = String(telegram.callsFor('sendMessage').at(-1)?.body.text);
   assert.match(alert, /^🔁 Pool failover/);
   assert.match(alert, /From: Primary pool/);
   assert.match(alert, /To: Fallback pool/);
+});
+
+test('detects failover between custom pools with the same name', async (t) => {
+  const { service, telegram } = await pairService(t);
+
+  await service.poll(async () => snapshot({ poolName: 'Custom Pool' }));
+  await service.poll(async () => snapshot({
+    poolName: 'Custom Pool',
+    activePoolIndex: 1,
+  }));
+
+  const alert = String(telegram.callsFor('sendMessage').at(-1)?.body.text);
+  assert.match(alert, /^🔁 Pool failover/);
+  assert.match(alert, /From: Custom Pool \(Primary\)/);
+  assert.match(alert, /To: Custom Pool \(Fallback 1\)/);
 });
 
 test('configures alerts with the bot settings keyboard', async (t) => {

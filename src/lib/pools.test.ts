@@ -1,9 +1,10 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import type { PoolConfig } from '@sv2-ui/shared';
+import { MAX_FALLBACK_POOLS, type PoolConfig } from '@sv2-ui/shared';
 import {
   appendEmptyCustomPool,
+  canAddPool,
   knownPoolToConfig,
   SOLO_POOLS,
 } from './pools';
@@ -26,6 +27,20 @@ test('appendEmptyCustomPool allows multiple custom fallback pools', () => {
   assert.equal(withSecondCustomPool[2].name, 'Custom Pool');
   assert.equal(withSecondCustomPool[1].user_identity, PRIMARY_POOL.user_identity);
   assert.equal(withSecondCustomPool[2].user_identity, PRIMARY_POOL.user_identity);
+});
+
+test('pool additions stop at the configured fallback limit', () => {
+  const maximumPools = Array.from(
+    { length: MAX_FALLBACK_POOLS + 1 },
+    (_, index) => ({
+      ...PRIMARY_POOL,
+      address: `pool-${index}.example.com`,
+    }),
+  );
+
+  assert.equal(canAddPool(maximumPools.slice(0, -1)), true);
+  assert.equal(canAddPool(maximumPools), false);
+  assert.strictEqual(appendEmptyCustomPool(maximumPools, 'pool'), maximumPools);
 });
 
 test('solo pool presets are sorted alphabetically', () => {

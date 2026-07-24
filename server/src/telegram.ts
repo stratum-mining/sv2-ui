@@ -105,6 +105,7 @@ export type TelegramMiningChannel = {
 export type TelegramActivitySnapshot = {
   running: boolean;
   poolName: string | null;
+  activePoolIndex: number | null;
   hashrate: number | null;
   workers: number | null;
   sharesSubmitted: number | null;
@@ -298,6 +299,10 @@ function formatDifficulty(difficulty: number): string {
   }).format(difficulty);
 }
 
+function formatPoolPriority(index: number): string {
+  return index === 0 ? 'Primary' : `Fallback ${index}`;
+}
+
 function getBestChannel(channels: TelegramMiningChannel[] | null): TelegramMiningChannel | null {
   if (!channels?.length) return null;
   return channels.reduce((best, channel) =>
@@ -360,8 +365,15 @@ export function getStatusChangeMessage(
 
   if (
     current.running &&
-    previous.poolName !== current.poolName &&
-    current.poolName !== null
+    current.poolName !== null &&
+    (
+      previous.poolName !== current.poolName ||
+      (
+        previous.activePoolIndex !== null &&
+        current.activePoolIndex !== null &&
+        previous.activePoolIndex !== current.activePoolIndex
+      )
+    )
   ) {
     return formatTelegramStatus(current, '🔁 SV2 active pool changed');
   }
@@ -505,7 +517,7 @@ export class TelegramService {
   private channelBaselines = new Map<string, TelegramMiningChannel>();
   private bestDifficultyHighWatermark = 0;
   private lastSummaryAt: number | null = null;
-  private lastKnownPoolName: string | null = null;
+  private lastKnownPool: { name: string; index: number } | null = null;
   private pollInProgress = false;
 
   constructor(
@@ -742,7 +754,7 @@ export class TelegramService {
       if (!this.previousSnapshot) {
         this.previousSnapshot = current;
         this.updateChannelBaselines(current.channels);
-        this.lastKnownPoolName = current.poolName;
+        this.updateLastKnownPool(current);
         this.lastSummaryAt = now;
         return;
       }
@@ -769,17 +781,30 @@ export class TelegramService {
         if (bestDifficultyMessage) messages.push(bestDifficultyMessage);
       }
 
+      const currentPool = current.poolName !== null && current.activePoolIndex !== null
+        ? { name: current.poolName, index: current.activePoolIndex }
+        : null;
       if (
         settings.notifyOnPoolChange &&
         current.running &&
-        this.lastKnownPoolName &&
-        current.poolName &&
-        this.lastKnownPoolName !== current.poolName
+        this.lastKnownPool &&
+        currentPool &&
+        (
+          this.lastKnownPool.index !== currentPool.index ||
+          this.lastKnownPool.name !== currentPool.name
+        )
       ) {
+        const duplicateName = this.lastKnownPool.name === currentPool.name;
+        const previousLabel = duplicateName
+          ? `${this.lastKnownPool.name} (${formatPoolPriority(this.lastKnownPool.index)})`
+          : this.lastKnownPool.name;
+        const currentLabel = duplicateName
+          ? `${currentPool.name} (${formatPoolPriority(currentPool.index)})`
+          : currentPool.name;
         messages.push([
           '🔁 Pool failover',
-          `From: ${this.lastKnownPoolName}`,
-          `To: ${current.poolName}`,
+          `From: ${previousLabel}`,
+          `To: ${currentLabel}`,
         ].join('\n'));
       }
 
@@ -835,7 +860,7 @@ export class TelegramService {
         ? { ...current, channels: this.previousSnapshot.channels }
         : current;
       this.updateChannelBaselines(current.channels);
-      if (current.poolName) this.lastKnownPoolName = current.poolName;
+      this.updateLastKnownPool(current);
     } finally {
       this.pollInProgress = false;
     }
@@ -994,7 +1019,16 @@ export class TelegramService {
     this.channelBaselines.clear();
     this.bestDifficultyHighWatermark = 0;
     this.lastSummaryAt = null;
-    this.lastKnownPoolName = null;
+    this.lastKnownPool = null;
+  }
+
+  private updateLastKnownPool(snapshot: TelegramActivitySnapshot): void {
+    if (snapshot.poolName !== null && snapshot.activePoolIndex !== null) {
+      this.lastKnownPool = {
+        name: snapshot.poolName,
+        index: snapshot.activePoolIndex,
+      };
+    }
   }
 
   private updateChannelBaselines(channels: TelegramMiningChannel[] | null): void {

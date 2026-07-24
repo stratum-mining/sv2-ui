@@ -18,6 +18,7 @@ import {
   TRANSLATOR_MONITORING_PORT,
   JDC_MONITORING_PORT,
   getMinerTelemetryCidrError,
+  MAX_FALLBACK_POOLS,
 } from '@sv2-ui/shared';
 import { BITCOIN_ERROR_MESSAGES } from './messages.js';
 import {
@@ -34,7 +35,7 @@ import {
 } from './docker.js';
 import { getLogDiagnostics, getLogStreams, readCollatedLogLines } from './logs/diagnostics.js';
 import { ActivePoolTracker } from './active-pool.js';
-import { getPoolConfigError, MAX_FALLBACK_POOLS } from './pool-validation.js';
+import { getPoolConfigError } from './pool-validation.js';
 import {
   collectPaginatedMonitoringItems,
   getTelegramWorkerCount,
@@ -908,6 +909,7 @@ async function getTelegramActivitySnapshot(): Promise<TelegramActivitySnapshot> 
     return {
       running: false,
       poolName: status.poolName,
+      activePoolIndex: status.activePoolIndex,
       hashrate: null,
       workers: null,
       sharesSubmitted: null,
@@ -965,6 +967,7 @@ async function getTelegramActivitySnapshot(): Promise<TelegramActivitySnapshot> 
   return {
     running: true,
     poolName: status.poolName,
+    activePoolIndex: status.activePoolIndex,
     hashrate: clients?.total_hashrate ?? global?.server?.total_hashrate ?? null,
     workers: getTelegramWorkerCount(
       isJdMode,

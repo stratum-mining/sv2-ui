@@ -8,13 +8,23 @@ export type TelegramSettings = {
   recipient: string | null;
   pairingUrl: string | null;
   enabled: boolean;
+  notifyOnBlockFound: boolean;
+  notifyOnBestDifficulty: boolean;
+  notifyOnPoolChange: boolean;
   notifyOnStatusChange: boolean;
+  notifyOnWorkerChange: boolean;
+  notifyOnRejectedShares: boolean;
   summaryIntervalMinutes: number;
 };
 
 export type TelegramSettingsUpdate = {
   enabled?: boolean;
+  notifyOnBlockFound?: boolean;
+  notifyOnBestDifficulty?: boolean;
+  notifyOnPoolChange?: boolean;
   notifyOnStatusChange?: boolean;
+  notifyOnWorkerChange?: boolean;
+  notifyOnRejectedShares?: boolean;
   summaryIntervalMinutes?: number;
 };
 
@@ -23,9 +33,15 @@ type SuccessResponse = {
 };
 
 async function parseResponse<T>(response: Response): Promise<T> {
-  const data = await response.json().catch(() => ({})) as {
+  const data = await response.json().catch(() => null) as {
     error?: string;
-  };
+  } | null;
+
+  if (!data) {
+    throw new Error(
+      'Telegram settings API is unavailable. Restart the SV2 UI backend from this branch.'
+    );
+  }
 
   if (!response.ok) {
     throw new Error(data.error || `Request failed (${response.status})`);
@@ -80,6 +96,7 @@ export function useTelegram() {
     queryKey,
     queryFn: fetchSettings,
     retry: false,
+    refetchInterval: 5000,
   });
 
   const updateCachedSettings = (settings: TelegramSettings) => {
@@ -125,6 +142,7 @@ export function useTelegram() {
   return {
     settings: settingsQuery.data,
     isLoading: settingsQuery.isLoading,
+    retry: settingsQuery.refetch,
     isPending:
       connectMutation.isPending ||
       pairMutation.isPending ||

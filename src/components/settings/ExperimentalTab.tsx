@@ -26,6 +26,7 @@ export function ExperimentalTab() {
   const {
     settings,
     isLoading,
+    retry,
     isPending,
     error,
     testSent,
@@ -70,11 +71,24 @@ export function ExperimentalTab() {
     window.open(settings.pairingUrl, '_blank', 'noopener,noreferrer');
   };
 
-  if (isLoading || !settings) {
+  if (isLoading) {
     return (
       <div className="flex min-h-40 items-center justify-center text-sm text-muted-foreground">
         <Loader2 className="mr-2 h-4 w-4 animate-spin" />
         Loading experimental settings...
+      </div>
+    );
+  }
+
+  if (!settings) {
+    return (
+      <div className="flex min-h-40 flex-col items-center justify-center gap-3 text-sm">
+        <p className="max-w-lg text-center text-destructive">
+          {error || 'Telegram settings could not be loaded.'}
+        </p>
+        <Button variant="outline" onClick={() => void retry()}>
+          Retry
+        </Button>
       </div>
     );
   }
@@ -90,7 +104,7 @@ export function ExperimentalTab() {
             <div>
               <CardTitle>Telegram activity updates</CardTitle>
               <CardDescription className="mt-1">
-                Experimental local-only notifications for mining status, pool changes, and summaries.
+                Experimental local-only alerts for blocks, best difficulty, failover, and mining health.
               </CardDescription>
             </div>
           </div>
@@ -196,7 +210,8 @@ export function ExperimentalTab() {
                   <div>
                     <p className="font-medium">Paired with {settings.recipient}</p>
                     <p className="text-sm text-muted-foreground">
-                      @{settings.botUsername} sends updates from this local SV2 UI backend.
+                      @{settings.botUsername} sends updates from this local SV2 UI backend. Send{' '}
+                      <span className="font-mono">/settings</span> to configure these alerts in Telegram.
                     </p>
                   </div>
                 </div>
@@ -235,9 +250,63 @@ export function ExperimentalTab() {
 
                 <div className="flex items-center justify-between gap-4">
                   <div>
-                    <Label htmlFor="telegram-status-changes">Status-change alerts</Label>
+                    <Label htmlFor="telegram-block-found">Block found</Label>
                     <p className="mt-1 text-sm text-muted-foreground">
-                      Notify when mining starts, stops, or switches to another configured pool.
+                      Notify immediately when a channel&apos;s block counter increases.
+                    </p>
+                  </div>
+                  <Switch
+                    id="telegram-block-found"
+                    checked={settings.notifyOnBlockFound}
+                    onCheckedChange={(notifyOnBlockFound) => {
+                      clearError();
+                      runMutation(update({ notifyOnBlockFound }));
+                    }}
+                    disabled={isPending || !settings.enabled}
+                  />
+                </div>
+
+                <div className="flex items-center justify-between gap-4">
+                  <div>
+                    <Label htmlFor="telegram-best-difficulty">New best difficulty</Label>
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      Notify when an existing miner channel sets a higher best share difficulty.
+                    </p>
+                  </div>
+                  <Switch
+                    id="telegram-best-difficulty"
+                    checked={settings.notifyOnBestDifficulty}
+                    onCheckedChange={(notifyOnBestDifficulty) => {
+                      clearError();
+                      runMutation(update({ notifyOnBestDifficulty }));
+                    }}
+                    disabled={isPending || !settings.enabled}
+                  />
+                </div>
+
+                <div className="flex items-center justify-between gap-4">
+                  <div>
+                    <Label htmlFor="telegram-pool-change">Pool failover</Label>
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      Notify when mining moves from one configured pool to another.
+                    </p>
+                  </div>
+                  <Switch
+                    id="telegram-pool-change"
+                    checked={settings.notifyOnPoolChange}
+                    onCheckedChange={(notifyOnPoolChange) => {
+                      clearError();
+                      runMutation(update({ notifyOnPoolChange }));
+                    }}
+                    disabled={isPending || !settings.enabled}
+                  />
+                </div>
+
+                <div className="flex items-center justify-between gap-4">
+                  <div>
+                    <Label htmlFor="telegram-status-changes">Mining start and stop</Label>
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      Notify when the local mining stack starts or stops.
                     </p>
                   </div>
                   <Switch
@@ -246,6 +315,42 @@ export function ExperimentalTab() {
                     onCheckedChange={(notifyOnStatusChange) => {
                       clearError();
                       runMutation(update({ notifyOnStatusChange }));
+                    }}
+                    disabled={isPending || !settings.enabled}
+                  />
+                </div>
+
+                <div className="flex items-center justify-between gap-4">
+                  <div>
+                    <Label htmlFor="telegram-worker-changes">Worker changes</Label>
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      Notify when the monitored worker count increases or decreases.
+                    </p>
+                  </div>
+                  <Switch
+                    id="telegram-worker-changes"
+                    checked={settings.notifyOnWorkerChange}
+                    onCheckedChange={(notifyOnWorkerChange) => {
+                      clearError();
+                      runMutation(update({ notifyOnWorkerChange }));
+                    }}
+                    disabled={isPending || !settings.enabled}
+                  />
+                </div>
+
+                <div className="flex items-center justify-between gap-4">
+                  <div>
+                    <Label htmlFor="telegram-rejected-shares">Rejected shares</Label>
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      Notify when the upstream rejected-share counter increases.
+                    </p>
+                  </div>
+                  <Switch
+                    id="telegram-rejected-shares"
+                    checked={settings.notifyOnRejectedShares}
+                    onCheckedChange={(notifyOnRejectedShares) => {
+                      clearError();
+                      runMutation(update({ notifyOnRejectedShares }));
                     }}
                     disabled={isPending || !settings.enabled}
                   />
@@ -274,7 +379,8 @@ export function ExperimentalTab() {
                   </div>
                   <p className="text-xs text-muted-foreground">
                     Use 0 to disable summaries, or choose 15-1440 minutes. Summaries include
-                    hashrate, workers, and upstream share counts when monitoring data is available.
+                    hashrate, workers, upstream share counts, blocks found, and best difficulty when
+                    monitoring data is available.
                   </p>
                 </div>
               </div>

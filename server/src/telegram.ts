@@ -1,10 +1,10 @@
-import { randomBytes } from 'crypto';
-import fs from 'fs/promises';
-import path from 'path';
+import { randomBytes } from 'node:crypto';
+import fs from 'node:fs/promises';
+import path from 'node:path';
 
-const DEFAULT_SUMMARY_INTERVAL_MINUTES = 60;
 const MIN_SUMMARY_INTERVAL_MINUTES = 15;
 const MAX_SUMMARY_INTERVAL_MINUTES = 24 * 60;
+const SUMMARY_INTERVAL_OPTIONS = [0, 15, 60, 6 * 60] as const;
 
 type FetchImplementation = typeof fetch;
 
@@ -24,12 +24,22 @@ type TelegramChat = {
   title?: string;
 };
 
+type TelegramMessage = {
+  message_id: number;
+  text?: string;
+  chat: TelegramChat;
+};
+
+type TelegramCallbackQuery = {
+  id: string;
+  data?: string;
+  message?: TelegramMessage;
+};
+
 type TelegramUpdate = {
   update_id: number;
-  message?: {
-    text?: string;
-    chat: TelegramChat;
-  };
+  message?: TelegramMessage;
+  callback_query?: TelegramCallbackQuery;
 };
 
 type TelegramApiResponse<T> = {
@@ -39,7 +49,29 @@ type TelegramApiResponse<T> = {
   error_code?: number;
 };
 
-type SavedTelegramSettings = {
+type TelegramAlertSettings = {
+  enabled: boolean;
+  notifyOnBlockFound: boolean;
+  notifyOnBestDifficulty: boolean;
+  notifyOnPoolChange: boolean;
+  notifyOnStatusChange: boolean;
+  notifyOnWorkerChange: boolean;
+  notifyOnRejectedShares: boolean;
+  summaryIntervalMinutes: number;
+};
+
+type SavedTelegramSettings = TelegramAlertSettings & {
+  version: 2;
+  botToken: string;
+  botUsername: string;
+  botName: string;
+  pairingCode: string | null;
+  chatId: number | null;
+  recipient: string | null;
+  lastUpdateId: number | null;
+};
+
+type LegacySavedTelegramSettings = {
   version: 1;
   botToken: string;
   botUsername: string;
@@ -52,22 +84,22 @@ type SavedTelegramSettings = {
   summaryIntervalMinutes: number;
 };
 
-export type TelegramSettings = {
+export type TelegramSettings = TelegramAlertSettings & {
   connected: boolean;
   paired: boolean;
   botUsername: string | null;
   botName: string | null;
   recipient: string | null;
   pairingUrl: string | null;
-  enabled: boolean;
-  notifyOnStatusChange: boolean;
-  summaryIntervalMinutes: number;
 };
 
-export type TelegramSettingsUpdate = {
-  enabled?: boolean;
-  notifyOnStatusChange?: boolean;
-  summaryIntervalMinutes?: number;
+export type TelegramSettingsUpdate = Partial<TelegramAlertSettings>;
+
+export type TelegramMiningChannel = {
+  key: string;
+  userIdentity: string;
+  blocksFound: number;
+  bestDifficulty: number;
 };
 
 export type TelegramActivitySnapshot = {
@@ -78,6 +110,7 @@ export type TelegramActivitySnapshot = {
   sharesSubmitted: number | null;
   sharesAccepted: number | null;
   sharesRejected: number | null;
+  channels: TelegramMiningChannel[] | null;
 };
 
 export class TelegramConfigError extends Error {}
@@ -91,6 +124,17 @@ export class TelegramApiError extends Error {
   }
 }
 
+const DEFAULT_ALERT_SETTINGS: TelegramAlertSettings = {
+  enabled: true,
+  notifyOnBlockFound: true,
+  notifyOnBestDifficulty: true,
+  notifyOnPoolChange: true,
+  notifyOnStatusChange: false,
+  notifyOnWorkerChange: false,
+  notifyOnRejectedShares: false,
+  summaryIntervalMinutes: 0,
+};
+
 function getEmptySettings(): TelegramSettings {
   return {
     connected: false,
@@ -99,9 +143,8 @@ function getEmptySettings(): TelegramSettings {
     botName: null,
     recipient: null,
     pairingUrl: null,
+    ...DEFAULT_ALERT_SETTINGS,
     enabled: false,
-    notifyOnStatusChange: true,
-    summaryIntervalMinutes: DEFAULT_SUMMARY_INTERVAL_MINUTES,
   };
 }
 
@@ -118,17 +161,22 @@ function toPublicSettings(settings: SavedTelegramSettings | null): TelegramSetti
       ? `https://t.me/${settings.botUsername}?start=${settings.pairingCode}`
       : null,
     enabled: settings.enabled,
+    notifyOnBlockFound: settings.notifyOnBlockFound,
+    notifyOnBestDifficulty: settings.notifyOnBestDifficulty,
+    notifyOnPoolChange: settings.notifyOnPoolChange,
     notifyOnStatusChange: settings.notifyOnStatusChange,
+    notifyOnWorkerChange: settings.notifyOnWorkerChange,
+    notifyOnRejectedShares: settings.notifyOnRejectedShares,
     summaryIntervalMinutes: settings.summaryIntervalMinutes,
   };
 }
 
-function isSavedSettings(value: unknown): value is SavedTelegramSettings {
-  if (!value || typeof value !== 'object') return false;
-  const settings = value as Partial<SavedTelegramSettings>;
+function isObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
 
-  return settings.version === 1 &&
-    typeof settings.botToken === 'string' &&
+function hasConnectionFields(settings: Record<string, unknown>): boolean {
+  return typeof settings.botToken === 'string' &&
     typeof settings.botUsername === 'string' &&
     typeof settings.botName === 'string' &&
     (settings.pairingCode === null || typeof settings.pairingCode === 'string') &&
@@ -137,6 +185,38 @@ function isSavedSettings(value: unknown): value is SavedTelegramSettings {
     typeof settings.enabled === 'boolean' &&
     typeof settings.notifyOnStatusChange === 'boolean' &&
     Number.isInteger(settings.summaryIntervalMinutes);
+}
+
+function parseSavedSettings(value: unknown): SavedTelegramSettings | null {
+  if (!isObject(value) || !hasConnectionFields(value)) return null;
+
+  if (value.version === 1) {
+    const legacy = value as LegacySavedTelegramSettings;
+    return {
+      ...legacy,
+      version: 2,
+      notifyOnBlockFound: true,
+      notifyOnBestDifficulty: true,
+      notifyOnPoolChange: true,
+      notifyOnWorkerChange: false,
+      notifyOnRejectedShares: false,
+      lastUpdateId: null,
+    };
+  }
+
+  if (
+    value.version !== 2 ||
+    typeof value.notifyOnBlockFound !== 'boolean' ||
+    typeof value.notifyOnBestDifficulty !== 'boolean' ||
+    typeof value.notifyOnPoolChange !== 'boolean' ||
+    typeof value.notifyOnWorkerChange !== 'boolean' ||
+    typeof value.notifyOnRejectedShares !== 'boolean' ||
+    (value.lastUpdateId !== null && !Number.isInteger(value.lastUpdateId))
+  ) {
+    return null;
+  }
+
+  return value as SavedTelegramSettings;
 }
 
 function getRecipientLabel(chat: TelegramChat): string {
@@ -153,6 +233,12 @@ function getStartParameter(text: string | undefined): string | null {
   return match?.[1] ?? null;
 }
 
+function getCommand(text: string | undefined): string | null {
+  if (!text) return null;
+  const match = text.trim().match(/^\/([a-z]+)(?:@[A-Za-z0-9_]+)?(?:\s|$)/i);
+  return match?.[1]?.toLowerCase() ?? null;
+}
+
 function formatHashrate(hashrate: number | null): string | null {
   if (hashrate === null || !Number.isFinite(hashrate)) return null;
 
@@ -167,6 +253,20 @@ function formatHashrate(hashrate: number | null): string | null {
 
   const decimals = value >= 100 ? 0 : value >= 10 ? 1 : 2;
   return `${value.toFixed(decimals)} ${units[unitIndex]}`;
+}
+
+function formatDifficulty(difficulty: number): string {
+  if (!Number.isFinite(difficulty)) return 'Unknown';
+  return new Intl.NumberFormat('en-US', {
+    maximumFractionDigits: difficulty >= 100 ? 0 : 2,
+  }).format(difficulty);
+}
+
+function getBestChannel(channels: TelegramMiningChannel[] | null): TelegramMiningChannel | null {
+  if (!channels?.length) return null;
+  return channels.reduce((best, channel) =>
+    channel.bestDifficulty > best.bestDifficulty ? channel : best
+  );
 }
 
 export function formatTelegramStatus(
@@ -195,6 +295,18 @@ export function formatTelegramStatus(
     lines.push(`Shares: ${shareParts.join(' · ')}`);
   }
 
+  if (snapshot.channels) {
+    const blocksFound = snapshot.channels.reduce(
+      (total, channel) => total + channel.blocksFound,
+      0
+    );
+    const bestChannel = getBestChannel(snapshot.channels);
+    lines.push(`Blocks found: ${blocksFound.toLocaleString()}`);
+    if (bestChannel) {
+      lines.push(`Best difficulty: ${formatDifficulty(bestChannel.bestDifficulty)}`);
+    }
+  }
+
   return lines.join('\n');
 }
 
@@ -221,11 +333,143 @@ export function getStatusChangeMessage(
   return null;
 }
 
+function getMiningStatusChangeMessage(
+  previous: TelegramActivitySnapshot,
+  current: TelegramActivitySnapshot
+): string | null {
+  if (!previous.running && current.running) {
+    return formatTelegramStatus(current, '🟢 SV2 mining started');
+  }
+  if (previous.running && !current.running) {
+    return formatTelegramStatus(current, '🔴 SV2 mining stopped');
+  }
+  return null;
+}
+
+function getBlockFoundMessages(
+  previous: TelegramActivitySnapshot,
+  current: TelegramActivitySnapshot
+): string[] {
+  if (!previous.channels || !current.channels) return [];
+
+  const previousByKey = new Map(previous.channels.map((channel) => [channel.key, channel]));
+  return current.channels.flatMap((channel) => {
+    const before = previousByKey.get(channel.key);
+    if (!before || channel.blocksFound <= before.blocksFound) return [];
+
+    const delta = channel.blocksFound - before.blocksFound;
+    const lines = ['🎉 Block found!'];
+    if (current.poolName) lines.push(`Pool: ${current.poolName}`);
+    lines.push(`Worker: ${channel.userIdentity}`);
+    lines.push(
+      delta === 1
+        ? `Channel total: ${channel.blocksFound.toLocaleString()}`
+        : `New blocks: ${delta.toLocaleString()} · Channel total: ${channel.blocksFound.toLocaleString()}`
+    );
+    lines.push(`Best difficulty: ${formatDifficulty(channel.bestDifficulty)}`);
+    return [lines.join('\n')];
+  });
+}
+
+function getBestDifficultyMessage(
+  previous: TelegramActivitySnapshot,
+  current: TelegramActivitySnapshot,
+  highWatermark: number
+): string | null {
+  if (!previous.channels || !current.channels) return null;
+
+  const previousByKey = new Map(previous.channels.map((channel) => [channel.key, channel]));
+  const improved = current.channels
+    .filter((channel) => {
+      const before = previousByKey.get(channel.key);
+      return before &&
+        channel.bestDifficulty > before.bestDifficulty &&
+        channel.bestDifficulty > highWatermark;
+    })
+    .sort((left, right) => right.bestDifficulty - left.bestDifficulty)[0];
+
+  if (!improved) return null;
+
+  const lines = ['🏆 New best difficulty!'];
+  if (current.poolName) lines.push(`Pool: ${current.poolName}`);
+  lines.push(`Worker: ${improved.userIdentity}`);
+  lines.push(`Difficulty: ${formatDifficulty(improved.bestDifficulty)}`);
+  return lines.join('\n');
+}
+
+function formatSummaryInterval(minutes: number): string {
+  if (minutes === 0) return 'Off';
+  if (minutes % 60 === 0) return `${minutes / 60}h`;
+  return `${minutes}m`;
+}
+
+function getSettingsMessage(settings: SavedTelegramSettings): string {
+  return [
+    '⚙️ SV2 Telegram alerts',
+    '',
+    'Tap a button to toggle an alert. Critical defaults are block found, new best difficulty, and pool failover.',
+    '',
+    `Notifications: ${settings.enabled ? 'ON' : 'OFF'}`,
+    `Summary: ${formatSummaryInterval(settings.summaryIntervalMinutes)}`,
+  ].join('\n');
+}
+
+function toggleButton(enabled: boolean, label: string, callbackData: string) {
+  return {
+    text: `${enabled ? '✅' : '⬜'} ${label}`,
+    callback_data: callbackData,
+  };
+}
+
+function getSettingsKeyboard(settings: SavedTelegramSettings) {
+  return {
+    inline_keyboard: [
+      [toggleButton(settings.enabled, 'Notifications', 'sv2:toggle:enabled')],
+      [
+        toggleButton(settings.notifyOnBlockFound, 'Block found', 'sv2:toggle:block'),
+        toggleButton(settings.notifyOnBestDifficulty, 'Best difficulty', 'sv2:toggle:best'),
+      ],
+      [toggleButton(settings.notifyOnPoolChange, 'Pool failover', 'sv2:toggle:pool')],
+      [
+        toggleButton(settings.notifyOnStatusChange, 'Mining status', 'sv2:toggle:status'),
+        toggleButton(settings.notifyOnWorkerChange, 'Workers', 'sv2:toggle:workers'),
+      ],
+      [toggleButton(settings.notifyOnRejectedShares, 'Rejected shares', 'sv2:toggle:rejected')],
+      [{
+        text: `⏱ Summary: ${formatSummaryInterval(settings.summaryIntervalMinutes)}`,
+        callback_data: 'sv2:toggle:summary',
+      }],
+    ],
+  };
+}
+
+function getHelpMessage(): string {
+  return [
+    '⛏ SV2 UI Telegram bot',
+    '',
+    '/settings — choose alerts',
+    '/status — current mining status',
+    '/help — show these commands',
+  ].join('\n');
+}
+
+function cycleSummaryInterval(current: number): number {
+  const currentIndex = SUMMARY_INTERVAL_OPTIONS.indexOf(
+    current as typeof SUMMARY_INTERVAL_OPTIONS[number]
+  );
+  return SUMMARY_INTERVAL_OPTIONS[
+    currentIndex === -1 ? 0 : (currentIndex + 1) % SUMMARY_INTERVAL_OPTIONS.length
+  ];
+}
+
 export class TelegramService {
   private settings: SavedTelegramSettings | null = null;
   private initialized = false;
   private previousSnapshot: TelegramActivitySnapshot | null = null;
+  private channelBaselines = new Map<string, TelegramMiningChannel>();
+  private bestDifficultyHighWatermark = 0;
   private lastSummaryAt: number | null = null;
+  private lastKnownPoolName: string | null = null;
   private pollInProgress = false;
 
   constructor(
@@ -238,8 +482,8 @@ export class TelegramService {
 
     try {
       const raw = await fs.readFile(this.settingsFile, 'utf8');
-      const parsed: unknown = JSON.parse(raw);
-      if (!isSavedSettings(parsed)) {
+      const parsed = parseSavedSettings(JSON.parse(raw) as unknown);
+      if (!parsed) {
         throw new TelegramConfigError('Stored Telegram settings are invalid');
       }
       this.settings = parsed;
@@ -276,16 +520,16 @@ export class TelegramService {
     }
 
     this.settings = {
-      version: 1,
+      version: 2,
       botToken: token,
       botUsername: bot.username,
       botName: bot.first_name,
       pairingCode: `sv2_${randomBytes(18).toString('base64url')}`,
       chatId: null,
       recipient: null,
+      lastUpdateId: null,
+      ...DEFAULT_ALERT_SETTINGS,
       enabled: false,
-      notifyOnStatusChange: true,
-      summaryIntervalMinutes: DEFAULT_SUMMARY_INTERVAL_MINUTES,
     };
     this.resetMonitorState();
     await this.save();
@@ -326,19 +570,30 @@ export class TelegramService {
       );
     }
 
-    await this.sendMessage(
-      settings.botToken,
-      chat.id,
-      '✅ SV2 UI is linked. Telegram activity updates are now enabled.'
-    );
-
-    this.settings = {
+    const pairedSettings: SavedTelegramSettings = {
       ...settings,
       pairingCode: null,
       chatId: chat.id,
       recipient: getRecipientLabel(chat),
-      enabled: true,
+      lastUpdateId: updates.reduce(
+        (latest, update) => Math.max(latest, update.update_id),
+        matchingUpdate.update_id
+      ),
+      ...DEFAULT_ALERT_SETTINGS,
     };
+
+    await this.sendMessage(
+      pairedSettings.botToken,
+      chat.id,
+      [
+        '✅ SV2 UI is linked.',
+        '',
+        'Block found, new best difficulty, and pool failover alerts are enabled.',
+        'Use /settings to configure alerts or /status for a live summary.',
+      ].join('\n')
+    );
+
+    this.settings = pairedSettings;
     this.resetMonitorState();
     await this.save();
     return toPublicSettings(this.settings);
@@ -347,22 +602,39 @@ export class TelegramService {
   async updateSettings(update: TelegramSettingsUpdate): Promise<TelegramSettings> {
     await this.initialize();
     const settings = this.requirePaired();
+    const next = {
+      ...settings,
+      enabled: update.enabled ?? settings.enabled,
+      notifyOnBlockFound: update.notifyOnBlockFound ?? settings.notifyOnBlockFound,
+      notifyOnBestDifficulty:
+        update.notifyOnBestDifficulty ?? settings.notifyOnBestDifficulty,
+      notifyOnPoolChange: update.notifyOnPoolChange ?? settings.notifyOnPoolChange,
+      notifyOnStatusChange: update.notifyOnStatusChange ?? settings.notifyOnStatusChange,
+      notifyOnWorkerChange: update.notifyOnWorkerChange ?? settings.notifyOnWorkerChange,
+      notifyOnRejectedShares:
+        update.notifyOnRejectedShares ?? settings.notifyOnRejectedShares,
+      summaryIntervalMinutes:
+        update.summaryIntervalMinutes ?? settings.summaryIntervalMinutes,
+    };
 
-    const enabled = update.enabled ?? settings.enabled;
-    const notifyOnStatusChange =
-      update.notifyOnStatusChange ?? settings.notifyOnStatusChange;
-    const summaryIntervalMinutes =
-      update.summaryIntervalMinutes ?? settings.summaryIntervalMinutes;
-
-    if (typeof enabled !== 'boolean' || typeof notifyOnStatusChange !== 'boolean') {
+    const booleanKeys = [
+      'enabled',
+      'notifyOnBlockFound',
+      'notifyOnBestDifficulty',
+      'notifyOnPoolChange',
+      'notifyOnStatusChange',
+      'notifyOnWorkerChange',
+      'notifyOnRejectedShares',
+    ] as const;
+    if (booleanKeys.some((key) => typeof next[key] !== 'boolean')) {
       throw new TelegramConfigError('Notification settings must be true or false');
     }
     if (
-      !Number.isInteger(summaryIntervalMinutes) ||
-      (summaryIntervalMinutes !== 0 &&
+      !Number.isInteger(next.summaryIntervalMinutes) ||
+      (next.summaryIntervalMinutes !== 0 &&
         (
-          summaryIntervalMinutes < MIN_SUMMARY_INTERVAL_MINUTES ||
-          summaryIntervalMinutes > MAX_SUMMARY_INTERVAL_MINUTES
+          next.summaryIntervalMinutes < MIN_SUMMARY_INTERVAL_MINUTES ||
+          next.summaryIntervalMinutes > MAX_SUMMARY_INTERVAL_MINUTES
         ))
     ) {
       throw new TelegramConfigError(
@@ -370,12 +642,7 @@ export class TelegramService {
       );
     }
 
-    this.settings = {
-      ...settings,
-      enabled,
-      notifyOnStatusChange,
-      summaryIntervalMinutes,
-    };
+    this.settings = next;
     this.resetMonitorState();
     await this.save();
     return toPublicSettings(this.settings);
@@ -409,32 +676,116 @@ export class TelegramService {
     await this.initialize();
     if (this.pollInProgress) return;
 
-    const settings = this.settings;
-    if (!settings?.enabled || settings.chatId === null) {
+    const initialSettings = this.settings;
+    if (!initialSettings || initialSettings.chatId === null) {
       this.resetMonitorState();
       return;
     }
 
     this.pollInProgress = true;
+    let snapshotPromise: Promise<TelegramActivitySnapshot> | null = null;
+    const getSnapshot = () => {
+      snapshotPromise ??= snapshotProvider();
+      return snapshotPromise;
+    };
+
     try {
-      const current = await snapshotProvider();
+      await this.processBotUpdates(
+        initialSettings as SavedTelegramSettings & { chatId: number },
+        getSnapshot
+      );
+      const settings = this.requirePaired();
+      if (!settings.enabled) {
+        this.resetMonitorState();
+        return;
+      }
+
+      const current = await getSnapshot();
       const now = Date.now();
 
       if (!this.previousSnapshot) {
         this.previousSnapshot = current;
+        this.updateChannelBaselines(current.channels);
+        this.lastKnownPoolName = current.poolName;
         this.lastSummaryAt = now;
         return;
       }
 
-      const statusMessage = settings.notifyOnStatusChange
-        ? getStatusChangeMessage(this.previousSnapshot, current)
-        : null;
+      const messages: string[] = [];
+      const channelBaselineSnapshot = {
+        ...this.previousSnapshot,
+        channels: [...this.channelBaselines.values()],
+      };
+      const blockMessages = settings.notifyOnBlockFound
+        ? getBlockFoundMessages(channelBaselineSnapshot, current)
+        : [];
+      messages.push(...blockMessages);
+
+      if (
+        settings.notifyOnBestDifficulty &&
+        blockMessages.length === 0
+      ) {
+        const bestDifficultyMessage = getBestDifficultyMessage(
+          channelBaselineSnapshot,
+          current,
+          this.bestDifficultyHighWatermark
+        );
+        if (bestDifficultyMessage) messages.push(bestDifficultyMessage);
+      }
+
+      if (
+        settings.notifyOnPoolChange &&
+        current.running &&
+        this.lastKnownPoolName &&
+        current.poolName &&
+        this.lastKnownPoolName !== current.poolName
+      ) {
+        messages.push([
+          '🔁 Pool failover',
+          `From: ${this.lastKnownPoolName}`,
+          `To: ${current.poolName}`,
+        ].join('\n'));
+      }
+
+      if (settings.notifyOnStatusChange) {
+        const statusMessage = getMiningStatusChangeMessage(this.previousSnapshot, current);
+        if (statusMessage) messages.push(statusMessage);
+      }
+
+      if (
+        settings.notifyOnWorkerChange &&
+        this.previousSnapshot.workers !== null &&
+        current.workers !== null &&
+        this.previousSnapshot.workers !== current.workers
+      ) {
+        messages.push([
+          current.workers > this.previousSnapshot.workers
+            ? '🟢 Worker connected'
+            : '🟠 Worker disconnected',
+          `Workers: ${this.previousSnapshot.workers.toLocaleString()} → ${current.workers.toLocaleString()}`,
+        ].join('\n'));
+      }
+
+      if (
+        settings.notifyOnRejectedShares &&
+        this.previousSnapshot.sharesRejected !== null &&
+        current.sharesRejected !== null &&
+        current.sharesRejected > this.previousSnapshot.sharesRejected
+      ) {
+        messages.push([
+          '⚠️ Rejected shares increased',
+          `New rejected shares: ${(current.sharesRejected - this.previousSnapshot.sharesRejected).toLocaleString()}`,
+          `Total rejected: ${current.sharesRejected.toLocaleString()}`,
+        ].join('\n'));
+      }
+
       const summaryDue = settings.summaryIntervalMinutes > 0 &&
         this.lastSummaryAt !== null &&
         now - this.lastSummaryAt >= settings.summaryIntervalMinutes * 60_000;
 
-      if (statusMessage) {
-        await this.sendMessage(settings.botToken, settings.chatId, statusMessage);
+      if (messages.length > 0) {
+        await this.sendMessage(settings.botToken, settings.chatId, messages.join('\n\n'));
+        this.lastSummaryAt = now;
       } else if (summaryDue) {
         await this.sendMessage(
           settings.botToken,
@@ -444,10 +795,135 @@ export class TelegramService {
         this.lastSummaryAt = now;
       }
 
-      this.previousSnapshot = current;
+      this.previousSnapshot = current.channels === null
+        ? { ...current, channels: this.previousSnapshot.channels }
+        : current;
+      this.updateChannelBaselines(current.channels);
+      if (current.poolName) this.lastKnownPoolName = current.poolName;
     } finally {
       this.pollInProgress = false;
     }
+  }
+
+  private async processBotUpdates(
+    settings: SavedTelegramSettings & { chatId: number },
+    getSnapshot: () => Promise<TelegramActivitySnapshot>
+  ): Promise<void> {
+    const updates = await this.callApi<TelegramUpdate[]>(
+      settings.botToken,
+      'getUpdates',
+      {
+        offset: settings.lastUpdateId === null ? 0 : settings.lastUpdateId + 1,
+        limit: 100,
+        timeout: 0,
+        allowed_updates: ['message', 'callback_query'],
+      }
+    );
+
+    if (updates.length === 0) return;
+
+    for (const update of [...updates].sort((left, right) => left.update_id - right.update_id)) {
+      if (this.settings) {
+        this.settings = { ...this.settings, lastUpdateId: update.update_id };
+        await this.save();
+      }
+      const currentSettings = this.requirePaired();
+      const message = update.message;
+      if (
+        message?.chat.type === 'private' &&
+        message.chat.id === currentSettings.chatId
+      ) {
+        const command = getCommand(message.text);
+        if (command === 'settings' || command === 'alerts') {
+          await this.sendSettingsMessage(currentSettings);
+        } else if (command === 'status') {
+          await this.sendMessage(
+            currentSettings.botToken,
+            currentSettings.chatId,
+            formatTelegramStatus(await getSnapshot())
+          );
+        } else if (command === 'start' || command === 'help') {
+          await this.sendMessage(
+            currentSettings.botToken,
+            currentSettings.chatId,
+            getHelpMessage()
+          );
+        }
+      }
+
+      const callback = update.callback_query;
+      if (
+        callback?.message?.chat.type === 'private' &&
+        callback.message.chat.id === currentSettings.chatId &&
+        callback.data?.startsWith('sv2:toggle:')
+      ) {
+        await this.handleToggle(callback);
+      }
+    }
+  }
+
+  private async handleToggle(callback: TelegramCallbackQuery): Promise<void> {
+    const settings = this.requirePaired();
+    const key = callback.data?.slice('sv2:toggle:'.length);
+    const next = { ...settings };
+
+    switch (key) {
+      case 'enabled':
+        next.enabled = !next.enabled;
+        break;
+      case 'block':
+        next.notifyOnBlockFound = !next.notifyOnBlockFound;
+        break;
+      case 'best':
+        next.notifyOnBestDifficulty = !next.notifyOnBestDifficulty;
+        break;
+      case 'pool':
+        next.notifyOnPoolChange = !next.notifyOnPoolChange;
+        break;
+      case 'status':
+        next.notifyOnStatusChange = !next.notifyOnStatusChange;
+        break;
+      case 'workers':
+        next.notifyOnWorkerChange = !next.notifyOnWorkerChange;
+        break;
+      case 'rejected':
+        next.notifyOnRejectedShares = !next.notifyOnRejectedShares;
+        break;
+      case 'summary':
+        next.summaryIntervalMinutes = cycleSummaryInterval(next.summaryIntervalMinutes);
+        break;
+      default:
+        await this.callApi(settings.botToken, 'answerCallbackQuery', {
+          callback_query_id: callback.id,
+          text: 'This alert option is no longer available.',
+        });
+        return;
+    }
+
+    this.settings = next;
+    this.resetMonitorState();
+    await this.save();
+    await this.callApi(settings.botToken, 'answerCallbackQuery', {
+      callback_query_id: callback.id,
+      text: 'Alert settings updated.',
+    });
+
+    if (callback.message) {
+      await this.callApi(settings.botToken, 'editMessageText', {
+        chat_id: settings.chatId,
+        message_id: callback.message.message_id,
+        text: getSettingsMessage(next),
+        reply_markup: getSettingsKeyboard(next),
+      });
+    }
+  }
+
+  private async sendSettingsMessage(settings: SavedTelegramSettings): Promise<void> {
+    await this.callApi(settings.botToken, 'sendMessage', {
+      chat_id: settings.chatId,
+      text: getSettingsMessage(settings),
+      reply_markup: getSettingsKeyboard(settings),
+    });
   }
 
   private requireConnected(): SavedTelegramSettings {
@@ -479,7 +955,22 @@ export class TelegramService {
 
   private resetMonitorState(): void {
     this.previousSnapshot = null;
+    this.channelBaselines.clear();
+    this.bestDifficultyHighWatermark = 0;
     this.lastSummaryAt = null;
+    this.lastKnownPoolName = null;
+  }
+
+  private updateChannelBaselines(channels: TelegramMiningChannel[] | null): void {
+    if (!channels) return;
+
+    for (const channel of channels) {
+      this.channelBaselines.set(channel.key, channel);
+      this.bestDifficultyHighWatermark = Math.max(
+        this.bestDifficultyHighWatermark,
+        channel.bestDifficulty
+      );
+    }
   }
 
   private async sendMessage(botToken: string, chatId: number, text: string): Promise<void> {

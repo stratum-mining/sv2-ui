@@ -42,16 +42,12 @@ const SETUP: SetupData = {
   },
 };
 
-test('summarizes latency with average as the primary score and rank-based p95', () => {
+test('summarizes latency using the arithmetic average', () => {
   assert.deepEqual(summarizeLatencySamples([10, 12, 11, 50]), {
     averageLatencyMs: 20.8,
-    minLatencyMs: 10,
-    p95LatencyMs: 50,
   });
   assert.deepEqual(summarizeLatencySamples([]), {
     averageLatencyMs: null,
-    minLatencyMs: null,
-    p95LatencyMs: null,
   });
 });
 

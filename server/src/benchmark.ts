@@ -35,8 +35,6 @@ export type BenchmarkDependencies = {
 
 type LatencySummary = {
   averageLatencyMs: number | null;
-  minLatencyMs: number | null;
-  p95LatencyMs: number | null;
 };
 
 const DEFAULT_SAMPLE_INTERVAL_MS = 5_000;
@@ -82,19 +80,13 @@ export function summarizeLatencySamples(samples: number[]): LatencySummary {
   if (samples.length === 0) {
     return {
       averageLatencyMs: null,
-      minLatencyMs: null,
-      p95LatencyMs: null,
     };
   }
 
-  const sorted = [...samples].sort((a, b) => a - b);
   const average = samples.reduce((sum, sample) => sum + sample, 0) / samples.length;
-  const p95Index = Math.min(sorted.length - 1, Math.ceil(sorted.length * 0.95) - 1);
 
   return {
     averageLatencyMs: Math.round(average * 10) / 10,
-    minLatencyMs: Math.round(sorted[0] * 10) / 10,
-    p95LatencyMs: Math.round(sorted[p95Index] * 10) / 10,
   };
 }
 
@@ -218,8 +210,6 @@ export class BenchmarkManager {
         startedAt: null,
         completedAt: null,
         averageLatencyMs: null,
-        minLatencyMs: null,
-        p95LatencyMs: null,
         successfulSamples: 0,
         attemptedSamples: 0,
         acceptedShares: null,

@@ -71,8 +71,6 @@ export interface BenchmarkPoolResult {
   startedAt: string | null;
   completedAt: string | null;
   averageLatencyMs: number | null;
-  minLatencyMs: number | null;
-  p95LatencyMs: number | null;
   successfulSamples: number;
   attemptedSamples: number;
   acceptedShares: number | null;

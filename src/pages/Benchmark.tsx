@@ -444,11 +444,6 @@ export function Benchmark() {
                             </TableCell>
                             <TableCell className="text-right font-mono">
                               <div className="font-semibold">{formatLatency(result.averageLatencyMs)}</div>
-                              {result.averageLatencyMs !== null && (
-                                <div className="mt-1 text-[11px] text-muted-foreground">
-                                  min {formatLatency(result.minLatencyMs)} · p95 {formatLatency(result.p95LatencyMs)}
-                                </div>
-                              )}
                             </TableCell>
                             <TableCell className="text-right font-mono">
                               {result.successfulSamples}/{result.attemptedSamples}
@@ -483,8 +478,9 @@ export function Benchmark() {
                     </TableBody>
                   </Table>
                   <p className="mt-4 text-xs text-muted-foreground">
-                    Accepted means acknowledged by the upstream pool. Average, minimum, and p95 are
-                    TCP connection samples from the SV2 UI backend; they are not share-ack round-trip times.
+                    Accepted means acknowledged by the upstream pool. Average latency is calculated
+                    from TCP connection samples taken by the SV2 UI backend; it is not a share-ack
+                    round-trip time.
                   </p>
                 </CardContent>
               </Card>

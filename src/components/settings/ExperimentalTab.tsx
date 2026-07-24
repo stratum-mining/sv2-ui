@@ -1,20 +1,41 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import {
   Bot,
   ExternalLink,
-  FlaskConical,
   Loader2,
   Send,
-  ShieldCheck,
   Unplug,
 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
-import { useTelegram } from '@/hooks/useTelegram';
+import { useTelegram, type TelegramSettings } from '@/hooks/useTelegram';
+
+const TELEGRAM_EXPERIMENT_STORAGE_KEY = 'sv2-ui-experiment-telegram-enabled';
+
+function readStoredTelegramExperimentState(): boolean | null {
+  if (typeof window === 'undefined') return null;
+
+  const stored = window.localStorage.getItem(TELEGRAM_EXPERIMENT_STORAGE_KEY);
+  return stored === null ? null : stored === 'true';
+}
+
+function storeTelegramExperimentState(enabled: boolean): void {
+  if (typeof window === 'undefined') return;
+  window.localStorage.setItem(TELEGRAM_EXPERIMENT_STORAGE_KEY, String(enabled));
+}
+
+export function isTelegramExperimentOpen(
+  settings: Pick<TelegramSettings, 'connected' | 'paired' | 'enabled'>,
+  setupEnabled: boolean | null,
+): boolean {
+  return settings.paired
+    ? settings.enabled
+    : setupEnabled ?? settings.connected;
+}
 
 function runMutation(promise: Promise<unknown>): void {
   void promise.catch(() => {
@@ -39,6 +60,9 @@ export function ExperimentalTab() {
   } = useTelegram();
   const [botToken, setBotToken] = useState('');
   const [summaryInterval, setSummaryInterval] = useState('60');
+  const [telegramSetupEnabled, setTelegramSetupEnabled] = useState<boolean | null>(
+    readStoredTelegramExperimentState,
+  );
 
   useEffect(() => {
     if (settings) {
@@ -71,6 +95,18 @@ export function ExperimentalTab() {
     window.open(settings.pairingUrl, '_blank', 'noopener,noreferrer');
   };
 
+  const handleTelegramExperimentChange = (enabled: boolean) => {
+    clearError();
+
+    if (settings?.paired) {
+      runMutation(update({ enabled }));
+      return;
+    }
+
+    setTelegramSetupEnabled(enabled);
+    storeTelegramExperimentState(enabled);
+  };
+
   if (isLoading) {
     return (
       <div className="flex min-h-40 items-center justify-center text-sm text-muted-foreground">
@@ -93,27 +129,34 @@ export function ExperimentalTab() {
     );
   }
 
+  const telegramExperimentOpen = isTelegramExperimentOpen(
+    settings,
+    telegramSetupEnabled,
+  );
+
   return (
     <div className="space-y-6 animate-in slide-in-from-bottom-2 duration-300">
-      <Card className="glass-card shadow-md">
-        <CardHeader>
-          <div className="flex items-start gap-3">
-            <div className="rounded-lg bg-primary/10 p-2 text-primary">
-              <FlaskConical className="h-5 w-5" />
-            </div>
-            <div>
-              <CardTitle>Telegram activity updates</CardTitle>
-              <CardDescription className="mt-1">
-                Experimental local-only alerts for blocks, best difficulty, failover, and mining health.
-              </CardDescription>
-            </div>
-          </div>
-        </CardHeader>
-        <CardContent className="space-y-6">
+      <div className="space-y-1">
+        <h3 className="text-xl font-semibold tracking-tight">Experiments</h3>
+        <p className="text-sm text-muted-foreground">
+          These features are functional but still being refined. Enable them to try new
+          capabilities early.
+        </p>
+      </div>
+
+      <div className="space-y-3">
+        <ExperimentToggleCard
+          id="telegram-experiment"
+          title="Telegram activity updates"
+          description="Mining alerts and periodic updates in a private Telegram chat."
+          enabled={telegramExperimentOpen}
+          disabled={isPending}
+          onEnabledChange={handleTelegramExperimentChange}
+        >
           <div className="rounded-md border border-amber-500/30 bg-amber-500/10 p-4 text-sm">
             <p className="font-medium text-foreground">Proof-of-concept flow</p>
             <p className="mt-1 text-muted-foreground">
-              Telegram does not let bots start a conversation. Create a dedicated bot with{' '}
+              Create a dedicated bot with{' '}
               <a
                 href="https://t.me/BotFather"
                 target="_blank"
@@ -122,8 +165,7 @@ export function ExperimentalTab() {
               >
                 @BotFather
               </a>
-              , enter its token here, then press Start in the private bot chat. No SV2 cloud service
-              is involved.
+              , enter its token here, then press Start in the private bot chat on Telegram.
             </p>
           </div>
 
@@ -205,15 +247,12 @@ export function ExperimentalTab() {
           {settings.paired && (
             <div className="space-y-6">
               <div className="flex flex-col gap-3 rounded-md border border-green-500/30 bg-green-500/10 p-4 sm:flex-row sm:items-center sm:justify-between">
-                <div className="flex items-center gap-3">
-                  <ShieldCheck className="h-5 w-5 text-green-600 dark:text-green-400" />
-                  <div>
-                    <p className="font-medium">Paired with {settings.recipient}</p>
-                    <p className="text-sm text-muted-foreground">
-                      @{settings.botUsername} sends updates from this local SV2 UI backend. Send{' '}
-                      <span className="font-mono">/settings</span> to configure these alerts in Telegram.
-                    </p>
-                  </div>
+                <div className="min-w-0">
+                  <p className="font-medium">Paired with {settings.recipient}</p>
+                  <p className="text-sm text-muted-foreground">
+                    @{settings.botUsername} sends updates from this local SV2 UI backend. Send{' '}
+                    <span className="font-mono">/settings</span> to configure these alerts in Telegram.
+                  </p>
                 </div>
                 <Button
                   variant="outline"
@@ -230,24 +269,6 @@ export function ExperimentalTab() {
               </div>
 
               <div className="space-y-5">
-                <div className="flex items-center justify-between gap-4">
-                  <div>
-                    <Label htmlFor="telegram-enabled">Telegram notifications</Label>
-                    <p className="mt-1 text-sm text-muted-foreground">
-                      The backend keeps checking even when the browser is closed.
-                    </p>
-                  </div>
-                  <Switch
-                    id="telegram-enabled"
-                    checked={settings.enabled}
-                    onCheckedChange={(enabled) => {
-                      clearError();
-                      runMutation(update({ enabled }));
-                    }}
-                    disabled={isPending}
-                  />
-                </div>
-
                 <div className="flex items-center justify-between gap-4">
                   <div>
                     <Label htmlFor="telegram-block-found">Block found</Label>
@@ -377,11 +398,6 @@ export function ExperimentalTab() {
                       Save
                     </Button>
                   </div>
-                  <p className="text-xs text-muted-foreground">
-                    Use 0 to disable summaries, or choose 15-1440 minutes. Summaries include
-                    hashrate, workers, upstream share counts, blocks found, and best difficulty when
-                    monitoring data is available.
-                  </p>
                 </div>
               </div>
 
@@ -402,19 +418,77 @@ export function ExperimentalTab() {
             </div>
           )}
 
-          {error && (
-            <p className="rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
-              {error}
-            </p>
-          )}
-
           {testSent && !error && (
             <p className="text-sm text-green-600 dark:text-green-400" aria-live="polite">
               Test update sent to Telegram.
             </p>
           )}
-        </CardContent>
-      </Card>
+        </ExperimentToggleCard>
+
+        {error && (
+          <p className="rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
+            {error}
+          </p>
+        )}
+      </div>
     </div>
+  );
+}
+
+function ExperimentToggleCard({
+  id,
+  title,
+  description,
+  enabled,
+  disabled = false,
+  onEnabledChange,
+  children,
+}: {
+  id: string;
+  title: string;
+  description: string;
+  enabled: boolean;
+  disabled?: boolean;
+  onEnabledChange: (enabled: boolean) => void;
+  children: ReactNode;
+}) {
+  const switchId = `${id}-enabled`;
+  const labelId = `${id}-label`;
+  const contentId = `${id}-content`;
+
+  return (
+    <Card className={`overflow-hidden shadow-none transition-colors ${
+      enabled ? 'border-primary/35' : 'border-border/70'
+    }`}>
+      <div className="flex items-center gap-4 p-4 sm:p-5">
+        <div className="min-w-0 flex-1">
+          <label id={labelId} htmlFor={switchId} className="font-medium text-foreground">
+            {title}
+          </label>
+          <p className="mt-0.5 text-sm text-muted-foreground">{description}</p>
+        </div>
+        <Switch
+          id={switchId}
+          checked={enabled}
+          onCheckedChange={onEnabledChange}
+          disabled={disabled}
+          aria-labelledby={labelId}
+          aria-controls={contentId}
+          aria-expanded={enabled}
+          className="shrink-0"
+        />
+      </div>
+
+      {enabled && (
+        <div
+          id={contentId}
+          role="region"
+          aria-labelledby={labelId}
+          className="space-y-6 border-t border-border/70 bg-muted/10 p-4 animate-in fade-in slide-in-from-top-1 duration-200 sm:p-5"
+        >
+          {children}
+        </div>
+      )}
+    </Card>
   );
 }

@@ -3,7 +3,7 @@ import { ArrowDown, ArrowUp, GripVertical, X } from 'lucide-react';
 import { DEFAULT_POOL_PORT, type MiningMode, type PoolConfig } from '@sv2-ui/shared';
 import { PoolIcon } from '@/components/ui/pool-icon';
 import {
-  createEmptyCustomPool,
+  appendEmptyCustomPool,
   isSamePool,
   knownPoolToConfig,
   type KnownPool,
@@ -33,7 +33,6 @@ export function PoolPriorityEditor({
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
   const draggedIndexRef = useRef<number | null>(null);
-  const selectedCustomIndex = pools.findIndex((pool) => !getSelectedPreset(pool, presets));
   const unselectedPresets = presets.filter((preset) => (
     !pools.some((selectedPool) => isSamePool(selectedPool, preset))
   ));
@@ -57,20 +56,8 @@ export function PoolPriorityEditor({
     ]);
   };
 
-  const toggleCustomPool = () => {
-    if (selectedCustomIndex >= 0) {
-      onChange(pools.filter((_, index) => index !== selectedCustomIndex));
-      return;
-    }
-
-    onChange([
-      ...pools,
-      withCompatiblePoolIdentity(
-        pools[0],
-        createEmptyCustomPool(),
-        miningMode,
-      ),
-    ]);
+  const addCustomPool = () => {
+    onChange(appendEmptyCustomPool(pools, miningMode));
   };
 
   const updatePool = (index: number, pool: PoolConfig) => {
@@ -268,18 +255,15 @@ export function PoolPriorityEditor({
         );
       })}
 
-      {selectedCustomIndex === -1 && (
-        <button
-          type="button"
-          onClick={toggleCustomPool}
-          aria-pressed="false"
-          className="group w-full p-5 rounded-xl border border-border bg-card transition-all text-left relative hover:border-primary/45 hover:bg-primary/[0.02] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
-        >
-          <div className="pr-8">
-            <div className="font-medium text-sm">Custom Pool</div>
-          </div>
-        </button>
-      )}
+      <button
+        type="button"
+        onClick={addCustomPool}
+        className="group w-full p-5 rounded-xl border border-border bg-card transition-all text-left relative hover:border-primary/45 hover:bg-primary/[0.02] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+      >
+        <div className="pr-8">
+          <div className="font-medium text-sm">Custom Pool</div>
+        </div>
+      </button>
     </div>
   );
 }

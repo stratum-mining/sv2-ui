@@ -5,7 +5,9 @@ import path from 'node:path';
 import test, { type TestContext } from 'node:test';
 
 import {
+  collectPaginatedMonitoringItems,
   formatTelegramStatus,
+  getTelegramWorkerCount,
   getStatusChangeMessage,
   TelegramConfigError,
   TelegramService,
@@ -99,6 +101,52 @@ function snapshot(
     ...update,
   };
 }
+
+test('collects every monitoring page using the reported total', async () => {
+  const offsets: number[] = [];
+  const items = await collectPaginatedMonitoringItems(async (offset, limit) => {
+    offsets.push(offset);
+    const total = 205;
+    const pageLength = Math.min(limit, total - offset);
+    return {
+      total,
+      items: Array.from({ length: pageLength }, (_, index) => offset + index),
+    };
+  });
+
+  assert.deepEqual(offsets, [0, 100, 200]);
+  assert.equal(items?.length, 205);
+  assert.equal(items?.at(-1), 204);
+});
+
+test('returns no partial monitoring snapshot when a later page fails', async () => {
+  const items = await collectPaginatedMonitoringItems(async (offset) => (
+    offset === 0
+      ? { total: 101, items: Array.from({ length: 100 }, (_, index) => index) }
+      : null
+  ));
+
+  assert.equal(items, null);
+});
+
+test('counts JD channels as workers instead of downstream connections', () => {
+  assert.equal(
+    getTelegramWorkerCount(
+      true,
+      { total_clients: 4 },
+      { total_channels: 17 },
+    ),
+    17,
+  );
+  assert.equal(
+    getTelegramWorkerCount(
+      false,
+      { total_clients: 4 },
+      { total_channels: 17 },
+    ),
+    4,
+  );
+});
 
 async function pairService(
   t: TestContext,

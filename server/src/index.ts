@@ -36,6 +36,8 @@ import { getLogDiagnostics, getLogStreams, readCollatedLogLines } from './logs/d
 import { ActivePoolTracker } from './active-pool.js';
 import { getPoolConfigError, MAX_FALLBACK_POOLS } from './pool-validation.js';
 import {
+  collectPaginatedMonitoringItems,
+  getTelegramWorkerCount,
   TelegramApiError,
   TelegramConfigError,
   TelegramService,
@@ -802,7 +804,11 @@ function getContainerUrl(containerName: string, port: number): string {
 type MonitoringGlobal = {
   server?: { total_hashrate: number } | null;
   sv1_clients?: { total_clients: number; total_hashrate: number } | null;
-  sv2_clients?: { total_clients: number; total_hashrate: number } | null;
+  sv2_clients?: {
+    total_clients: number;
+    total_channels: number;
+    total_hashrate: number;
+  } | null;
 };
 
 type MonitoringServerChannel = {
@@ -815,17 +821,25 @@ type MonitoringServerChannel = {
   shares_rejected: number;
 };
 
-type MonitoringServerChannels = {
-  extended_channels: MonitoringServerChannel[];
-  standard_channels: MonitoringServerChannel[];
+type MonitoringChannelsPage<T> = {
+  total_extended: number;
+  total_standard: number;
+  extended_channels: T[];
+  standard_channels: T[];
 };
 
 type MonitoringClient = {
   client_id: number;
 };
 
-type MonitoringClients = {
-  items: MonitoringClient[];
+type MonitoringItemsPage<T> = {
+  total: number;
+  items: T[];
+};
+
+type TaggedMonitoringChannel<T> = {
+  kind: 'extended' | 'standard';
+  channel: T;
 };
 
 type MonitoringMiningChannel = {
@@ -833,11 +847,6 @@ type MonitoringMiningChannel = {
   user_identity: string;
   best_diff: number;
   blocks_found: number;
-};
-
-type MonitoringClientChannels = {
-  extended_channels: MonitoringMiningChannel[];
-  standard_channels: MonitoringMiningChannel[];
 };
 
 async function fetchMonitoringJson<T>(url: string): Promise<T | null> {
@@ -849,6 +858,47 @@ async function fetchMonitoringJson<T>(url: string): Promise<T | null> {
   } catch {
     return null;
   }
+}
+
+function combineMonitoringChannelPage<T>(
+  page: MonitoringChannelsPage<T>,
+): {
+  items: TaggedMonitoringChannel<T>[];
+  total: number;
+} {
+  return {
+    items: [
+      ...page.extended_channels.map((channel) => ({
+        kind: 'extended' as const,
+        channel,
+      })),
+      ...page.standard_channels.map((channel) => ({
+        kind: 'standard' as const,
+        channel,
+      })),
+    ],
+    total: Math.max(page.total_extended, page.total_standard),
+  };
+}
+
+async function fetchAllMonitoringChannels<T>(
+  endpoint: string,
+): Promise<TaggedMonitoringChannel<T>[] | null> {
+  return collectPaginatedMonitoringItems(async (offset, limit) => {
+    const page = await fetchMonitoringJson<MonitoringChannelsPage<T>>(
+      `${endpoint}?offset=${offset}&limit=${limit}`
+    );
+    return page ? combineMonitoringChannelPage(page) : null;
+  });
+}
+
+async function fetchAllMonitoringItems<T>(endpoint: string): Promise<T[] | null> {
+  return collectPaginatedMonitoringItems(async (offset, limit) => {
+    const page = await fetchMonitoringJson<MonitoringItemsPage<T>>(
+      `${endpoint}?offset=${offset}&limit=${limit}`
+    );
+    return page ? { items: page.items, total: page.total } : null;
+  });
 }
 
 async function getTelegramActivitySnapshot(): Promise<TelegramActivitySnapshot> {
@@ -871,31 +921,23 @@ async function getTelegramActivitySnapshot(): Promise<TelegramActivitySnapshot> 
   const containerName = isJdMode ? 'sv2-jdc' : 'sv2-translator';
   const port = isJdMode ? JDC_MONITORING_PORT : TRANSLATOR_MONITORING_PORT;
   const baseUrl = `${getContainerUrl(containerName, port)}/api/v1`;
-  const [global, serverChannelResponse, clientResponse] = await Promise.all([
+  const [global, serverChannels, monitoringClients] = await Promise.all([
     fetchMonitoringJson<MonitoringGlobal>(`${baseUrl}/global`),
-    fetchMonitoringJson<MonitoringServerChannels>(
-      `${baseUrl}/server/channels?offset=0&limit=100`
-    ),
+    fetchAllMonitoringChannels<MonitoringServerChannel>(`${baseUrl}/server/channels`),
     isJdMode
-      ? fetchMonitoringJson<MonitoringClients>(`${baseUrl}/clients?offset=0&limit=100`)
+      ? fetchAllMonitoringItems<MonitoringClient>(`${baseUrl}/clients`)
       : Promise.resolve(null),
   ]);
 
   const clients = isJdMode ? global?.sv2_clients : global?.sv1_clients;
-  const serverChannels = serverChannelResponse
-    ? [
-        ...serverChannelResponse.extended_channels,
-        ...serverChannelResponse.standard_channels,
-      ]
-    : null;
   let miningChannels: TelegramMiningChannel[] | null = null;
 
-  if (isJdMode && clientResponse) {
+  if (isJdMode && monitoringClients) {
     const downstreamResponses = await Promise.all(
-      clientResponse.items.map(async (client) => ({
+      monitoringClients.map(async (client) => ({
         clientId: client.client_id,
-        channels: await fetchMonitoringJson<MonitoringClientChannels>(
-          `${baseUrl}/clients/${client.client_id}/channels?offset=0&limit=100`
+        channels: await fetchAllMonitoringChannels<MonitoringMiningChannel>(
+          `${baseUrl}/clients/${client.client_id}/channels`
         ),
       }))
     );
@@ -903,52 +945,40 @@ async function getTelegramActivitySnapshot(): Promise<TelegramActivitySnapshot> 
     if (downstreamResponses.every((response) => response.channels !== null)) {
       miningChannels = downstreamResponses.flatMap(({ clientId, channels }) => {
         if (!channels) return [];
-        return [
-          ...channels.extended_channels.map((channel) => ({
-            key: `jdc:${clientId}:extended:${channel.channel_id}:${channel.user_identity}`,
-            userIdentity: channel.user_identity,
-            blocksFound: channel.blocks_found,
-            bestDifficulty: channel.best_diff,
-          })),
-          ...channels.standard_channels.map((channel) => ({
-            key: `jdc:${clientId}:standard:${channel.channel_id}:${channel.user_identity}`,
-            userIdentity: channel.user_identity,
-            blocksFound: channel.blocks_found,
-            bestDifficulty: channel.best_diff,
-          })),
-        ];
+        return channels.map(({ kind, channel }) => ({
+          key: `jdc:${clientId}:${kind}:${channel.channel_id}:${channel.user_identity}`,
+          userIdentity: channel.user_identity,
+          blocksFound: channel.blocks_found,
+          bestDifficulty: channel.best_diff,
+        }));
       });
     }
-  } else if (!isJdMode && serverChannelResponse) {
-    miningChannels = [
-      ...serverChannelResponse.extended_channels.map((channel) => ({
-        key: `translator:server:extended:${channel.channel_id}:${channel.user_identity}`,
-        userIdentity: channel.user_identity,
-        blocksFound: channel.blocks_found,
-        bestDifficulty: channel.best_diff,
-      })),
-      ...serverChannelResponse.standard_channels.map((channel) => ({
-        key: `translator:server:standard:${channel.channel_id}:${channel.user_identity}`,
-        userIdentity: channel.user_identity,
-        blocksFound: channel.blocks_found,
-        bestDifficulty: channel.best_diff,
-      })),
-    ];
+  } else if (!isJdMode && serverChannels) {
+    miningChannels = serverChannels.map(({ kind, channel }) => ({
+      key: `translator:server:${kind}:${channel.channel_id}:${channel.user_identity}`,
+      userIdentity: channel.user_identity,
+      blocksFound: channel.blocks_found,
+      bestDifficulty: channel.best_diff,
+    }));
   }
 
   return {
     running: true,
     poolName: status.poolName,
     hashrate: clients?.total_hashrate ?? global?.server?.total_hashrate ?? null,
-    workers: clients?.total_clients ?? null,
+    workers: getTelegramWorkerCount(
+      isJdMode,
+      global?.sv1_clients,
+      global?.sv2_clients,
+    ),
     sharesSubmitted: serverChannels
-      ? serverChannels.reduce((sum, channel) => sum + channel.shares_submitted, 0)
+      ? serverChannels.reduce((sum, item) => sum + item.channel.shares_submitted, 0)
       : null,
     sharesAccepted: serverChannels
-      ? serverChannels.reduce((sum, channel) => sum + channel.shares_acknowledged, 0)
+      ? serverChannels.reduce((sum, item) => sum + item.channel.shares_acknowledged, 0)
       : null,
     sharesRejected: serverChannels
-      ? serverChannels.reduce((sum, channel) => sum + channel.shares_rejected, 0)
+      ? serverChannels.reduce((sum, item) => sum + item.channel.shares_rejected, 0)
       : null,
     channels: miningChannels,
   };

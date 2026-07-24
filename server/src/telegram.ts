@@ -113,6 +113,42 @@ export type TelegramActivitySnapshot = {
   channels: TelegramMiningChannel[] | null;
 };
 
+type MonitoringPage<T> = {
+  items: T[];
+  total: number;
+};
+
+export async function collectPaginatedMonitoringItems<T>(
+  fetchPage: (offset: number, limit: number) => Promise<MonitoringPage<T> | null>,
+  pageSize = 100,
+): Promise<T[] | null> {
+  if (!Number.isInteger(pageSize) || pageSize <= 0) {
+    throw new RangeError('Monitoring page size must be a positive integer');
+  }
+
+  const items: T[] = [];
+  let offset = 0;
+
+  while (true) {
+    const page = await fetchPage(offset, pageSize);
+    if (!page) return null;
+
+    items.push(...page.items);
+    if (offset + pageSize >= page.total) return items;
+    offset += pageSize;
+  }
+}
+
+export function getTelegramWorkerCount(
+  isJdMode: boolean,
+  sv1Clients: { total_clients: number } | null | undefined,
+  sv2Clients: { total_channels: number } | null | undefined,
+): number | null {
+  return isJdMode
+    ? sv2Clients?.total_channels ?? null
+    : sv1Clients?.total_clients ?? null;
+}
+
 export class TelegramConfigError extends Error {}
 
 export class TelegramApiError extends Error {

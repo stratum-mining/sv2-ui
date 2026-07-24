@@ -4,8 +4,8 @@ import test from 'node:test';
 import type { PoolConfig, SetupData } from '@sv2-ui/shared';
 import {
   BenchmarkManager,
-  getCounterDelta,
   rotatePoolsForBenchmark,
+  ShareCounterAccumulator,
   summarizeLatencySamples,
 } from './benchmark.js';
 
@@ -51,22 +51,28 @@ test('summarizes latency using the arithmetic average', () => {
   });
 });
 
-test('computes non-negative share counter deltas', () => {
-  assert.deepEqual(
-    getCounterDelta(
-      { accepted: 10, rejected: 2 },
-      { accepted: 14, rejected: 3 }
-    ),
-    { accepted: 4, rejected: 1 }
-  );
-  assert.deepEqual(
-    getCounterDelta(
-      { accepted: 10, rejected: 2 },
-      { accepted: 1, rejected: 0 }
-    ),
-    { accepted: 0, rejected: 0 }
-  );
-  assert.equal(getCounterDelta(null, { accepted: 1, rejected: 0 }), null);
+test('accumulates shares when channels disconnect, reconnect, or reset', () => {
+  const accumulator = new ShareCounterAccumulator();
+
+  assert.deepEqual(accumulator.update([
+    { key: 'extended:1', accepted: 10, rejected: 1 },
+    { key: 'extended:2', accepted: 5, rejected: 0 },
+  ]), { accepted: 0, rejected: 0 });
+  assert.deepEqual(accumulator.update([
+    { key: 'extended:1', accepted: 12, rejected: 2 },
+    { key: 'extended:2', accepted: 6, rejected: 0 },
+  ]), { accepted: 3, rejected: 1 });
+  assert.deepEqual(accumulator.update([
+    { key: 'extended:1', accepted: 13, rejected: 2 },
+  ]), { accepted: 4, rejected: 1 });
+  assert.deepEqual(accumulator.update([
+    { key: 'extended:1', accepted: 14, rejected: 2 },
+    { key: 'extended:3', accepted: 2, rejected: 1 },
+  ]), { accepted: 7, rejected: 2 });
+  assert.deepEqual(accumulator.update([
+    { key: 'extended:1', accepted: 1, rejected: 0 },
+    { key: 'extended:3', accepted: 3, rejected: 1 },
+  ]), { accepted: 9, rejected: 2 });
 });
 
 test('rotates the existing ordered fallback list without mutating the saved setup', () => {
@@ -95,16 +101,17 @@ test('runs each pool, records measurements, and restores the original setup', as
 
       if (poolName === 'Alpha') {
         return readCount === 1
-          ? { accepted: 10, rejected: 1 }
-          : { accepted: 13, rejected: 2 };
+          ? [{ key: 'extended:1', accepted: 10, rejected: 1 }]
+          : [{ key: 'extended:1', accepted: 13, rejected: 2 }];
       }
 
       return readCount === 1
-        ? { accepted: 20, rejected: 4 }
-        : { accepted: 22, rejected: 4 };
+        ? [{ key: 'extended:1', accepted: 20, rejected: 4 }]
+        : [{ key: 'extended:1', accepted: 22, rejected: 4 }];
     },
     measureLatency: async (pool) => pool.name === 'Alpha' ? 10 : 20,
     sampleIntervalMs: 1,
+    maxLatencySamples: 2,
     activePoolPollIntervalMs: 1,
     activePoolTimeoutMs: 20,
     onSettled: () => {
@@ -137,11 +144,12 @@ test('publishes accepted and rejected share deltas while a pool is still running
     readShareCounters: async () => {
       counterRead += 1;
       return counterRead === 1
-        ? { accepted: 10, rejected: 1 }
-        : { accepted: 12, rejected: 2 };
+        ? [{ key: 'extended:1', accepted: 10, rejected: 1 }]
+        : [{ key: 'extended:1', accepted: 12, rejected: 2 }];
     },
     measureLatency: async () => 10,
-    sampleIntervalMs: 1_000,
+    sampleIntervalMs: 1,
+    maxLatencySamples: 2,
     activePoolPollIntervalMs: 1,
     activePoolTimeoutMs: 20,
   });
@@ -163,6 +171,38 @@ test('publishes accepted and rejected share deltas while a pool is still running
   await manager.waitForCompletion();
 });
 
+test('spreads latency attempts across the interval and does not rank partial success', async () => {
+  const attemptTimes: number[] = [];
+  const manager = new BenchmarkManager({
+    applyConfiguration: async () => {},
+    getActivePool: async () => ({ index: 0 }),
+    readShareCounters: async () => [],
+    measureLatency: async () => {
+      attemptTimes.push(Date.now());
+      if (attemptTimes.length === 2) {
+        throw new Error('connection refused');
+      }
+      return 10;
+    },
+    sampleIntervalMs: 5,
+    maxLatencySamples: 3,
+    activePoolPollIntervalMs: 1,
+    activePoolTimeoutMs: 20,
+  });
+
+  manager.start(SETUP, [POOLS[0]], 0.06);
+  await manager.waitForCompletion();
+
+  const result = manager.getSnapshot()?.results[0];
+  assert.equal(result?.status, 'failed');
+  assert.equal(result?.attemptedSamples, 3);
+  assert.equal(result?.successfulSamples, 2);
+  assert.equal(result?.averageLatencyMs, null);
+  assert.match(result?.error ?? '', /no latency rank was assigned/i);
+  assert.equal(attemptTimes.length, 3);
+  assert.ok(attemptTimes[2] - attemptTimes[0] >= 30);
+});
+
 test('stopping a run cancels unfinished rows and still restores the setup', async () => {
   const applied: SetupData[] = [];
   const manager = new BenchmarkManager({
@@ -170,9 +210,10 @@ test('stopping a run cancels unfinished rows and still restores the setup', asyn
       applied.push(structuredClone(data));
     },
     getActivePool: async () => ({ index: 0 }),
-    readShareCounters: async () => ({ accepted: 0, rejected: 0 }),
+    readShareCounters: async () => [],
     measureLatency: async () => 10,
     sampleIntervalMs: 5,
+    maxLatencySamples: 2,
     activePoolPollIntervalMs: 1,
     activePoolTimeoutMs: 20,
   });
@@ -192,8 +233,9 @@ test('marks the intended pool failed when the fallback becomes active', async ()
   const manager = new BenchmarkManager({
     applyConfiguration: async () => {},
     getActivePool: async () => ({ index: 1 }),
-    readShareCounters: async () => ({ accepted: 0, rejected: 0 }),
+    readShareCounters: async () => [],
     sampleIntervalMs: 1,
+    maxLatencySamples: 2,
     activePoolPollIntervalMs: 1,
     activePoolTimeoutMs: 20,
   });

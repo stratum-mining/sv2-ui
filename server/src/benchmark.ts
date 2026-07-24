@@ -15,6 +15,10 @@ export type ShareCounters = {
   rejected: number;
 };
 
+export type ShareChannelCounters = ShareCounters & {
+  key: string;
+};
+
 export type ActivePoolSelection = {
   index: number;
 };
@@ -25,10 +29,11 @@ export type BenchmarkDependencies = {
     mode: SetupMode,
     pools: PoolConfig[]
   ) => Promise<ActivePoolSelection | null>;
-  readShareCounters: (mode: SetupMode) => Promise<ShareCounters>;
+  readShareCounters: (mode: SetupMode) => Promise<ShareChannelCounters[]>;
   measureLatency?: (pool: PoolConfig, signal: AbortSignal) => Promise<number>;
   onSettled?: () => void;
   sampleIntervalMs?: number;
+  maxLatencySamples?: number;
   activePoolTimeoutMs?: number;
   activePoolPollIntervalMs?: number;
 };
@@ -38,6 +43,7 @@ type LatencySummary = {
 };
 
 const DEFAULT_SAMPLE_INTERVAL_MS = 5_000;
+const DEFAULT_MAX_LATENCY_SAMPLES = 10;
 const DEFAULT_ACTIVE_POOL_TIMEOUT_MS = 60_000;
 const DEFAULT_ACTIVE_POOL_POLL_INTERVAL_MS = 1_000;
 const TCP_CONNECT_TIMEOUT_MS = 5_000;
@@ -90,16 +96,37 @@ export function summarizeLatencySamples(samples: number[]): LatencySummary {
   };
 }
 
-export function getCounterDelta(
-  before: ShareCounters | null,
-  after: ShareCounters | null
-): ShareCounters | null {
-  if (!before || !after) return null;
+function counterIncrement(before: number, after: number): number {
+  return after >= before ? after - before : after;
+}
 
-  return {
-    accepted: Math.max(0, after.accepted - before.accepted),
-    rejected: Math.max(0, after.rejected - before.rejected),
-  };
+export class ShareCounterAccumulator {
+  private readonly previous = new Map<string, ShareCounters>();
+  private readonly totals: ShareCounters = { accepted: 0, rejected: 0 };
+  private initialized = false;
+
+  update(channels: ShareChannelCounters[]): ShareCounters {
+    for (const channel of channels) {
+      const before = this.previous.get(channel.key);
+
+      if (this.initialized) {
+        this.totals.accepted += before
+          ? counterIncrement(before.accepted, channel.accepted)
+          : channel.accepted;
+        this.totals.rejected += before
+          ? counterIncrement(before.rejected, channel.rejected)
+          : channel.rejected;
+      }
+
+      this.previous.set(channel.key, {
+        accepted: channel.accepted,
+        rejected: channel.rejected,
+      });
+    }
+
+    this.initialized = true;
+    return { ...this.totals };
+  }
 }
 
 export function rotatePoolsForBenchmark(
@@ -375,37 +402,35 @@ export class BenchmarkManager {
     if (!this.run || !mode) throw new Error('Mining mode is not configured');
 
     const sampleIntervalMs = this.dependencies.sampleIntervalMs ?? DEFAULT_SAMPLE_INTERVAL_MS;
+    const maxLatencySamples = Math.max(
+      1,
+      Math.floor(this.dependencies.maxLatencySamples ?? DEFAULT_MAX_LATENCY_SAMPLES)
+    );
     const samples: number[] = [];
     const measureLatency = this.dependencies.measureLatency ?? measureTcpConnectLatency;
     const startedAtMs = Date.now();
     const endsAtMs = startedAtMs + poolDurationSeconds * 1_000;
+    const latencySampleIntervalMs = (endsAtMs - startedAtMs) / maxLatencySamples;
     let lastSampleError: string | null = null;
+    let nextLatencySampleAtMs = startedAtMs;
+    let nextShareRefreshAtMs = startedAtMs + sampleIntervalMs;
 
     result.status = 'running';
     this.run.currentPoolStartedAt = new Date(startedAtMs).toISOString();
     this.run.currentPoolEndsAt = new Date(endsAtMs).toISOString();
 
-    let baselineCounters = await this.tryReadShareCounters(mode);
-    if (baselineCounters) {
-      result.acceptedShares = 0;
-      result.rejectedShares = 0;
-    }
+    const shareCounters = new ShareCounterAccumulator();
 
     const refreshShareCounters = async () => {
-      const counters = await this.tryReadShareCounters(mode);
-      if (!counters) return;
+      const snapshot = await this.tryReadShareCounters(mode);
+      if (!snapshot) return;
 
-      if (!baselineCounters) {
-        baselineCounters = counters;
-        result.acceptedShares = 0;
-        result.rejectedShares = 0;
-        return;
-      }
-
-      const shareDelta = getCounterDelta(baselineCounters, counters);
-      result.acceptedShares = shareDelta?.accepted ?? null;
-      result.rejectedShares = shareDelta?.rejected ?? null;
+      const totals = shareCounters.update(snapshot);
+      result.acceptedShares = totals.accepted;
+      result.rejectedShares = totals.rejected;
     };
+
+    await refreshShareCounters();
 
     while (Date.now() < endsAtMs) {
       if (signal.aborted) throw abortError();
@@ -418,40 +443,67 @@ export class BenchmarkManager {
         );
       }
 
-      result.attemptedSamples += 1;
-      try {
-        const latency = await measureLatency(result.pool, signal);
-        samples.push(latency);
-        result.successfulSamples = samples.length;
-        Object.assign(result, summarizeLatencySamples(samples));
-      } catch (error) {
-        if (isAbortError(error)) throw error;
-        lastSampleError = errorMessage(error);
+      if (
+        result.attemptedSamples < maxLatencySamples &&
+        Date.now() >= nextLatencySampleAtMs
+      ) {
+        result.attemptedSamples += 1;
+        try {
+          const latency = await measureLatency(result.pool, signal);
+          samples.push(latency);
+          result.successfulSamples = samples.length;
+          Object.assign(result, summarizeLatencySamples(samples));
+        } catch (error) {
+          if (isAbortError(error)) throw error;
+          lastSampleError = errorMessage(error);
+        }
+        nextLatencySampleAtMs =
+          startedAtMs + result.attemptedSamples * latencySampleIntervalMs;
       }
 
-      await refreshShareCounters();
+      if (Date.now() >= nextShareRefreshAtMs) {
+        await refreshShareCounters();
+        nextShareRefreshAtMs = Date.now() + sampleIntervalMs;
+      }
 
-      const remainingMs = endsAtMs - Date.now();
-      if (remainingMs > 0) {
-        await sleep(Math.min(sampleIntervalMs, remainingMs), signal);
+      const wakeAtMs = Math.min(
+        endsAtMs,
+        nextShareRefreshAtMs,
+        result.attemptedSamples < maxLatencySamples
+          ? nextLatencySampleAtMs
+          : endsAtMs
+      );
+      const sleepMs = wakeAtMs - Date.now();
+      if (sleepMs > 0) {
+        await sleep(sleepMs, signal);
       }
     }
 
     await refreshShareCounters();
     result.completedAt = new Date().toISOString();
 
-    if (samples.length === 0) {
+    if (result.attemptedSamples < maxLatencySamples) {
+      result.averageLatencyMs = null;
       result.status = 'failed';
-      result.error = lastSampleError
-        ? `No successful TCP latency samples: ${lastSampleError}`
-        : 'No successful TCP latency samples';
+      result.error =
+        `Only ${result.attemptedSamples} of ${maxLatencySamples} TCP latency samples completed`;
+      return;
+    }
+
+    if (result.successfulSamples < result.attemptedSamples) {
+      const failedSamples = result.attemptedSamples - result.successfulSamples;
+      result.averageLatencyMs = null;
+      result.status = 'failed';
+      result.error =
+        `${failedSamples} of ${result.attemptedSamples} TCP latency samples failed; ` +
+        `no latency rank was assigned${lastSampleError ? `: ${lastSampleError}` : ''}`;
       return;
     }
 
     result.status = 'completed';
   }
 
-  private async tryReadShareCounters(mode: SetupMode): Promise<ShareCounters | null> {
+  private async tryReadShareCounters(mode: SetupMode): Promise<ShareChannelCounters[] | null> {
     try {
       return await this.dependencies.readShareCounters(mode);
     } catch {

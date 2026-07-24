@@ -50,6 +50,22 @@ function formatLatency(value: number | null): string {
   return value === null ? '—' : `${value.toFixed(1)} ms`;
 }
 
+function formatRejectedRate(result: BenchmarkPoolResult): string | null {
+  if (result.acceptedShares === null || result.rejectedShares === null) return null;
+  const total = result.acceptedShares + result.rejectedShares;
+  if (total === 0) return '0.00%';
+  return `${((result.rejectedShares / total) * 100).toFixed(2)}%`;
+}
+
+function isRankable(result: BenchmarkPoolResult): boolean {
+  return (
+    result.status === 'completed' &&
+    result.averageLatencyMs !== null &&
+    result.attemptedSamples > 0 &&
+    result.successfulSamples === result.attemptedSamples
+  );
+}
+
 function resultBadge(status: BenchmarkPoolStatus): {
   label: string;
   variant: BadgeProps['variant'];
@@ -155,6 +171,8 @@ export function Benchmark() {
     if (!isTerminal) return run.results;
 
     return [...run.results].sort((left, right) => {
+      if (isRankable(left) && !isRankable(right)) return -1;
+      if (!isRankable(left) && isRankable(right)) return 1;
       if (left.averageLatencyMs === null && right.averageLatencyMs === null) return 0;
       if (left.averageLatencyMs === null) return 1;
       if (right.averageLatencyMs === null) return -1;
@@ -213,8 +231,13 @@ export function Benchmark() {
             <h1 className="text-2xl font-bold tracking-tight">Pool Benchmark</h1>
           </div>
           <p className="mt-2 max-w-3xl text-muted-foreground">
-            Compare pools from this machine using average TCP connection latency and
-            the shares acknowledged or rejected during equal mining intervals.
+            Compare what works best for this setup using average TCP connection latency
+            and upstream share outcomes observed during equal mining intervals.
+          </p>
+          <p className="mt-2 max-w-3xl text-sm text-muted-foreground">
+            Mining benchmarks have intrinsic variance. Latency and rejected-share rate
+            are the most useful signals here, but they are time-sensitive and say
+            nothing about a pool&apos;s internal performance.
           </p>
         </div>
 
@@ -399,7 +422,7 @@ export function Benchmark() {
                         <TableHead className="text-right">Avg latency</TableHead>
                         <TableHead className="text-right">Samples</TableHead>
                         <TableHead className="text-right">Accepted</TableHead>
-                        <TableHead className="text-right">Rejected</TableHead>
+                        <TableHead className="text-right">Rejected (rate)</TableHead>
                         <TableHead className="text-right">Action</TableHead>
                       </TableRow>
                     </TableHeader>
@@ -408,7 +431,8 @@ export function Benchmark() {
                         const knownPool = getKnownPoolForConfig(result.pool);
                         const badge = resultBadge(result.status);
                         const key = endpointKey(result.pool);
-                        const hasRank = isTerminal && result.averageLatencyMs !== null;
+                        const hasRank = isTerminal && isRankable(result);
+                        const rejectedRate = formatRejectedRate(result);
 
                         return (
                           <TableRow key={key}>
@@ -452,10 +476,13 @@ export function Benchmark() {
                               {result.acceptedShares?.toLocaleString() ?? '—'}
                             </TableCell>
                             <TableCell className="text-right font-mono">
-                              {result.rejectedShares?.toLocaleString() ?? '—'}
+                              <div>{result.rejectedShares?.toLocaleString() ?? '—'}</div>
+                              {rejectedRate && (
+                                <div className="text-xs text-muted-foreground">{rejectedRate}</div>
+                              )}
                             </TableCell>
                             <TableCell className="text-right">
-                              {isTerminal && result.status === 'completed' ? (
+                              {isTerminal && isRankable(result) ? (
                                 <Button
                                   size="sm"
                                   onClick={() => void handleStartMining(result)}
@@ -478,9 +505,10 @@ export function Benchmark() {
                     </TableBody>
                   </Table>
                   <p className="mt-4 text-xs text-muted-foreground">
-                    Accepted means acknowledged by the upstream pool. Average latency is calculated
-                    from TCP connection samples taken by the SV2 UI backend; it is not a share-ack
-                    round-trip time.
+                    Accepted means acknowledged by the upstream pool. Accepted totals are context,
+                    not a cross-pool score, because assigned share difficulty may differ. Average
+                    latency uses ten TCP connection attempts spread across each interval; it is not
+                    a share-ack round-trip time. A pool receives no latency rank if any attempt fails.
                   </p>
                 </CardContent>
               </Card>

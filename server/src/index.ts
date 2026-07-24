@@ -36,7 +36,7 @@ import {
 } from './docker.js';
 import { getLogDiagnostics, getLogStreams, readCollatedLogLines } from './logs/diagnostics.js';
 import { ActivePoolTracker } from './active-pool.js';
-import { BenchmarkManager, type ShareCounters } from './benchmark.js';
+import { BenchmarkManager, type ShareChannelCounters } from './benchmark.js';
 import { getPoolConfigError } from './pool-validation.js';
 import {
   collectPaginatedMonitoringItems,
@@ -202,37 +202,61 @@ async function getBenchmarkActivePool(mode: SetupMode, pools: PoolConfig[]) {
 }
 
 type BenchmarkMonitoringServerChannel = {
+  channel_id: number;
   shares_acknowledged?: number;
   shares_rejected?: number;
 };
 
 type BenchmarkMonitoringServerChannelsResponse = {
+  total_extended?: number;
+  total_standard?: number;
   extended_channels?: BenchmarkMonitoringServerChannel[];
   standard_channels?: BenchmarkMonitoringServerChannel[];
 };
 
-async function readBenchmarkShareCounters(mode: SetupMode): Promise<ShareCounters> {
+async function readBenchmarkShareCounters(mode: SetupMode): Promise<ShareChannelCounters[]> {
   const containerName = mode === 'jd' ? 'sv2-jdc' : 'sv2-translator';
   const port = mode === 'jd' ? JDC_MONITORING_PORT : TRANSLATOR_MONITORING_PORT;
-  const response = await fetch(
-    `${getContainerUrl(containerName, port)}/api/v1/server/channels?offset=0&limit=100`,
-    { signal: AbortSignal.timeout(5_000) }
-  );
+  const channels: ShareChannelCounters[] = [];
+  const limit = 100;
+  let offset = 0;
+  let totalChannels = 0;
 
-  if (!response.ok) {
-    throw new Error(`Monitoring API returned HTTP ${response.status}`);
-  }
+  do {
+    const response = await fetch(
+      `${getContainerUrl(containerName, port)}/api/v1/server/channels?offset=${offset}&limit=${limit}`,
+      { signal: AbortSignal.timeout(5_000) }
+    );
 
-  const data = await response.json() as BenchmarkMonitoringServerChannelsResponse;
-  const channels = [
-    ...(data.extended_channels ?? []),
-    ...(data.standard_channels ?? []),
-  ];
+    if (!response.ok) {
+      throw new Error(`Monitoring API returned HTTP ${response.status}`);
+    }
 
-  return channels.reduce<ShareCounters>((total, channel) => ({
-    accepted: total.accepted + (channel.shares_acknowledged ?? 0),
-    rejected: total.rejected + (channel.shares_rejected ?? 0),
-  }), { accepted: 0, rejected: 0 });
+    const data = await response.json() as BenchmarkMonitoringServerChannelsResponse;
+    const extendedChannels = data.extended_channels ?? [];
+    const standardChannels = data.standard_channels ?? [];
+
+    channels.push(
+      ...extendedChannels.map((channel) => ({
+        key: `extended:${channel.channel_id}`,
+        accepted: channel.shares_acknowledged ?? 0,
+        rejected: channel.shares_rejected ?? 0,
+      })),
+      ...standardChannels.map((channel) => ({
+        key: `standard:${channel.channel_id}`,
+        accepted: channel.shares_acknowledged ?? 0,
+        rejected: channel.shares_rejected ?? 0,
+      }))
+    );
+
+    totalChannels = Math.max(
+      data.total_extended ?? extendedChannels.length,
+      data.total_standard ?? standardChannels.length
+    );
+    offset += limit;
+  } while (offset < totalChannels);
+
+  return channels;
 }
 
 function configuredPools(data: SetupData): PoolConfig[] {

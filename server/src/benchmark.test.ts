@@ -80,12 +80,7 @@ test('rotates the existing ordered fallback list without mutating the saved setu
 
 test('runs each pool, records measurements, and restores the original setup', async () => {
   const applied: SetupData[] = [];
-  const counters = [
-    { accepted: 10, rejected: 1 },
-    { accepted: 13, rejected: 2 },
-    { accepted: 20, rejected: 4 },
-    { accepted: 22, rejected: 4 },
-  ];
+  const counterReads = new Map<string, number>();
   let settled = 0;
 
   const manager = new BenchmarkManager({
@@ -93,7 +88,21 @@ test('runs each pool, records measurements, and restores the original setup', as
       applied.push(structuredClone(data));
     },
     getActivePool: async () => ({ index: 0 }),
-    readShareCounters: async () => counters.shift() ?? { accepted: 0, rejected: 0 },
+    readShareCounters: async () => {
+      const poolName = applied.at(-1)?.pool?.name ?? '';
+      const readCount = (counterReads.get(poolName) ?? 0) + 1;
+      counterReads.set(poolName, readCount);
+
+      if (poolName === 'Alpha') {
+        return readCount === 1
+          ? { accepted: 10, rejected: 1 }
+          : { accepted: 13, rejected: 2 };
+      }
+
+      return readCount === 1
+        ? { accepted: 20, rejected: 4 }
+        : { accepted: 22, rejected: 4 };
+    },
     measureLatency: async (pool) => pool.name === 'Alpha' ? 10 : 20,
     sampleIntervalMs: 1,
     activePoolPollIntervalMs: 1,
@@ -118,6 +127,40 @@ test('runs each pool, records measurements, and restores the original setup', as
   assert.deepEqual(applied.map((data) => data.pool?.name), ['Alpha', 'Beta', 'Alpha']);
   assert.deepEqual(applied.at(-1), SETUP);
   assert.equal(settled, 1);
+});
+
+test('publishes accepted and rejected share deltas while a pool is still running', async () => {
+  let counterRead = 0;
+  const manager = new BenchmarkManager({
+    applyConfiguration: async () => {},
+    getActivePool: async () => ({ index: 0 }),
+    readShareCounters: async () => {
+      counterRead += 1;
+      return counterRead === 1
+        ? { accepted: 10, rejected: 1 }
+        : { accepted: 12, rejected: 2 };
+    },
+    measureLatency: async () => 10,
+    sampleIntervalMs: 1_000,
+    activePoolPollIntervalMs: 1,
+    activePoolTimeoutMs: 20,
+  });
+
+  manager.start(SETUP, POOLS, 1);
+
+  let liveRun = manager.getSnapshot();
+  for (let attempt = 0; attempt < 100 && liveRun?.results[0].acceptedShares !== 2; attempt += 1) {
+    await new Promise((resolve) => setTimeout(resolve, 1));
+    liveRun = manager.getSnapshot();
+  }
+
+  assert.equal(liveRun?.status, 'running');
+  assert.equal(liveRun?.results[0].status, 'running');
+  assert.equal(liveRun?.results[0].acceptedShares, 2);
+  assert.equal(liveRun?.results[0].rejectedShares, 1);
+
+  assert.equal(manager.stop(), true);
+  await manager.waitForCompletion();
 });
 
 test('stopping a run cancels unfinished rows and still restores the setup', async () => {

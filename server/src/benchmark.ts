@@ -385,7 +385,27 @@ export class BenchmarkManager {
     this.run.currentPoolStartedAt = new Date(startedAtMs).toISOString();
     this.run.currentPoolEndsAt = new Date(endsAtMs).toISOString();
 
-    const beforeCounters = await this.tryReadShareCounters(mode);
+    let baselineCounters = await this.tryReadShareCounters(mode);
+    if (baselineCounters) {
+      result.acceptedShares = 0;
+      result.rejectedShares = 0;
+    }
+
+    const refreshShareCounters = async () => {
+      const counters = await this.tryReadShareCounters(mode);
+      if (!counters) return;
+
+      if (!baselineCounters) {
+        baselineCounters = counters;
+        result.acceptedShares = 0;
+        result.rejectedShares = 0;
+        return;
+      }
+
+      const shareDelta = getCounterDelta(baselineCounters, counters);
+      result.acceptedShares = shareDelta?.accepted ?? null;
+      result.rejectedShares = shareDelta?.rejected ?? null;
+    };
 
     while (Date.now() < endsAtMs) {
       if (signal.aborted) throw abortError();
@@ -409,16 +429,15 @@ export class BenchmarkManager {
         lastSampleError = errorMessage(error);
       }
 
+      await refreshShareCounters();
+
       const remainingMs = endsAtMs - Date.now();
       if (remainingMs > 0) {
         await sleep(Math.min(sampleIntervalMs, remainingMs), signal);
       }
     }
 
-    const afterCounters = await this.tryReadShareCounters(mode);
-    const shareDelta = getCounterDelta(beforeCounters, afterCounters);
-    result.acceptedShares = shareDelta?.accepted ?? null;
-    result.rejectedShares = shareDelta?.rejected ?? null;
+    await refreshShareCounters();
     result.completedAt = new Date().toISOString();
 
     if (samples.length === 0) {

@@ -1,8 +1,47 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { SOLO_POOLS, knownPoolToConfig } from './pools';
+import { MAX_FALLBACK_POOLS, type PoolConfig } from '@sv2-ui/shared';
+import {
+  appendEmptyCustomPool,
+  canAddPool,
+  knownPoolToConfig,
+  SOLO_POOLS,
+} from './pools';
 import { isValidPoolAuthorityPubkey } from './utils';
+
+const PRIMARY_POOL: PoolConfig = {
+  name: 'Primary Pool',
+  address: 'pool.example.com',
+  port: 3333,
+  authority_public_key: 'primary-key',
+  user_identity: 'miner.worker',
+};
+
+test('appendEmptyCustomPool allows multiple custom fallback pools', () => {
+  const withFirstCustomPool = appendEmptyCustomPool([PRIMARY_POOL], 'pool');
+  const withSecondCustomPool = appendEmptyCustomPool(withFirstCustomPool, 'pool');
+
+  assert.equal(withSecondCustomPool.length, 3);
+  assert.equal(withSecondCustomPool[1].name, 'Custom Pool');
+  assert.equal(withSecondCustomPool[2].name, 'Custom Pool');
+  assert.equal(withSecondCustomPool[1].user_identity, PRIMARY_POOL.user_identity);
+  assert.equal(withSecondCustomPool[2].user_identity, PRIMARY_POOL.user_identity);
+});
+
+test('pool additions stop at the configured fallback limit', () => {
+  const maximumPools = Array.from(
+    { length: MAX_FALLBACK_POOLS + 1 },
+    (_, index) => ({
+      ...PRIMARY_POOL,
+      address: `pool-${index}.example.com`,
+    }),
+  );
+
+  assert.equal(canAddPool(maximumPools.slice(0, -1)), true);
+  assert.equal(canAddPool(maximumPools), false);
+  assert.strictEqual(appendEmptyCustomPool(maximumPools, 'pool'), maximumPools);
+});
 
 test('solo pool presets are sorted alphabetically', () => {
   const names = SOLO_POOLS.map((pool) => pool.name);

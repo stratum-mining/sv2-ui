@@ -5,7 +5,6 @@ const MAX_POOL_NAME_LENGTH = 128;
 const MAX_POOL_ADDRESS_LENGTH = 255;
 const MAX_AUTHORITY_KEY_LENGTH = 128;
 const MAX_IDENTITY_LENGTH = 512;
-export const MAX_FALLBACK_POOLS = 16;
 
 // These characters can escape or terminate a generated TOML basic string.
 // eslint-disable-next-line no-control-regex

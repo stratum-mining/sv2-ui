@@ -1,13 +1,10 @@
 import type { SetupData } from './types.js';
 
 export const SV2_APP_IMAGES = {
-  // Development branches track sv2-apps `main`. The matching release/vX
-  // branch replaces all of these with its approved sv2-apps `vX` release
-  // tags before sv2-ui is published.
-  translatorNoJd: 'stratumv2/translator_sv2:main',
+  translatorNoJd: 'stratumv2/translator_sv2:v0.7.0',
   jd: {
-    jdc: 'stratumv2/jd_client_sv2:main',
-    translator: 'stratumv2/translator_sv2:main',
+    jdc: 'stratumv2/jd_client_sv2:v0.7.0',
+    translator: 'stratumv2/translator_sv2:v0.7.0',
   },
 } as const satisfies {
   translatorNoJd: string;

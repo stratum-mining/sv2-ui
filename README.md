@@ -161,9 +161,9 @@ sv2-ui/
 
 ## Docker Images Used
 
-`sv2-ui` uses `stratumv2/translator_sv2:main` for no-JD stacks on development branches. JD stacks use `stratumv2/jd_client_sv2:main` and `stratumv2/translator_sv2:main`.
+`sv2-ui` uses `stratumv2/translator_sv2:v0.7.0` for no-JD stacks. JD stacks use `stratumv2/jd_client_sv2:v0.7.0` and `stratumv2/translator_sv2:v0.7.0`.
 
-Release branches should pin all sv2-apps image tags in `shared/src/images.ts` before publishing.
+This release pins all sv2-apps image tags in `shared/src/images.ts`.
 
 ## Bitcoin Core IPC Support
 

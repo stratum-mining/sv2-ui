@@ -7,6 +7,7 @@ import type { AppMode, AppFeatures } from '@/types/api';
 import { getAppFeatures } from '@/types/api';
 import { useUiConfig } from '@/hooks/useUiConfig';
 import { PoolIcon } from '@/components/ui/pool-icon';
+import { StatusDot } from '@/components/ui/status-dot';
 
 function useTheme() {
   const [isDark, setIsDark] = useState(() => {
@@ -173,20 +174,12 @@ export function Shell({
               <>
                 {/* Mobile: dot + uptime only (no status text to save space) */}
                 <span className="flex sm:hidden items-center gap-2 text-xs text-muted-foreground min-w-0">
-                  <span className={cn('h-2 w-2 rounded-full shrink-0', {
-                    'bg-green-500': connectionStatus === 'connected',
-                    'bg-red-500': connectionStatus === 'disconnected',
-                    'bg-yellow-500 animate-pulse': connectionStatus === 'connecting',
-                  })} />
+                  <StatusDot status={connectionStatus} size="sm" />
                   <span className="truncate">Uptime: {formatUptime(uptime ?? 0)}</span>
                 </span>
                 {/* Desktop: dot + full status text + uptime */}
                 <span className="hidden sm:flex items-center gap-2 text-xs text-muted-foreground shrink-0">
-                  <span className={cn('h-2 w-2 rounded-full shrink-0', {
-                    'bg-green-500': connectionStatus === 'connected',
-                    'bg-red-500': connectionStatus === 'disconnected',
-                    'bg-yellow-500 animate-pulse': connectionStatus === 'connecting',
-                  })} />
+                  <StatusDot status={connectionStatus} size="sm" />
                   {connectionStatus === 'connected' ? (
                     <span className="inline-flex min-w-0 items-center gap-1.5">
                       <span className="truncate">{connectedStatusLabel}</span>

@@ -12,7 +12,8 @@ import {
 } from '@sv2-ui/shared';
 import { BITCOIN_MESSAGES } from '@/lib/messages';
 import { StepProps, BitcoinConfig } from '../types';
-import { Copy, Check, ExternalLink, Loader2, RotateCw, CheckCircle2, AlertCircle } from 'lucide-react';
+import { Check, Loader2, AlertCircle, CheckCircle2, RotateCw, Copy, ExternalLink } from 'lucide-react';
+import { Alert } from '@/components/ui/alert';
 import type { BitcoinRpcDiscoveryResult } from '@/hooks/useBitcoinRpcDiscovery';
 import { useHostEnv } from '@/hooks/useHostEnv';
 import { BitcoinNetworkSelector } from '../BitcoinNetworkSelector';
@@ -285,12 +286,6 @@ export function BitcoinPrereqStep({ data, updateData, onNext, discoveredNodes, i
                   description: `${detectedNodeSummary}. Continue to configure the connection.`,
                 };
 
-  const readinessClasses = {
-    neutral: 'border-border bg-muted/50 text-muted-foreground',
-    warning: 'border-warning/20 bg-warning/[0.08] text-warning',
-    destructive: 'border-destructive/20 bg-destructive/[0.08] text-destructive',
-    success: 'border-success/20 bg-success/10 text-success',
-  }[readiness.tone];
 
   const canConfigureManually = !hostOsLoading
     && !isDiscovering
@@ -380,17 +375,14 @@ export function BitcoinPrereqStep({ data, updateData, onNext, discoveredNodes, i
         />
       </div>
 
-      <div
-        className={`flex gap-3 rounded-xl border p-4 text-sm ${readinessClasses}`}
-        role={readiness.tone === 'destructive' ? 'alert' : 'status'}
+      <Alert
+        variant={readiness.tone}
+        icon={readiness.icon}
         aria-live={readiness.tone === 'destructive' ? 'assertive' : 'polite'}
       >
-        <span className="mt-0.5 flex-shrink-0">{readiness.icon}</span>
-        <div className="min-w-0 text-left">
-          <p className="font-medium">{readiness.title}</p>
-          <p className="mt-1 text-xs leading-relaxed opacity-80">{readiness.description}</p>
-        </div>
-      </div>
+        <p className="font-medium">{readiness.title}</p>
+        <p className="mt-1 text-xs leading-relaxed opacity-80">{readiness.description}</p>
+      </Alert>
 
       {(canConfigureManually || canRetry) && (
         <div className="flex flex-wrap items-center justify-center gap-3">

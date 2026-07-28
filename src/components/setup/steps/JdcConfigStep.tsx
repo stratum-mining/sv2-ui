@@ -1,7 +1,9 @@
 import { useState, useEffect } from 'react';
 import { StepProps, JdcConfig } from '../types';
-import { Info } from 'lucide-react';
+
 import { isValidBitcoinAddress, getBitcoinAddressError, getBitcoinAddressPlaceholder } from '@/lib/utils';
+import { Alert } from '@/components/ui/alert';
+import { FieldError } from '@/components/ui/field-error';
 
 export function JdcConfigStep({ data, updateData, onNext }: StepProps) {
   const [config, setConfig] = useState<JdcConfig>(
@@ -35,17 +37,12 @@ export function JdcConfigStep({ data, updateData, onNext }: StepProps) {
         </p>
       </div>
 
-      <div className="p-4 rounded-xl bg-info/10 border border-info/20" role="note">
-        <div className="flex gap-3">
-          <Info className="h-5 w-5 text-info flex-shrink-0 mt-0.5" aria-hidden="true" />
-          <div className="text-sm text-muted-foreground">
-            <p>
-              The JD Client connects to the pool and declares your custom block templates.
-              The coinbase reward address is used as a fallback for solo mining if the pool connection fails.
-            </p>
-          </div>
-        </div>
-      </div>
+      <Alert variant="info">
+        <p>
+          The JD Client connects to the pool and declares your custom block templates.
+          The coinbase reward address is used as a fallback for solo mining if the pool connection fails.
+        </p>
+      </Alert>
 
       <div className="space-y-4">
         <div>
@@ -63,9 +60,7 @@ export function JdcConfigStep({ data, updateData, onNext }: StepProps) {
             autoComplete="off"
             className="w-full h-10 px-3 rounded-lg border border-input bg-background font-mono text-sm focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/15 outline-none transition-all"
           />
-          {getBitcoinAddressError(config.coinbase_reward_address, network) && (
-            <p className="text-xs text-destructive mt-1">{getBitcoinAddressError(config.coinbase_reward_address, network)}</p>
-          )}
+          <FieldError message={getBitcoinAddressError(config.coinbase_reward_address, network)} />
           <p className="text-xs text-muted-foreground mt-2">
             Bitcoin address for receiving mining rewards (fallback for solo mining)
           </p>

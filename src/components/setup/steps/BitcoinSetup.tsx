@@ -12,7 +12,9 @@ import {
 import type { BitcoinCoreVersion, OperatingSystem, BitcoinNetwork } from '@sv2-ui/shared';
 import { BITCOIN_MESSAGES } from '@/lib/messages';
 import { StepProps, BitcoinConfig } from '../types';
-import { Apple, Terminal, Pencil, Check, Loader2, AlertCircle, CheckCircle2, RotateCw } from 'lucide-react';
+import { Apple, Terminal, Pencil, Check, Loader2, RotateCw } from 'lucide-react';
+import { Alert } from '@/components/ui/alert';
+import { FieldError } from '@/components/ui/field-error';
 import { UmbrelIcon } from '../icons/UmbrelIcon';
 import { useBitcoinSocketValidation } from '@/hooks/useBitcoinSocketValidation';
 import type { BitcoinRpcDiscoveryResult } from '@/hooks/useBitcoinRpcDiscovery';
@@ -106,19 +108,14 @@ export function BitcoinSetup({ data, updateData, onNext, notice, onDismissNotice
       </div>
 
       {discoveryApplied && (
-        <div
-          className="p-3 rounded-lg bg-success/10 border border-success/20 text-sm text-success flex gap-3 items-start"
-          role="status"
-          aria-live="polite"
-        >
-          <CheckCircle2 className="h-4 w-4 flex-shrink-0 mt-0.5" aria-hidden="true" />
+        <Alert variant="success">
           <div>
             <span className="font-medium">Pre-filled from detected node</span>
             <p className="text-xs mt-1 opacity-80">
               Network: {network} • Version: {detectedVersionLabel}
             </p>
           </div>
-        </div>
+        </Alert>
       )}
 
       <div role="group" aria-labelledby="os-label">
@@ -184,14 +181,9 @@ export function BitcoinSetup({ data, updateData, onNext, notice, onDismissNotice
           {BITCOIN_MESSAGES.versionLabel}
         </label>
         {notice && (
-          <div
-            className="mb-3 p-3 rounded-lg bg-destructive/[0.08] text-sm text-destructive flex gap-3 items-start"
-            role="alert"
-            aria-live="assertive"
-          >
-            <AlertCircle className="h-4 w-4 flex-shrink-0 mt-0.5" aria-hidden="true" />
+          <Alert variant="destructive" className="mb-3">
             <span>{notice}</span>
-          </div>
+          </Alert>
         )}
         <select
           id="core-version"
@@ -213,14 +205,11 @@ export function BitcoinSetup({ data, updateData, onNext, notice, onDismissNotice
           {BITCOIN_MESSAGES.genericUpgrade}
         </p>
         {!coreVersion && (
-          <p className="text-xs text-destructive mt-2">
-            {BITCOIN_MESSAGES.selectVersionPrompt}
-          </p>
+          <FieldError message={BITCOIN_MESSAGES.selectVersionPrompt} />
         )}
       </div>
       {os === 'umbrel' && coreVersion && !isChecking && socketError && (
-        <div className="p-3 rounded-xl bg-warning/[0.08] text-sm text-warning flex gap-2 items-start">
-          <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" aria-hidden="true" />
+        <Alert variant="warning">
           <div className="space-y-1">
             <p className="font-medium">Umbrel Setup Instructions</p>
             <ul className="list-disc list-inside space-y-0.5">
@@ -229,7 +218,7 @@ export function BitcoinSetup({ data, updateData, onNext, notice, onDismissNotice
               <li>Enable <strong>IPC Mining Interface</strong></li>
             </ul>
           </div>
-        </div>
+        </Alert>
       )}
 
       <BitcoinNetworkSelector
@@ -289,39 +278,24 @@ export function BitcoinSetup({ data, updateData, onNext, notice, onDismissNotice
         <p id="socket-path-hint" className="text-xs text-muted-foreground mt-2">Click to edit if your socket is in a different location.</p>
 
         {isChecking && (
-          <div
-            className="mt-3 p-3 rounded-lg bg-muted/50 text-sm text-muted-foreground flex gap-3 items-center"
-            role="status"
-            aria-live="polite"
-          >
-            <Loader2 className="h-4 w-4 animate-spin flex-shrink-0" aria-hidden="true" />
+          <Alert variant="neutral" className="mt-3 items-center" icon={<Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />}>
             <span>Checking socket path...</span>
-          </div>
+          </Alert>
         )}
         {!isChecking && isValid && (
-          <div
-            className="mt-3 p-3 rounded-lg bg-success/10 border border-success/20 text-sm text-success flex gap-3 items-center"
-            role="status"
-            aria-live="polite"
-          >
-            <CheckCircle2 className="h-4 w-4 flex-shrink-0" aria-hidden="true" />
+          <Alert variant="success" className="mt-3 items-center">
             <span>Socket is listening</span>
-          </div>
+          </Alert>
         )}
         {!isChecking && socketError && (
-          <div
-            className="mt-3 p-3 rounded-lg bg-destructive/[0.08] text-sm text-destructive flex gap-3 items-start"
-            role="alert"
-            aria-live="assertive"
-          >
-            <AlertCircle className="h-4 w-4 flex-shrink-0 mt-0.5" aria-hidden="true" />
+          <Alert variant="destructive" className="mt-3">
             <div className="flex-1 min-w-0 space-y-3">
               <span className="block">{socketError}</span>
               <button
                 type="button"
                 onClick={() => retrySocketValidation()}
                 disabled={isRefreshing}
-                className="inline-flex h-8 items-center gap-2 rounded-md border border-destructive/30 bg-background px-3 text-xs font-medium text-destructive transition-colors hover:bg-destructive/[0.06] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-destructive/30 disabled:cursor-not-allowed disabled:opacity-60"
+                className="inline-flex h-8 items-center gap-2 rounded-md border border-red-500/30 bg-background px-3 text-xs font-medium text-red-600 dark:text-red-500 transition-colors hover:bg-red-500/[0.06] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500/30 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {isRefreshing ? (
                   <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
@@ -331,10 +305,10 @@ export function BitcoinSetup({ data, updateData, onNext, notice, onDismissNotice
                 {isRefreshing ? 'Checking...' : 'Retry'}
               </button>
               {isRetryable && (
-                <p className="text-xs text-destructive/80">Rechecking automatically while Bitcoin Core starts.</p>
+                <p className="text-xs text-red-600/80 dark:text-red-500/80">Rechecking automatically while Bitcoin Core starts.</p>
               )}
             </div>
-          </div>
+          </Alert>
         )}
       </div>
 

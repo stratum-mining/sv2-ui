@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'wouter';
 import { useQueryClient } from '@tanstack/react-query';
 import { AlertTriangle, Search, Play, Trash2 } from 'lucide-react';
+import { Alert, AlertTitle } from '@/components/ui/alert';
 import { InfoPopover } from '@/components/ui/info-popover';
 import { MinerConnectionInfo } from '@/components/setup/MinerConnectionInfo';
 import { Shell } from '@/components/layout/Shell';
@@ -117,10 +118,10 @@ export function UnifiedDashboard() {
   const { data: translatorOk, isLoading: translatorHealthLoading, isError: translatorHealthError } = useTranslatorHealth();
   const { data: jdcOk, isLoading: jdcHealthLoading, isError: jdcHealthError } = useJdcHealth(isJdMode);
   const translatorHealthy = translatorOk === true && !translatorHealthError;
-  const jdcHealthy        = jdcOk === true && !jdcHealthError;
-  const translatorDown    = !translatorHealthLoading && !translatorHealthy;
-  const jdcDown           = isJdMode && !jdcHealthLoading && !jdcHealthy;
-  const showError         = poolError || translatorDown || jdcDown;
+  const jdcHealthy = jdcOk === true && !jdcHealthError;
+  const translatorDown = !translatorHealthLoading && !translatorHealthy;
+  const jdcDown = isJdMode && !jdcHealthLoading && !jdcHealthy;
+  const showError = poolError || translatorDown || jdcDown;
   const configuredButStopped = isOrchestrated && isConfigured && !isRunning;
   const configurationIssue = configurationIssues[0] ?? null;
   const canReviewConfiguration = configurationIssue?.code !== 'saved-setup-unavailable';
@@ -293,10 +294,10 @@ export function UnifiedDashboard() {
   // Total hashrate:
   // - JD mode: from SV2 client telemetry when available, falling back to vardiff totals
   // - Translator-only mode: from SV1 client telemetry when available, falling back to vardiff totals
-  const totalHashrate = isJdMode 
+  const totalHashrate = isJdMode
     ? (sv2Clients && sv1Data
-        ? (sv2TotalHashrate ?? 0) + sv1TotalHashrate
-        : (poolGlobal?.sv2_clients?.total_hashrate ?? 0))
+      ? (sv2TotalHashrate ?? 0) + sv1TotalHashrate
+      : (poolGlobal?.sv2_clients?.total_hashrate ?? 0))
     : (sv1Data ? sv1TotalHashrate : (poolGlobal?.sv1_clients?.total_hashrate ?? 0));
 
   // Scope hashrate history to the active pool + mode so stale samples from a
@@ -617,13 +618,15 @@ export function UnifiedDashboard() {
 
       {/* Start Mining Banner (configured but stopped) */}
       {!configurationIssue && configuredButStopped && showError && (
-        <div className="flex flex-col gap-3 rounded-xl border border-primary/40 bg-primary/10 px-5 py-4 text-sm sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex items-center gap-3">
-            {autoStarting || isStarting ? (
-              <div className="h-4 w-4 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
-            ) : (
-              <Play className="h-4 w-4 shrink-0 text-primary" />
-            )}
+        <Alert
+          variant="warning"
+          icon={autoStarting || isStarting ? (
+            <div className="h-4 w-4 border-2 border-yellow-500/30 border-t-yellow-500 rounded-full animate-spin" />
+          ) : (
+            <Play className="h-4 w-4 shrink-0" />
+          )}
+        >
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <span>
               {autoStarting
                 ? 'Mining services are starting...'
@@ -631,27 +634,26 @@ export function UnifiedDashboard() {
                   ? 'Starting mining services...'
                   : 'Mining services are stopped.'}
             </span>
+            {!autoStarting && !isStarting && (
+              <button
+                onClick={handleStartMining}
+                disabled={isStarting}
+                className="flex h-9 items-center gap-2 self-start rounded-full bg-yellow-500 px-4 font-medium text-white transition-colors hover:bg-yellow-600 disabled:opacity-50 sm:self-auto"
+              >
+                Start Mining
+              </button>
+            )}
           </div>
-          {!autoStarting && !isStarting && (
-            <button
-              onClick={handleStartMining}
-              disabled={isStarting}
-              className="flex h-9 items-center gap-2 self-start rounded-full bg-primary px-4 font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50 sm:self-auto"
-            >
-              Start Mining
-            </button>
-          )}
-        </div>
+        </Alert>
       )}
 
       {/* Connection Error Banner (not configured or unknown error) */}
       {!configurationIssue && (startError || (showError && !configuredButStopped && diagnostics.length === 0)) && (
-        <div className="flex items-center gap-3 rounded-xl border border-red-500/40 bg-red-500/10 px-5 py-4 text-sm text-red-500">
-          <AlertTriangle className="h-4 w-4 shrink-0" />
-          <span>
+        <Alert variant="destructive">
+          <p>
             {startError || 'Cannot connect to pool. Make sure mining services are running.'}
-          </span>
-        </div>
+          </p>
+        </Alert>
       )}
 
       {/* log-derived Diagnostic Banners */}
@@ -661,34 +663,29 @@ export function UnifiedDashboard() {
           diagnostic.code === BITCOIN_CORE_DISCONNECTED_CODE;
 
         return (
-          <div
+          <Alert
             key={diagnostic.code}
-            className={`flex flex-col gap-3 rounded-xl border px-5 py-4 text-sm sm:flex-row sm:items-center sm:justify-between ${
-              diagnostic.severity === 'error'
-                ? 'border-red-500/40 bg-red-500/10 text-red-500'
-                : 'border-amber-500/40 bg-amber-500/10 text-amber-500'
-            }`}
+            variant={diagnostic.severity === 'error' ? 'destructive' : 'warning'}
           >
-            <div className="flex items-start gap-3">
-              <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div className="flex flex-col gap-1">
-                <span className="font-medium">{diagnostic.title}</span>
+                <AlertTitle>{diagnostic.title}</AlertTitle>
                 <span>{diagnostic.message}</span>
                 {diagnostic.recommendation && (
                   <span className="text-current/80">{diagnostic.recommendation}</span>
                 )}
               </div>
+              {showBitcoinSetupButton && (
+                <Link
+                  href="/setup"
+                  onClick={() => window.sessionStorage.setItem(SETUP_TARGET_STEP_STORAGE_KEY, 'bitcoin')}
+                  className="inline-flex h-9 shrink-0 items-center justify-center rounded-full bg-red-600 px-4 font-medium text-white transition-colors hover:bg-red-700 sm:ml-4"
+                >
+                  Open Bitcoin Setup
+                </Link>
+              )}
             </div>
-            {showBitcoinSetupButton && (
-              <Link
-                href="/setup"
-                onClick={() => window.sessionStorage.setItem(SETUP_TARGET_STEP_STORAGE_KEY, 'bitcoin')}
-                className="inline-flex h-9 shrink-0 items-center justify-center rounded-full bg-red-500 px-4 font-medium text-white transition-colors hover:bg-red-600 sm:ml-4"
-              >
-                Open Bitcoin Setup
-              </Link>
-            )}
-          </div>
+          </Alert>
         );
       })}
 
@@ -816,7 +813,7 @@ export function UnifiedDashboard() {
           title="Best Difficulty"
           value={hasBestDiffSource ? formatDifficulty(bestDiff) : '-'}
         />
-        </div>
+      </div>
 
       {/* Miner Connection Info */}
       <div>

@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
 import { StepProps, TranslatorConfig } from '../types';
 import { Switch } from '@/components/ui/switch';
-import { Info } from 'lucide-react';
+
 import { TRANSLATOR_PORT } from '@/lib/ports';
+import { Alert } from '@/components/ui/alert';
 
 export function TranslatorConfigStep({ data, updateData, onNext }: StepProps) {
   const isSoloMode = data.miningMode === 'solo';
@@ -36,17 +37,12 @@ export function TranslatorConfigStep({ data, updateData, onNext }: StepProps) {
         </p>
       </div>
 
-      <div className="p-4 rounded-xl bg-success/10 border border-success/20" role="note">
-        <div className="flex gap-3">
-          <Info className="h-5 w-5 text-success flex-shrink-0 mt-0.5" aria-hidden="true" />
-          <div className="text-sm text-muted-foreground">
-            <p>
-              The Translator Proxy bridges your SV1 mining hardware to the SV2 {isSoloMode ? 'solo pool' : 'pool'}.
-              Your miners will connect to the Translator on port <code className="text-xs bg-muted px-1 py-0.5 rounded">{TRANSLATOR_PORT}</code>.
-            </p>
-          </div>
-        </div>
-      </div>
+      <Alert variant="info">
+        <p>
+          The Translator Proxy bridges your SV1 mining hardware to the SV2 {isSoloMode ? 'solo pool' : 'pool'}.
+          Your miners will connect to the Translator on port <code className="text-xs bg-muted px-1 py-0.5 rounded">{TRANSLATOR_PORT}</code>.
+        </p>
+      </Alert>
 
       <div className="space-y-4">
         <div className="p-6 rounded-xl border border-border bg-muted space-y-4">

@@ -6,6 +6,7 @@ import {
 } from '@sv2-ui/shared';
 
 import { Switch } from '@/components/ui/switch';
+import { FieldError } from '@/components/ui/field-error';
 
 export interface AdvancedMiningConfigValues {
   sharesPerMinute: string;
@@ -124,9 +125,7 @@ export function AdvancedMiningConfigForm({
             className="h-9 w-full rounded-lg border border-input bg-background px-3 text-sm outline-none transition-all focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/15"
           />
           {!sharesPerMinuteValid ? (
-            <p id={sharesPerMinuteDescriptionId} className="mt-1 text-xs text-destructive">
-              Enter a value greater than 0.
-            </p>
+            <FieldError message="Enter a value greater than 0." className="mt-1" id={sharesPerMinuteDescriptionId} />
           ) : (
             <p id={sharesPerMinuteDescriptionId} className="mt-1 text-xs text-muted-foreground">
               Target share rate for variable difficulty.
@@ -151,9 +150,7 @@ export function AdvancedMiningConfigForm({
             className="h-9 w-full rounded-lg border border-input bg-background px-3 text-sm outline-none transition-all focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/15"
           />
           {!downstreamExtranonce2SizeValid ? (
-            <p id={downstreamExtranonce2SizeDescriptionId} className="mt-1 text-xs text-destructive">
-              Enter a whole number from 1 to 65,535.
-            </p>
+            <FieldError message="Enter a whole number from 1 to 65,535." className="mt-1" id={downstreamExtranonce2SizeDescriptionId} />
           ) : (
             <p id={downstreamExtranonce2SizeDescriptionId} className="mt-1 text-xs text-muted-foreground">
               Bytes assigned to downstream SV1 miners.

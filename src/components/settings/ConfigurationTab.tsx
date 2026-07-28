@@ -55,7 +55,8 @@ import {
   Check,
   X,
 } from 'lucide-react';
-
+import { FieldError } from '@/components/ui/field-error';
+import { StatusDot } from '@/components/ui/status-dot';
 const SETUP_TARGET_STEP_STORAGE_KEY = 'sv2-ui-setup-target-step';
 
 type EditingField = null | 'pools' | 'mode' | 'signature' | 'hashrate' | 'telemetry' | 'advanced';
@@ -356,10 +357,10 @@ export function ConfigurationTab() {
   const updateEditPoolIdentity = (index: number, nextPool: PoolConfig) => {
     setEditPools((currentPools) => currentPools
       ? normalizePoolPriorityIdentities(
-          currentPools.map((pool, poolIndex) => poolIndex === index ? nextPool : pool),
-          currentPools[0],
-          activeMiningMode,
-        )
+        currentPools.map((pool, poolIndex) => poolIndex === index ? nextPool : pool),
+        currentPools[0],
+        activeMiningMode,
+      )
       : null);
   };
 
@@ -370,7 +371,7 @@ export function ConfigurationTab() {
         <CardContent className="pt-6">
           <div className="flex flex-wrap items-center justify-between gap-4">
             <div className="flex min-w-0 items-center gap-3">
-              <div className={`h-3 w-3 shrink-0 rounded-full ${isRunning ? 'bg-green-500' : 'bg-muted-foreground'}`} />
+              <StatusDot status={isRunning ? 'connected' : 'idle'} size="lg" />
               <div className="min-w-0">
                 <p className="font-medium">{isRunning ? 'Services Running' : 'Services Stopped'}</p>
                 <p className="text-sm text-muted-foreground">
@@ -525,11 +526,10 @@ export function ConfigurationTab() {
                         key={m}
                         type="button"
                         onClick={() => setEditMode(m)}
-                        className={`px-4 py-2 rounded-lg border text-sm font-medium transition-all ${
-                          editMode === m
+                        className={`px-4 py-2 rounded-lg border text-sm font-medium transition-all ${editMode === m
                             ? 'border-primary bg-primary/[0.04] text-primary'
                             : 'border-border bg-card hover:border-primary/45'
-                        }`}
+                          }`}
                       >
                         {m === 'jd' ? 'Job Declaration (Custom Templates)' : 'Pool Templates'}
                       </button>
@@ -687,8 +687,8 @@ export function ConfigurationTab() {
                     placeholder="Miner signature"
                     className="w-full h-10 px-3 rounded-lg border border-input bg-background font-mono text-sm focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/15 outline-none transition-all"
                   />
-                  {editSignature && getIdentifierError(editSignature) && (
-                    <p className="text-xs text-destructive mt-1">{getIdentifierError(editSignature)}</p>
+                  {editSignature && (
+                    <FieldError message={getIdentifierError(editSignature)} />
                   )}
                   <p className="text-xs text-muted-foreground mt-2">
                     Miner-chosen tag shown in coinbase transactions on block explorers.
@@ -766,9 +766,7 @@ export function ConfigurationTab() {
                   autoComplete="off"
                   className="w-full h-9 px-3 rounded-lg border border-input bg-background font-mono text-sm focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/15 outline-none transition-all"
                 />
-                {minerTelemetryCidrError && (
-                  <p className="text-xs text-destructive mt-1">{minerTelemetryCidrError}</p>
-                )}
+                <FieldError message={minerTelemetryCidrError} />
                 <p className="text-xs text-muted-foreground mt-2">
                   Private LAN subnet where miners expose their web/API interface.
                 </p>

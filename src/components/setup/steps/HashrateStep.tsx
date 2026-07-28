@@ -6,6 +6,8 @@ import {
   normalizeMinerTelemetryCidr,
 } from '@sv2-ui/shared';
 import { Check, ChevronDown, Settings2 } from 'lucide-react';
+import { Alert } from '@/components/ui/alert';
+import { FieldError } from '@/components/ui/field-error';
 import {
   AdvancedMiningConfigForm,
   createAdvancedMiningConfigValues,
@@ -23,10 +25,10 @@ interface HashratePreset {
 }
 
 const HASHRATE_PRESETS: HashratePreset[] = [
-  { id: 'bitaxe',      label: 'Bitaxe / USB Miner', hashrate: 500_000_000_000,     description: '~500 GH/s' },
-  { id: 'mid-asic',    label: 'Mid-Range ASIC',       hashrate: DEFAULT_MIN_HASHRATE, description: '~100 TH/s' },
-  { id: 'high-asic',   label: 'High-End ASIC',        hashrate: 300_000_000_000_000, description: '~300 TH/s' },
-  { id: 'custom',      label: 'Custom',               hashrate: 0,                   description: 'Enter your own value' },
+  { id: 'bitaxe', label: 'Bitaxe / USB Miner', hashrate: 500_000_000_000, description: '~500 GH/s' },
+  { id: 'mid-asic', label: 'Mid-Range ASIC', hashrate: DEFAULT_MIN_HASHRATE, description: '~100 TH/s' },
+  { id: 'high-asic', label: 'High-End ASIC', hashrate: 300_000_000_000_000, description: '~300 TH/s' },
+  { id: 'custom', label: 'Custom', hashrate: 0, description: 'Enter your own value' },
 ];
 
 export function HashrateStep({ data, updateData, onNext }: StepProps) {
@@ -76,9 +78,9 @@ export function HashrateStep({ data, updateData, onNext }: StepProps) {
         downstream_extranonce2_size: parsedAdvancedConfig.downstreamExtranonce2Size,
       },
     });
-  // intentionally excluded: data.translator and updateData cause infinite loop when included
+    // intentionally excluded: data.translator and updateData cause infinite loop when included
     // eslint-disable-next-line react-hooks/exhaustive-deps
-}, [hashrate, minerTelemetryCidr, advancedConfig, isSoloPool]);
+  }, [hashrate, minerTelemetryCidr, advancedConfig, isSoloPool]);
 
   return (
     <div className="space-y-8">
@@ -89,14 +91,14 @@ export function HashrateStep({ data, updateData, onNext }: StepProps) {
         </p>
       </div>
 
-      <div className="p-4 rounded-xl bg-muted/40" role="note">
-        <p className="text-sm text-muted-foreground">
+      <Alert variant="neutral">
+        <p>
           Difficulty per worker is automatically adjusted via variable difficulty (vardiff) algorithm.
           Give it a starting point. Using the approximate hashrate of your{' '}
           <span className="text-foreground font-medium">lowest performing worker</span> ensures every
           device can find shares right away.
         </p>
-      </div>
+      </Alert>
 
       <div className="grid grid-cols-2 gap-3" role="group" aria-labelledby="hashrate-group-label">
         <span id="hashrate-group-label" className="sr-only">Select hashrate preset</span>
@@ -108,9 +110,8 @@ export function HashrateStep({ data, updateData, onNext }: StepProps) {
               type="button"
               onClick={() => handlePresetChange(preset.id)}
               aria-pressed={active}
-              className={`relative p-4 rounded-xl border transition-all text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 ${
-                active ? 'border-primary bg-primary/[0.04]' : 'border-border bg-card hover:border-primary/45 hover:bg-primary/[0.02]'
-              }`}
+              className={`relative p-4 rounded-xl border transition-all text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 ${active ? 'border-primary bg-primary/[0.04]' : 'border-border bg-card hover:border-primary/45 hover:bg-primary/[0.02]'
+                }`}
             >
               {active && <div className="absolute top-3 right-3 w-5 h-5 rounded-full bg-primary flex items-center justify-center" aria-hidden="true"><Check className="w-3 h-3 text-background" /></div>}
               <div className="pr-6">
@@ -157,11 +158,7 @@ export function HashrateStep({ data, updateData, onNext }: StepProps) {
             aria-describedby="miner-telemetry-cidr-desc miner-telemetry-cidr-error"
             className="w-full h-10 px-3 rounded-lg border border-input bg-background font-mono text-sm focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/15 outline-none transition-all"
           />
-          {minerTelemetryCidrError && (
-            <p id="miner-telemetry-cidr-error" className="text-xs text-destructive mt-1">
-              {minerTelemetryCidrError}
-            </p>
-          )}
+          <FieldError message={minerTelemetryCidrError} />
           <p id="miner-telemetry-cidr-desc" className="text-xs text-muted-foreground mt-2">
             Recommended for better telemetry. Use the private LAN subnet where miners expose
             their web/API interface.

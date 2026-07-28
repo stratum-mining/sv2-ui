@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { StepProps } from '../types';
-import { Info } from 'lucide-react';
+
 import {
   getBitcoinAddressError,
   getBitcoinAddressPlaceholder,
@@ -8,6 +8,8 @@ import {
   isTomlSafeIdentifier,
   isValidBitcoinAddress,
 } from '@/lib/utils';
+import { Alert } from '@/components/ui/alert';
+import { FieldError } from '@/components/ui/field-error';
 
 export function MiningIdentityStep({ data, updateData, onNext }: StepProps) {
   const isSoloMode = data.miningMode === 'solo';
@@ -58,8 +60,8 @@ export function MiningIdentityStep({ data, updateData, onNext }: StepProps) {
           autoComplete="off"
           className="w-full h-10 px-3 rounded-lg border border-input bg-background focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/15 outline-none transition-all font-mono text-sm"
         />
-        {minerSignature && getIdentifierError(minerSignature) && (
-          <p className="text-xs text-destructive mt-1">{getIdentifierError(minerSignature)}</p>
+        {minerSignature && (
+          <FieldError message={getIdentifierError(minerSignature)} />
         )}
         <p className="text-xs text-muted-foreground mt-2">
           Miner-chosen tag shown in coinbase transactions on block explorers
@@ -72,12 +74,9 @@ export function MiningIdentityStep({ data, updateData, onNext }: StepProps) {
           <span className="sr-only">(required)</span>
         </label>
 
-        <div className="mb-3 p-3 rounded-xl bg-muted/40 flex gap-3" role="note">
-          <Info className="h-4 w-4 text-muted-foreground flex-shrink-0 mt-0.5" aria-hidden="true" />
-          <p className="text-sm text-muted-foreground">
-            {coinbaseNotice}
-          </p>
-        </div>
+        <Alert variant="neutral" className="mb-3">
+          <p>{coinbaseNotice}</p>
+        </Alert>
 
         <input
           id="coinbase-address"
@@ -89,9 +88,7 @@ export function MiningIdentityStep({ data, updateData, onNext }: StepProps) {
           autoComplete="off"
           className="w-full h-10 px-3 rounded-lg border border-input bg-background focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/15 outline-none transition-all font-mono text-sm"
         />
-        {getBitcoinAddressError(coinbaseAddress, network) && (
-          <p className="text-xs text-destructive mt-1">{getBitcoinAddressError(coinbaseAddress, network)}</p>
-        )}
+        <FieldError message={getBitcoinAddressError(coinbaseAddress, network)} />
         <p className="text-xs text-muted-foreground mt-2">
           Bitcoin address that receives solo mining rewards
         </p>

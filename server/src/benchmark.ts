@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { lookup } from 'node:dns/promises';
 import { createConnection } from 'node:net';
 import { performance } from 'node:perf_hooks';
 
@@ -12,7 +13,7 @@ import type {
 
 export type ShareCounters = {
   accepted: number;
-  rejected: number;
+  stale: number;
 };
 
 export type ShareChannelCounters = ShareCounters & {
@@ -21,14 +22,10 @@ export type ShareChannelCounters = ShareCounters & {
 
 export type ActivePoolSelection = {
   index: number;
-  negotiatedAt?: string | null;
 };
 
 export type BenchmarkDependencies = {
-  applyConfiguration: (
-    data: SetupData,
-    onPoolClientStarting?: () => void
-  ) => Promise<void>;
+  applyConfiguration: (data: SetupData) => Promise<void>;
   getActivePool: (
     mode: SetupMode,
     pools: PoolConfig[]
@@ -43,7 +40,7 @@ export type BenchmarkDependencies = {
 };
 
 type LatencySummary = {
-  averageLatencyMs: number | null;
+  medianLatencyMs: number | null;
 };
 
 const DEFAULT_SAMPLE_INTERVAL_MS = 5_000;
@@ -86,17 +83,25 @@ function sleep(ms: number, signal: AbortSignal): Promise<void> {
   });
 }
 
+/**
+ * The median is used instead of the mean so a single transient outlier
+ * (e.g. one SYN retransmission) cannot dominate a pool's ping for the run.
+ */
 export function summarizeLatencySamples(samples: number[]): LatencySummary {
   if (samples.length === 0) {
     return {
-      averageLatencyMs: null,
+      medianLatencyMs: null,
     };
   }
 
-  const average = samples.reduce((sum, sample) => sum + sample, 0) / samples.length;
+  const sorted = [...samples].sort((a, b) => a - b);
+  const middle = Math.floor(sorted.length / 2);
+  const median = sorted.length % 2 === 0
+    ? (sorted[middle - 1] + sorted[middle]) / 2
+    : sorted[middle];
 
   return {
-    averageLatencyMs: Math.round(average * 10) / 10,
+    medianLatencyMs: Math.round(median * 10) / 10,
   };
 }
 
@@ -106,7 +111,7 @@ function counterIncrement(before: number, after: number): number {
 
 export class ShareCounterAccumulator {
   private readonly previous = new Map<string, ShareCounters>();
-  private readonly totals: ShareCounters = { accepted: 0, rejected: 0 };
+  private readonly totals: ShareCounters = { accepted: 0, stale: 0 };
   private initialized = false;
 
   update(channels: ShareChannelCounters[]): ShareCounters {
@@ -117,14 +122,14 @@ export class ShareCounterAccumulator {
         this.totals.accepted += before
           ? counterIncrement(before.accepted, channel.accepted)
           : channel.accepted;
-        this.totals.rejected += before
-          ? counterIncrement(before.rejected, channel.rejected)
-          : channel.rejected;
+        this.totals.stale += before
+          ? counterIncrement(before.stale, channel.stale)
+          : channel.stale;
       }
 
       this.previous.set(channel.key, {
         accepted: channel.accepted,
-        rejected: channel.rejected,
+        stale: channel.stale,
       });
     }
 
@@ -150,17 +155,28 @@ export function rotatePoolsForBenchmark(
   };
 }
 
-export function measureTcpConnectLatency(
+export async function measureTcpConnectLatency(
   pool: PoolConfig,
   signal: AbortSignal,
   timeoutMs = TCP_CONNECT_TIMEOUT_MS
 ): Promise<number> {
-  if (signal.aborted) return Promise.reject(abortError());
+  if (signal.aborted) throw abortError();
+
+  // Resolve before starting the stopwatch: DNS latency, resolver cache state,
+  // and Happy-Eyeballs family selection are not properties of the pool
+  // endpoint being compared. Connecting to the resolved address times the
+  // TCP handshake alone.
+  const hostname = pool.address.replace(/^\[|\]$/g, '');
+  const resolved = await lookup(hostname);
+  if (signal.aborted) throw abortError();
 
   return new Promise((resolve, reject) => {
-    const host = pool.address.replace(/^\[|\]$/g, '');
     const startedAt = performance.now();
-    const socket = createConnection({ host, port: pool.port });
+    const socket = createConnection({
+      host: resolved.address,
+      family: resolved.family,
+      port: pool.port,
+    });
     let settled = false;
 
     const finish = (error?: Error) => {
@@ -240,12 +256,11 @@ export class BenchmarkManager {
         status: 'pending',
         startedAt: null,
         completedAt: null,
-        averageLatencyMs: null,
-        sv2NegotiationMs: null,
+        medianLatencyMs: null,
         successfulSamples: 0,
         attemptedSamples: 0,
         acceptedShares: null,
-        rejectedShares: null,
+        staleShares: null,
       })),
     };
 
@@ -350,16 +365,8 @@ export class BenchmarkManager {
     result.startedAt = new Date().toISOString();
 
     try {
-      let poolClientStartedAtMs: number | null = null;
-      await this.dependencies.applyConfiguration(rotatedData, () => {
-        poolClientStartedAtMs = Date.now();
-      });
-      result.sv2NegotiationMs = await this.waitForIntendedPool(
-        rotatedData.mode,
-        rotatedPools,
-        poolClientStartedAtMs,
-        signal
-      );
+      await this.dependencies.applyConfiguration(rotatedData);
+      await this.waitForIntendedPool(rotatedData.mode, rotatedPools, signal);
       await this.measurePool(result, rotatedData.mode, rotatedPools, poolDurationSeconds, signal);
     } catch (error) {
       if (isAbortError(error)) throw error;
@@ -378,9 +385,8 @@ export class BenchmarkManager {
   private async waitForIntendedPool(
     mode: SetupMode | null,
     pools: PoolConfig[],
-    poolClientStartedAtMs: number | null,
     signal: AbortSignal
-  ): Promise<number> {
+  ): Promise<void> {
     if (!mode) throw new Error('Mining mode is not configured');
 
     const timeoutMs = this.dependencies.activePoolTimeoutMs ?? DEFAULT_ACTIVE_POOL_TIMEOUT_MS;
@@ -393,16 +399,7 @@ export class BenchmarkManager {
 
       const activePool = await this.dependencies.getActivePool(mode, pools);
       if (activePool?.index === 0) {
-        const observedAtMs = Date.now();
-        const loggedAtMs = activePool.negotiatedAt
-          ? Date.parse(activePool.negotiatedAt)
-          : Number.NaN;
-        const completedAtMs = Number.isFinite(loggedAtMs)
-          ? loggedAtMs
-          : observedAtMs;
-        const startedAtMs = poolClientStartedAtMs ?? observedAtMs;
-
-        return Math.round(Math.max(0, completedAtMs - startedAtMs) * 10) / 10;
+        return;
       }
       if (activePool && activePool.index > 0) {
         const fallback = pools[activePool.index];
@@ -452,7 +449,7 @@ export class BenchmarkManager {
 
       const totals = shareCounters.update(snapshot);
       result.acceptedShares = totals.accepted;
-      result.rejectedShares = totals.rejected;
+      result.staleShares = totals.stale;
     };
 
     await refreshShareCounters();
@@ -508,7 +505,7 @@ export class BenchmarkManager {
     result.completedAt = new Date().toISOString();
 
     if (result.attemptedSamples < maxLatencySamples) {
-      result.averageLatencyMs = null;
+      result.medianLatencyMs = null;
       result.status = 'failed';
       result.error =
         `Only ${result.attemptedSamples} of ${maxLatencySamples} TCP latency samples completed`;
@@ -517,7 +514,7 @@ export class BenchmarkManager {
 
     if (result.successfulSamples < result.attemptedSamples) {
       const failedSamples = result.attemptedSamples - result.successfulSamples;
-      result.averageLatencyMs = null;
+      result.medianLatencyMs = null;
       result.status = 'failed';
       result.error =
         `${failedSamples} of ${result.attemptedSamples} TCP latency samples failed; ` +

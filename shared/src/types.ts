@@ -70,12 +70,11 @@ export interface BenchmarkPoolResult {
   status: BenchmarkPoolStatus;
   startedAt: string | null;
   completedAt: string | null;
-  averageLatencyMs: number | null;
-  sv2NegotiationMs: number | null;
+  medianLatencyMs: number | null;
   successfulSamples: number;
   attemptedSamples: number;
   acceptedShares: number | null;
-  rejectedShares: number | null;
+  staleShares: number | null;
   error?: string;
 }
 

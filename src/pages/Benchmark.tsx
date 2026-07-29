@@ -50,20 +50,33 @@ function formatLatency(value: number | null | undefined): string {
   return value == null ? '—' : `${value.toFixed(1)} ms`;
 }
 
-function formatRejectedRate(result: BenchmarkPoolResult): string | null {
-  if (result.acceptedShares === null || result.rejectedShares === null) return null;
-  const total = result.acceptedShares + result.rejectedShares;
-  if (total === 0) return '0.00%';
-  return `${((result.rejectedShares / total) * 100).toFixed(2)}%`;
+function observedShares(result: BenchmarkPoolResult): number | null {
+  if (result.acceptedShares === null || result.staleShares === null) return null;
+  return result.acceptedShares + result.staleShares;
+}
+
+function formatStaleRate(result: BenchmarkPoolResult): string | null {
+  const total = observedShares(result);
+  if (total === null) return null;
+  if (total === 0) return 'no shares observed';
+  return `${((result.staleShares! / total) * 100).toFixed(2)}% of ${total.toLocaleString()}`;
+}
+
+/**
+ * Pools are ranked by median ping; when two pings land within the same
+ * ~5 ms bucket the lower stale-share rate wins the position. A pool with
+ * no observed shares cannot win a near-tie.
+ */
+const PING_TIE_BUCKET_MS = 5;
+
+function staleRateValue(result: BenchmarkPoolResult): number {
+  const total = observedShares(result);
+  if (total === null || total === 0) return Number.POSITIVE_INFINITY;
+  return result.staleShares! / total;
 }
 
 function isRankable(result: BenchmarkPoolResult): boolean {
-  return (
-    result.status === 'completed' &&
-    result.averageLatencyMs !== null &&
-    result.attemptedSamples > 0 &&
-    result.successfulSamples === result.attemptedSamples
-  );
+  return result.status === 'completed' && result.medianLatencyMs !== null;
 }
 
 function resultBadge(status: BenchmarkPoolStatus): {
@@ -190,10 +203,20 @@ export function Benchmark() {
     return [...run.results].sort((left, right) => {
       if (isRankable(left) && !isRankable(right)) return -1;
       if (!isRankable(left) && isRankable(right)) return 1;
-      if (left.averageLatencyMs === null && right.averageLatencyMs === null) return 0;
-      if (left.averageLatencyMs === null) return 1;
-      if (right.averageLatencyMs === null) return -1;
-      return left.averageLatencyMs - right.averageLatencyMs;
+      if (left.medianLatencyMs === null && right.medianLatencyMs === null) return 0;
+      if (left.medianLatencyMs === null) return 1;
+      if (right.medianLatencyMs === null) return -1;
+
+      const leftBucket = Math.round(left.medianLatencyMs / PING_TIE_BUCKET_MS);
+      const rightBucket = Math.round(right.medianLatencyMs / PING_TIE_BUCKET_MS);
+      if (leftBucket !== rightBucket) {
+        return left.medianLatencyMs - right.medianLatencyMs;
+      }
+
+      const leftRate = staleRateValue(left);
+      const rightRate = staleRateValue(right);
+      if (leftRate !== rightRate) return leftRate < rightRate ? -1 : 1;
+      return left.medianLatencyMs - right.medianLatencyMs;
     });
   }, [isTerminal, run]);
 
@@ -245,7 +268,7 @@ export function Benchmark() {
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Pool Benchmark</h1>
           <p className="mt-2 max-w-3xl text-muted-foreground">
-            Compare pools by connection speed and rejected shares.
+            Compare pools by ping and stale shares.
           </p>
           <p className="mt-2 max-w-3xl text-sm text-muted-foreground">
             Experimental feature. Results can change with network conditions and benchmark duration.
@@ -347,7 +370,7 @@ export function Benchmark() {
                         {run.status === 'stopping'
                           ? 'Stopping and restoring the original pool configuration...'
                           : run.status === 'completed'
-                            ? 'Ranked by average TCP connect time. The original pool order has been restored.'
+                            ? 'Ranked by median TCP connect time. The original pool order has been restored.'
                             : run.status === 'cancelled'
                               ? 'The run was stopped and the original pool order was restored.'
                               : run.status === 'failed'
@@ -362,7 +385,7 @@ export function Benchmark() {
                     {isTerminal && rankedResults.some((result) => result.status === 'completed') && (
                       <div className="flex items-center gap-2 text-sm text-muted-foreground">
                         <Trophy className="h-4 w-4 text-primary" />
-                        Lowest TCP connect time ranks first
+                        Lowest ping ranks first; stale shares break near-ties
                       </div>
                     )}
                     {isActive && (
@@ -407,26 +430,13 @@ export function Benchmark() {
                         <TableHead className="text-right">
                           <MetricHeader
                             label="TCP connect"
-                            description="The average time required to open a TCP connection to the pool's configured mining address and port. Ten attempts are spread across the mining interval; this tests endpoint reachability but does not include SV2 negotiation or share acknowledgement."
+                            description="The median time to open a TCP connection to the pool's resolved address and port. DNS resolution happens before timing starts, and ten attempts are spread across the mining interval; this tests endpoint reachability but does not include SV2 negotiation or share acknowledgement."
                           />
                         </TableHead>
                         <TableHead className="text-right">
                           <MetricHeader
-                            label="SV2 setup"
-                            description="The elapsed time from launching the pool-facing mining service until its timestamped SetupConnectionSuccess message. It includes starting the pool client, opening the network connection, the Noise handshake, and SV2 connection negotiation, but excludes stopping the previous stack and downloading images."
-                          />
-                        </TableHead>
-                        <TableHead className="text-right">Samples</TableHead>
-                        <TableHead className="text-right">
-                          <MetricHeader
-                            label="Accepted"
-                            description="The increase in shares acknowledged by the upstream pool during this pool's mining interval. The raw count is useful context, but it should not be used to rank pools because pools may assign different share difficulty."
-                          />
-                        </TableHead>
-                        <TableHead className="text-right">
-                          <MetricHeader
-                            label="Rejected (rate)"
-                            description="The increase in shares rejected by the upstream pool during this pool's mining interval. The percentage is rejected divided by acknowledged plus rejected shares; longer runs produce a more meaningful comparison when share counts are low."
+                            label="Stale shares (rate)"
+                            description="Shares the upstream pool rejected as stale during this pool's mining interval. Difficulty-related rejections are excluded, since they reflect vardiff retargeting after the restart each benchmark leg begins with. The percentage is stale divided by acknowledged plus stale shares; longer runs produce a more meaningful comparison when share counts are low."
                           />
                         </TableHead>
                         <TableHead className="text-right">Action</TableHead>
@@ -438,7 +448,7 @@ export function Benchmark() {
                         const badge = resultBadge(result.status);
                         const key = endpointKey(result.pool);
                         const hasRank = isTerminal && isRankable(result);
-                        const rejectedRate = formatRejectedRate(result);
+                        const staleRate = formatStaleRate(result);
 
                         return (
                           <TableRow key={key}>
@@ -473,21 +483,12 @@ export function Benchmark() {
                               )}
                             </TableCell>
                             <TableCell className="text-right font-mono">
-                              <div className="font-semibold">{formatLatency(result.averageLatencyMs)}</div>
+                              <div className="font-semibold">{formatLatency(result.medianLatencyMs)}</div>
                             </TableCell>
                             <TableCell className="text-right font-mono">
-                              <div className="font-semibold">{formatLatency(result.sv2NegotiationMs)}</div>
-                            </TableCell>
-                            <TableCell className="text-right font-mono">
-                              {result.successfulSamples}/{result.attemptedSamples}
-                            </TableCell>
-                            <TableCell className="text-right font-mono">
-                              {result.acceptedShares?.toLocaleString() ?? '—'}
-                            </TableCell>
-                            <TableCell className="text-right font-mono">
-                              <div>{result.rejectedShares?.toLocaleString() ?? '—'}</div>
-                              {rejectedRate && (
-                                <div className="text-xs text-muted-foreground">{rejectedRate}</div>
+                              <div>{result.staleShares?.toLocaleString() ?? '—'}</div>
+                              {staleRate && (
+                                <div className="text-xs text-muted-foreground">{staleRate}</div>
                               )}
                             </TableCell>
                             <TableCell className="text-right">
@@ -514,10 +515,10 @@ export function Benchmark() {
                     </TableBody>
                   </Table>
                   <p className="mt-4 text-xs text-muted-foreground">
-                    Results reflect conditions during this run. Pools are ranked only by TCP connect
-                    time, and a pool receives no rank if any TCP attempt fails. Compare SV2 setup time
-                    and rejected-share rate separately rather than treating the rank as an overall
-                    pool-quality score.
+                    Results reflect conditions during this run. Pools are ranked by median ping;
+                    pools within ~{PING_TIE_BUCKET_MS} ms of each other are ordered by stale-share
+                    rate instead. A pool receives no rank if any TCP attempt fails. Short runs see
+                    few shares, so treat the stale rate as meaningful only over longer durations.
                   </p>
                 </CardContent>
               </Card>

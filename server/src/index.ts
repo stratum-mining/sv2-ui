@@ -190,14 +190,11 @@ async function writeStackConfigFiles(data: SetupData): Promise<void> {
   }
 }
 
-async function applyBenchmarkConfiguration(
-  data: SetupData,
-  onPoolClientStarting?: () => void
-): Promise<void> {
+async function applyBenchmarkConfiguration(data: SetupData): Promise<void> {
   await writeStackConfigFiles(data);
   activePoolTracker.reset();
   await stopStack();
-  await startStack(data, CONFIG_DIR, onPoolClientStarting);
+  await startStack(data, CONFIG_DIR);
 }
 
 async function getBenchmarkActivePool(mode: SetupMode, pools: PoolConfig[]) {
@@ -208,6 +205,7 @@ type BenchmarkMonitoringServerChannel = {
   channel_id: number;
   shares_acknowledged?: number;
   shares_rejected?: number;
+  shares_rejected_by_reason?: Record<string, number>;
 };
 
 type BenchmarkMonitoringServerChannelsResponse = {
@@ -216,6 +214,29 @@ type BenchmarkMonitoringServerChannelsResponse = {
   extended_channels?: BenchmarkMonitoringServerChannel[];
   standard_channels?: BenchmarkMonitoringServerChannel[];
 };
+
+/**
+ * The benchmark methodology counts only stale shares: a rejection the pool
+ * attributes to serving/accepting work too late. Difficulty-related
+ * rejections reflect vardiff retargeting after the stack restart that every
+ * benchmark leg begins with, not pool quality, so they are excluded.
+ * Falls back to the aggregate counter only when the monitoring API omits the
+ * per-reason map entirely.
+ */
+function staleShareCount(channel: BenchmarkMonitoringServerChannel): number {
+  const byReason = channel.shares_rejected_by_reason;
+  if (!byReason || typeof byReason !== 'object') {
+    return channel.shares_rejected ?? 0;
+  }
+
+  let stale = 0;
+  for (const [reason, count] of Object.entries(byReason)) {
+    if (/stale/i.test(reason) && Number.isFinite(count)) {
+      stale += count;
+    }
+  }
+  return stale;
+}
 
 async function readBenchmarkShareCounters(mode: SetupMode): Promise<ShareChannelCounters[]> {
   const containerName = mode === 'jd' ? 'sv2-jdc' : 'sv2-translator';
@@ -243,12 +264,12 @@ async function readBenchmarkShareCounters(mode: SetupMode): Promise<ShareChannel
       ...extendedChannels.map((channel) => ({
         key: `extended:${channel.channel_id}`,
         accepted: channel.shares_acknowledged ?? 0,
-        rejected: channel.shares_rejected ?? 0,
+        stale: staleShareCount(channel),
       })),
       ...standardChannels.map((channel) => ({
         key: `standard:${channel.channel_id}`,
         accepted: channel.shares_acknowledged ?? 0,
-        rejected: channel.shares_rejected ?? 0,
+        stale: staleShareCount(channel),
       }))
     );
 

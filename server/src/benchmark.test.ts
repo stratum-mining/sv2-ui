@@ -42,12 +42,15 @@ const SETUP: SetupData = {
   },
 };
 
-test('summarizes latency using the arithmetic average', () => {
+test('summarizes latency using the median so outliers cannot dominate', () => {
   assert.deepEqual(summarizeLatencySamples([10, 12, 11, 50]), {
-    averageLatencyMs: 20.8,
+    medianLatencyMs: 11.5,
+  });
+  assert.deepEqual(summarizeLatencySamples([10, 12, 11]), {
+    medianLatencyMs: 11,
   });
   assert.deepEqual(summarizeLatencySamples([]), {
-    averageLatencyMs: null,
+    medianLatencyMs: null,
   });
 });
 
@@ -55,24 +58,24 @@ test('accumulates shares when channels disconnect, reconnect, or reset', () => {
   const accumulator = new ShareCounterAccumulator();
 
   assert.deepEqual(accumulator.update([
-    { key: 'extended:1', accepted: 10, rejected: 1 },
-    { key: 'extended:2', accepted: 5, rejected: 0 },
-  ]), { accepted: 0, rejected: 0 });
+    { key: 'extended:1', accepted: 10, stale: 1 },
+    { key: 'extended:2', accepted: 5, stale: 0 },
+  ]), { accepted: 0, stale: 0 });
   assert.deepEqual(accumulator.update([
-    { key: 'extended:1', accepted: 12, rejected: 2 },
-    { key: 'extended:2', accepted: 6, rejected: 0 },
-  ]), { accepted: 3, rejected: 1 });
+    { key: 'extended:1', accepted: 12, stale: 2 },
+    { key: 'extended:2', accepted: 6, stale: 0 },
+  ]), { accepted: 3, stale: 1 });
   assert.deepEqual(accumulator.update([
-    { key: 'extended:1', accepted: 13, rejected: 2 },
-  ]), { accepted: 4, rejected: 1 });
+    { key: 'extended:1', accepted: 13, stale: 2 },
+  ]), { accepted: 4, stale: 1 });
   assert.deepEqual(accumulator.update([
-    { key: 'extended:1', accepted: 14, rejected: 2 },
-    { key: 'extended:3', accepted: 2, rejected: 1 },
-  ]), { accepted: 7, rejected: 2 });
+    { key: 'extended:1', accepted: 14, stale: 2 },
+    { key: 'extended:3', accepted: 2, stale: 1 },
+  ]), { accepted: 7, stale: 2 });
   assert.deepEqual(accumulator.update([
-    { key: 'extended:1', accepted: 1, rejected: 0 },
-    { key: 'extended:3', accepted: 3, rejected: 1 },
-  ]), { accepted: 9, rejected: 2 });
+    { key: 'extended:1', accepted: 1, stale: 0 },
+    { key: 'extended:3', accepted: 3, stale: 1 },
+  ]), { accepted: 9, stale: 2 });
 });
 
 test('rotates the existing ordered fallback list without mutating the saved setup', () => {
@@ -101,13 +104,13 @@ test('runs each pool, records measurements, and restores the original setup', as
 
       if (poolName === 'Alpha') {
         return readCount === 1
-          ? [{ key: 'extended:1', accepted: 10, rejected: 1 }]
-          : [{ key: 'extended:1', accepted: 13, rejected: 2 }];
+          ? [{ key: 'extended:1', accepted: 10, stale: 1 }]
+          : [{ key: 'extended:1', accepted: 13, stale: 2 }];
       }
 
       return readCount === 1
-        ? [{ key: 'extended:1', accepted: 20, rejected: 4 }]
-        : [{ key: 'extended:1', accepted: 22, rejected: 4 }];
+        ? [{ key: 'extended:1', accepted: 20, stale: 4 }]
+        : [{ key: 'extended:1', accepted: 22, stale: 4 }];
     },
     measureLatency: async (pool) => pool.name === 'Alpha' ? 10 : 20,
     sampleIntervalMs: 1,
@@ -127,44 +130,18 @@ test('runs each pool, records measurements, and restores the original setup', as
   const run = manager.getSnapshot();
   assert.equal(run?.status, 'completed');
   assert.deepEqual(run?.results.map((result) => result.status), ['completed', 'completed']);
-  assert.equal(run?.results[0].averageLatencyMs, 10);
+  assert.equal(run?.results[0].medianLatencyMs, 10);
   assert.equal(run?.results[0].acceptedShares, 3);
-  assert.equal(run?.results[0].rejectedShares, 1);
-  assert.equal(run?.results[1].averageLatencyMs, 20);
+  assert.equal(run?.results[0].staleShares, 1);
+  assert.equal(run?.results[1].medianLatencyMs, 20);
   assert.equal(run?.results[1].acceptedShares, 2);
-  assert.equal(run?.results[1].rejectedShares, 0);
+  assert.equal(run?.results[1].staleShares, 0);
   assert.deepEqual(applied.map((data) => data.pool?.name), ['Alpha', 'Beta', 'Alpha']);
   assert.deepEqual(applied.at(-1), SETUP);
   assert.equal(settled, 1);
 });
 
-test('records SV2 negotiation time from pool-client launch to SetupConnectionSuccess', async () => {
-  let poolClientStartedAtMs = 0;
-
-  const manager = new BenchmarkManager({
-    applyConfiguration: async (_data, onPoolClientStarting) => {
-      poolClientStartedAtMs = Date.now();
-      onPoolClientStarting?.();
-    },
-    getActivePool: async () => ({
-      index: 0,
-      negotiatedAt: new Date(poolClientStartedAtMs + 125).toISOString(),
-    }),
-    readShareCounters: async () => [],
-    measureLatency: async () => 10,
-    sampleIntervalMs: 1,
-    maxLatencySamples: 1,
-    activePoolPollIntervalMs: 1,
-    activePoolTimeoutMs: 20,
-  });
-
-  manager.start(SETUP, [POOLS[0]], 0.01);
-  await manager.waitForCompletion();
-
-  assert.equal(manager.getSnapshot()?.results[0].sv2NegotiationMs, 125);
-});
-
-test('publishes accepted and rejected share deltas while a pool is still running', async () => {
+test('publishes accepted and stale share deltas while a pool is still running', async () => {
   let counterRead = 0;
   const manager = new BenchmarkManager({
     applyConfiguration: async () => {},
@@ -172,8 +149,8 @@ test('publishes accepted and rejected share deltas while a pool is still running
     readShareCounters: async () => {
       counterRead += 1;
       return counterRead === 1
-        ? [{ key: 'extended:1', accepted: 10, rejected: 1 }]
-        : [{ key: 'extended:1', accepted: 12, rejected: 2 }];
+        ? [{ key: 'extended:1', accepted: 10, stale: 1 }]
+        : [{ key: 'extended:1', accepted: 12, stale: 2 }];
     },
     measureLatency: async () => 10,
     sampleIntervalMs: 1,
@@ -193,7 +170,7 @@ test('publishes accepted and rejected share deltas while a pool is still running
   assert.equal(liveRun?.status, 'running');
   assert.equal(liveRun?.results[0].status, 'running');
   assert.equal(liveRun?.results[0].acceptedShares, 2);
-  assert.equal(liveRun?.results[0].rejectedShares, 1);
+  assert.equal(liveRun?.results[0].staleShares, 1);
 
   assert.equal(manager.stop(), true);
   await manager.waitForCompletion();
@@ -225,7 +202,7 @@ test('spreads latency attempts across the interval and does not rank partial suc
   assert.equal(result?.status, 'failed');
   assert.equal(result?.attemptedSamples, 3);
   assert.equal(result?.successfulSamples, 2);
-  assert.equal(result?.averageLatencyMs, null);
+  assert.equal(result?.medianLatencyMs, null);
   assert.match(result?.error ?? '', /no latency rank was assigned/i);
   assert.equal(attemptTimes.length, 3);
   assert.ok(attemptTimes[2] - attemptTimes[0] >= 30);

@@ -11,6 +11,7 @@ import fs from 'fs/promises';
 import { fileURLToPath } from 'url';
 
 import type { PoolConfig, SetupData, StatusResponse, SetupResponse } from './types.js';
+import type { BenchmarkStartRequest, SetupMode } from '@sv2-ui/shared';
 import { generateTranslatorConfig, generateJdcConfig, normalizeSetupData } from './config-generator.js';
 import {
   isSupportedBitcoinCoreVersion,
@@ -18,6 +19,7 @@ import {
   TRANSLATOR_MONITORING_PORT,
   JDC_MONITORING_PORT,
   getMinerTelemetryCidrError,
+  MAX_FALLBACK_POOLS,
 } from '@sv2-ui/shared';
 import { BITCOIN_ERROR_MESSAGES } from './messages.js';
 import {
@@ -34,7 +36,20 @@ import {
 } from './docker.js';
 import { getLogDiagnostics, getLogStreams, readCollatedLogLines } from './logs/diagnostics.js';
 import { ActivePoolTracker } from './active-pool.js';
-import { getPoolConfigError, MAX_FALLBACK_POOLS } from './pool-validation.js';
+import { BenchmarkManager, type ShareChannelCounters } from './benchmark.js';
+import { getPoolConfigError } from './pool-validation.js';
+import {
+  collectPaginatedMonitoringItems,
+  getTelegramWorkerCount,
+  TelegramApiError,
+  TelegramConfigError,
+  TelegramService,
+} from './telegram.js';
+import type {
+  TelegramActivitySnapshot,
+  TelegramMiningChannel,
+  TelegramSettingsUpdate,
+} from './telegram.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -43,13 +58,23 @@ const PORT = process.env.PORT || 3001;
 // Config storage
 const CONFIG_DIR = process.env.CONFIG_DIR || path.join(__dirname, '../../data/config');
 const STATE_FILE = path.join(CONFIG_DIR, 'state.json');
+const TELEGRAM_SETTINGS_FILE = path.join(CONFIG_DIR, 'telegram.json');
 
 const AUTO_START_RETRY_INTERVAL_MS = 30_000;
+const TELEGRAM_POLL_INTERVAL_MS = 5_000;
 
-type StackBusyReason = 'auto-start' | 'manual';
+type StackBusyReason = 'auto-start' | 'manual' | 'benchmark';
 
 let stackBusyReason: StackBusyReason | null = null;
 const activePoolTracker = new ActivePoolTracker(readContainerLogs);
+const telegramService = new TelegramService(TELEGRAM_SETTINGS_FILE);
+let telegramMonitorTimer: ReturnType<typeof setInterval> | null = null;
+const benchmarkManager = new BenchmarkManager({
+  applyConfiguration: applyBenchmarkConfiguration,
+  getActivePool: getBenchmarkActivePool,
+  readShareCounters: readBenchmarkShareCounters,
+  onSettled: () => finishStackOperation('benchmark'),
+});
 
 type SavedState = {
   configured: boolean;
@@ -136,6 +161,128 @@ async function saveState(data: SetupData, shouldBeRunning = true): Promise<void>
   }, null, 2));
 }
 
+async function removeConfigDirectory(filePath: string): Promise<void> {
+  try {
+    const stat = await fs.stat(filePath);
+    if (stat.isDirectory()) {
+      await fs.rm(filePath, { recursive: true });
+    }
+  } catch {
+    // The path does not exist, which is the normal first-run case.
+  }
+}
+
+async function writeStackConfigFiles(data: SetupData): Promise<void> {
+  await fs.mkdir(CONFIG_DIR, { recursive: true });
+
+  const translatorPath = path.join(CONFIG_DIR, 'translator.toml');
+  const jdcPath = path.join(CONFIG_DIR, 'jdc.toml');
+  await removeConfigDirectory(translatorPath);
+  await removeConfigDirectory(jdcPath);
+
+  await fs.writeFile(translatorPath, generateTranslatorConfig(data));
+
+  if (data.mode === 'jd') {
+    const jdcConfig = generateJdcConfig(data);
+    if (jdcConfig) {
+      await fs.writeFile(jdcPath, jdcConfig);
+    }
+  }
+}
+
+async function applyBenchmarkConfiguration(data: SetupData): Promise<void> {
+  await writeStackConfigFiles(data);
+  activePoolTracker.reset();
+  await stopStack();
+  await startStack(data, CONFIG_DIR);
+}
+
+async function getBenchmarkActivePool(mode: SetupMode, pools: PoolConfig[]) {
+  return activePoolTracker.getActivePool(mode === 'jd' ? 'jdc' : 'translator', pools);
+}
+
+type BenchmarkMonitoringServerChannel = {
+  channel_id: number;
+  shares_acknowledged?: number;
+  shares_rejected?: number;
+  shares_rejected_by_reason?: Record<string, number>;
+};
+
+type BenchmarkMonitoringServerChannelsResponse = {
+  total_extended?: number;
+  total_standard?: number;
+  extended_channels?: BenchmarkMonitoringServerChannel[];
+  standard_channels?: BenchmarkMonitoringServerChannel[];
+};
+
+/**
+ * The benchmark methodology counts only stale shares: a rejection the pool
+ * attributes to serving/accepting work too late. Difficulty-related
+ * rejections reflect vardiff retargeting after the stack restart that every
+ * benchmark leg begins with, not pool quality, so they are excluded.
+ * Falls back to the aggregate counter only when the monitoring API omits the
+ * per-reason map entirely.
+ */
+function staleShareCount(channel: BenchmarkMonitoringServerChannel): number {
+  const byReason = channel.shares_rejected_by_reason;
+  if (!byReason || typeof byReason !== 'object') {
+    return channel.shares_rejected ?? 0;
+  }
+
+  let stale = 0;
+  for (const [reason, count] of Object.entries(byReason)) {
+    if (/stale/i.test(reason) && Number.isFinite(count)) {
+      stale += count;
+    }
+  }
+  return stale;
+}
+
+async function readBenchmarkShareCounters(mode: SetupMode): Promise<ShareChannelCounters[]> {
+  const containerName = mode === 'jd' ? 'sv2-jdc' : 'sv2-translator';
+  const port = mode === 'jd' ? JDC_MONITORING_PORT : TRANSLATOR_MONITORING_PORT;
+  const channels: ShareChannelCounters[] = [];
+  const limit = 100;
+  let offset = 0;
+  let totalChannels = 0;
+
+  do {
+    const response = await fetch(
+      `${getContainerUrl(containerName, port)}/api/v1/server/channels?offset=${offset}&limit=${limit}`,
+      { signal: AbortSignal.timeout(5_000) }
+    );
+
+    if (!response.ok) {
+      throw new Error(`Monitoring API returned HTTP ${response.status}`);
+    }
+
+    const data = await response.json() as BenchmarkMonitoringServerChannelsResponse;
+    const extendedChannels = data.extended_channels ?? [];
+    const standardChannels = data.standard_channels ?? [];
+
+    channels.push(
+      ...extendedChannels.map((channel) => ({
+        key: `extended:${channel.channel_id}`,
+        accepted: channel.shares_acknowledged ?? 0,
+        stale: staleShareCount(channel),
+      })),
+      ...standardChannels.map((channel) => ({
+        key: `standard:${channel.channel_id}`,
+        accepted: channel.shares_acknowledged ?? 0,
+        stale: staleShareCount(channel),
+      }))
+    );
+
+    totalChannels = Math.max(
+      data.total_extended ?? extendedChannels.length,
+      data.total_standard ?? standardChannels.length
+    );
+    offset += limit;
+  } while (offset < totalChannels);
+
+  return channels;
+}
+
 function configuredPools(data: SetupData): PoolConfig[] {
   if (data.miningMode === 'solo' && data.mode === 'jd') {
     return [];
@@ -217,7 +364,42 @@ function stackBusyResponse() {
     success: false,
     error: stackBusyReason === 'auto-start'
       ? 'Mining services are already starting. Please wait.'
-      : 'Mining services are busy. Please wait.',
+      : stackBusyReason === 'benchmark'
+        ? 'A pool benchmark is in progress. Stop it before changing mining services.'
+        : 'Mining services are busy. Please wait.',
+  };
+}
+
+async function getCurrentStatus(): Promise<StatusResponse> {
+  const state = await loadState();
+  const containers = await getStackStatus(state.mode);
+  const running = isStackRunning(state.mode, containers);
+  const isSovereignSolo = state.data?.miningMode === 'solo' && state.data?.mode === 'jd';
+  const pools = state.data && !isSovereignSolo ? configuredPools(state.data) : [];
+
+  if (!running) {
+    activePoolTracker.reset();
+  }
+
+  const activePool = running && state.mode && pools.length > 0
+    ? await activePoolTracker.getActivePool(
+        state.mode === 'jd' ? 'jdc' : 'translator',
+        pools
+      )
+    : null;
+
+  return {
+    configured: state.configured,
+    running,
+    autoStarting: stackBusyReason === 'auto-start',
+    shouldBeRunning: state.shouldBeRunning,
+    miningMode: state.miningMode,
+    mode: state.mode,
+    poolName: isSovereignSolo
+      ? 'Sovereign Solo Mining'
+      : (activePool?.name ?? null),
+    activePoolIndex: activePool?.index ?? null,
+    containers,
   };
 }
 
@@ -237,38 +419,7 @@ app.get('/api/health', async (_req, res) => {
  */
 app.get('/api/status', async (_req, res) => {
   try {
-    const state = await loadState();
-    const containers = await getStackStatus(state.mode);
-    const running = isStackRunning(state.mode, containers);
-    const isSovereignSolo = state.data?.miningMode === 'solo' && state.data?.mode === 'jd';
-    const pools = state.data && !isSovereignSolo ? configuredPools(state.data) : [];
-
-    if (!running) {
-      activePoolTracker.reset();
-    }
-
-    const activePool = running && state.mode && pools.length > 0
-      ? await activePoolTracker.getActivePool(
-          state.mode === 'jd' ? 'jdc' : 'translator',
-          pools
-        )
-      : null;
-
-    const response: StatusResponse = {
-      configured: state.configured,
-      running,
-      autoStarting: stackBusyReason === 'auto-start',
-      shouldBeRunning: state.shouldBeRunning,
-      miningMode: state.miningMode,
-      mode: state.mode,
-      poolName: isSovereignSolo
-        ? 'Sovereign Solo Mining'
-        : (activePool?.name ?? null),
-      activePoolIndex: activePool?.index ?? null,
-      containers,
-    };
-
-    res.json(response);
+    res.json(await getCurrentStatus());
   } catch (error) {
     console.error('Status error:', error);
     res.status(500).json({ error: 'Failed to get status' });
@@ -291,12 +442,295 @@ app.get('/api/config', async (_req, res) => {
   }
 });
 
+/**
+ * GET /api/benchmark - Get the current or most recent benchmark run.
+ */
+app.get('/api/benchmark', (_req, res) => {
+  res.json({ run: benchmarkManager.getSnapshot() });
+});
+
+/**
+ * POST /api/benchmark/start - Start a backend-owned benchmark run.
+ */
+app.post('/api/benchmark/start', async (req, res) => {
+  if (!beginStackOperation('benchmark')) {
+    return res.status(409).json(stackBusyResponse());
+  }
+
+  let handedOffToBenchmark = false;
+
+  try {
+    if (!isJsonObject(req.body)) {
+      return res.status(400).json({ success: false, error: 'Benchmark request must be a JSON object' });
+    }
+
+    const request = req.body as Partial<BenchmarkStartRequest>;
+    if (!Array.isArray(request.pools)) {
+      return res.status(400).json({ success: false, error: 'Select at least two pools to benchmark' });
+    }
+    if (request.pools.length < 2 || request.pools.length > MAX_FALLBACK_POOLS + 1) {
+      return res.status(400).json({
+        success: false,
+        error: `Select between 2 and ${MAX_FALLBACK_POOLS + 1} pools to benchmark`,
+      });
+    }
+    if (
+      !Number.isInteger(request.poolDurationSeconds) ||
+      (request.poolDurationSeconds ?? 0) < 60 ||
+      (request.poolDurationSeconds ?? 0) > 86_400
+    ) {
+      return res.status(400).json({
+        success: false,
+        error: 'Benchmark duration must be between 1 minute and 24 hours per pool',
+      });
+    }
+
+    const pools: PoolConfig[] = [];
+    const endpoints = new Set<string>();
+    for (const [index, value] of request.pools.entries()) {
+      if (!isJsonObject(value)) {
+        return res.status(400).json({ success: false, error: `Pool ${index + 1} is invalid` });
+      }
+
+      const pool = value as unknown as PoolConfig;
+      const error = getPoolConfigError(pool, `Pool ${index + 1}`);
+      if (error) {
+        return res.status(400).json({ success: false, error });
+      }
+
+      const endpoint = `${pool.address.toLowerCase()}:${pool.port}`;
+      if (endpoints.has(endpoint)) {
+        return res.status(400).json({ success: false, error: 'Each benchmark pool must be unique' });
+      }
+      endpoints.add(endpoint);
+      pools.push(pool);
+    }
+
+    const state = await loadState();
+    if (!state.configured || !state.data) {
+      return res.status(400).json({ success: false, error: 'Configure mining before starting a benchmark' });
+    }
+    if (state.data.miningMode === 'solo' && state.data.mode === 'jd') {
+      return res.status(400).json({
+        success: false,
+        error: 'Pool benchmarking is unavailable for sovereign solo mining',
+      });
+    }
+
+    const benchmarkData = normalizeSetupData({
+      ...state.data,
+      pool: pools[0],
+      fallbackPools: pools.slice(1),
+    });
+    const setupValidationError = getSetupValidationError(benchmarkData);
+    if (setupValidationError) {
+      return res.status(400).json({ success: false, error: setupValidationError });
+    }
+
+    await ensureDockerAvailable();
+    const bitcoinSocketError = await getBitcoinSocketStartupError(benchmarkData);
+    if (bitcoinSocketError) {
+      return res.status(400).json({ success: false, error: bitcoinSocketError });
+    }
+
+    const run = benchmarkManager.start(
+      state.data,
+      pools,
+      request.poolDurationSeconds as number
+    );
+    handedOffToBenchmark = true;
+    res.status(202).json({ success: true, run });
+  } catch (error) {
+    console.error('Benchmark start error:', error);
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to start benchmark',
+    });
+  } finally {
+    if (!handedOffToBenchmark) {
+      finishStackOperation('benchmark');
+    }
+  }
+});
+
+/**
+ * POST /api/benchmark/stop - Stop the run and restore the original pool order.
+ */
+app.post('/api/benchmark/stop', (_req, res) => {
+  if (!benchmarkManager.stop()) {
+    return res.status(409).json({ success: false, error: 'No benchmark is running' });
+  }
+
+  return res.status(202).json({ success: true });
+});
+
+/**
+ * POST /api/benchmark/mine - Promote a successful result and start mining.
+ */
+app.post('/api/benchmark/mine', async (req, res) => {
+  if (benchmarkManager.isActive()) {
+    return res.status(409).json(stackBusyResponse());
+  }
+  if (!beginStackOperation('manual')) {
+    return res.status(409).json(stackBusyResponse());
+  }
+
+  try {
+    if (!isJsonObject(req.body)) {
+      return res.status(400).json({ success: false, error: 'Pool selection must be a JSON object' });
+    }
+
+    const address = typeof req.body.address === 'string' ? req.body.address : '';
+    const port = typeof req.body.port === 'number' ? req.body.port : 0;
+    const selectedPool = benchmarkManager.findSelectedPool(address, port);
+    const run = benchmarkManager.getSnapshot();
+    const successfulResult = run?.results.find((result) => (
+      result.status === 'completed' &&
+      result.pool.address.trim().toLowerCase() === address.trim().toLowerCase() &&
+      result.pool.port === port
+    ));
+
+    if (!selectedPool || !successfulResult) {
+      return res.status(400).json({
+        success: false,
+        error: 'Choose a pool with a completed benchmark result',
+      });
+    }
+
+    const state = await loadState();
+    if (!state.configured || !state.data) {
+      return res.status(400).json({ success: false, error: 'No configuration to update' });
+    }
+
+    const selectedPools = benchmarkManager.getSelectedPools();
+    const orderedPools = [
+      selectedPool,
+      ...selectedPools.filter((pool) => (
+        pool.address.trim().toLowerCase() !== address.trim().toLowerCase() ||
+        pool.port !== port
+      )),
+    ];
+    const newData = normalizeSetupData({
+      ...state.data,
+      pool: orderedPools[0],
+      fallbackPools: orderedPools.slice(1),
+    });
+    const setupValidationError = getSetupValidationError(newData);
+    if (setupValidationError) {
+      return res.status(400).json({ success: false, error: setupValidationError });
+    }
+
+    await ensureDockerAvailable();
+    const bitcoinSocketError = await getBitcoinSocketStartupError(newData);
+    if (bitcoinSocketError) {
+      return res.status(400).json({ success: false, error: bitcoinSocketError });
+    }
+
+    await writeStackConfigFiles(newData);
+    await saveState(newData, true);
+    activePoolTracker.reset();
+    await stopStack();
+    await startStack(newData, CONFIG_DIR);
+
+    return res.json({ success: true });
+  } catch (error) {
+    console.error('Benchmark mining selection error:', error);
+    return res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to start mining with selected pool',
+    });
+  } finally {
+    finishStackOperation('manual');
+  }
+});
+
 
 /**
  * GET /api/env - Host environment variables relevant to the UI
  */
 app.get('/api/env', (_req, res) => {
   res.json({ HOST_OS: process.env.HOST_OS || null, STRATUM_HOST: process.env.STRATUM_HOST || null });
+});
+
+function sendTelegramError(res: express.Response, error: unknown): void {
+  if (error instanceof TelegramConfigError) {
+    res.status(400).json({ success: false, error: error.message });
+    return;
+  }
+
+  if (error instanceof TelegramApiError) {
+    res.status(error.statusCode).json({ success: false, error: error.message });
+    return;
+  }
+
+  console.error(
+    'Telegram settings error:',
+    error instanceof Error ? error.message : 'Unknown error'
+  );
+  res.status(500).json({ success: false, error: 'Telegram settings could not be updated' });
+}
+
+/**
+ * Telegram notification proof of concept.
+ *
+ * The bot token and chat ID are stored only in CONFIG_DIR/telegram.json and
+ * are never included in an API response.
+ */
+app.get('/api/telegram', async (_req, res) => {
+  try {
+    res.json(await telegramService.getSettings());
+  } catch (error) {
+    sendTelegramError(res, error);
+  }
+});
+
+app.post('/api/telegram/connect', async (req, res) => {
+  try {
+    if (!isJsonObject(req.body) || typeof req.body.botToken !== 'string') {
+      throw new TelegramConfigError('A Telegram bot token is required');
+    }
+
+    res.json(await telegramService.connectBot(req.body.botToken));
+  } catch (error) {
+    sendTelegramError(res, error);
+  }
+});
+
+app.post('/api/telegram/pair', async (_req, res) => {
+  try {
+    res.json(await telegramService.pairChat());
+  } catch (error) {
+    sendTelegramError(res, error);
+  }
+});
+
+app.patch('/api/telegram', async (req, res) => {
+  try {
+    if (!isJsonObject(req.body)) {
+      throw new TelegramConfigError('Telegram settings must be a JSON object');
+    }
+
+    res.json(await telegramService.updateSettings(req.body as TelegramSettingsUpdate));
+  } catch (error) {
+    sendTelegramError(res, error);
+  }
+});
+
+app.post('/api/telegram/test', async (_req, res) => {
+  try {
+    await telegramService.sendTestMessage();
+    res.json({ success: true });
+  } catch (error) {
+    sendTelegramError(res, error);
+  }
+});
+
+app.delete('/api/telegram', async (_req, res) => {
+  try {
+    res.json(await telegramService.disconnect());
+  } catch (error) {
+    sendTelegramError(res, error);
+  }
 });
 
 /**
@@ -380,40 +814,7 @@ app.put('/api/config', async (req, res) => {
       return res.status(400).json({ success: false, error: bitcoinSocketError });
     }
 
-    await fs.mkdir(CONFIG_DIR, { recursive: true });
-
-    const translatorPath = path.join(CONFIG_DIR, 'translator.toml');
-    const jdcPath = path.join(CONFIG_DIR, 'jdc.toml');
-
-    try {
-      const translatorStat = await fs.stat(translatorPath);
-      if (translatorStat.isDirectory()) {
-        await fs.rm(translatorPath, { recursive: true });
-      }
-    } catch {
-      // translatorPath doesn't exist or isn't a directory, ignore
-    }
-
-    try {
-      const jdcStat = await fs.stat(jdcPath);
-      if (jdcStat.isDirectory()) {
-        await fs.rm(jdcPath, { recursive: true });
-      }
-    } catch {
-      // jdcPath doesn't exist or isn't a directory, ignore
-    }
-
-    const translatorConfig = generateTranslatorConfig(newData);
-    await fs.writeFile(translatorPath, translatorConfig);
-    console.log('Updated translator.toml');
-
-    if (newData.mode === 'jd') {
-      const jdcConfig = generateJdcConfig(newData);
-      if (jdcConfig) {
-        await fs.writeFile(jdcPath, jdcConfig);
-        console.log('Updated jdc.toml');
-      }
-    }
+    await writeStackConfigFiles(newData);
 
     await saveState(newData);
 
@@ -520,41 +921,8 @@ app.post('/api/setup', async (req, res) => {
       return res.status(400).json({ success: false, error: bitcoinSocketError });
     }
 
-    // Generate config files
-    await fs.mkdir(CONFIG_DIR, { recursive: true });
-
-    const translatorPath = path.join(CONFIG_DIR, 'translator.toml');
-    const jdcPath = path.join(CONFIG_DIR, 'jdc.toml');
-
-    // Remove if exists as directory (can happen from Docker volume mounts)
-    try {
-      const translatorStat = await fs.stat(translatorPath);
-      if (translatorStat.isDirectory()) {
-        await fs.rm(translatorPath, { recursive: true });
-      }
-    } catch {
-      // Doesn't exist, fine
-    }
-    try {
-      const jdcStat = await fs.stat(jdcPath);
-      if (jdcStat.isDirectory()) {
-        await fs.rm(jdcPath, { recursive: true });
-      }
-    } catch {
-      // Doesn't exist, fine
-    }
-
-    const translatorConfig = generateTranslatorConfig(data);
-    await fs.writeFile(translatorPath, translatorConfig);
-    console.log('Generated translator.toml');
-
-    if (data.mode === 'jd') {
-      const jdcConfig = generateJdcConfig(data);
-      if (jdcConfig) {
-        await fs.writeFile(jdcPath, jdcConfig);
-        console.log('Generated jdc.toml');
-      }
-    }
+    // Generate config files.
+    await writeStackConfigFiles(data);
 
     // Save state
     await saveState(data);
@@ -702,6 +1070,191 @@ function getContainerUrl(containerName: string, port: number): string {
     : `http://localhost:${port}`;
 }
 
+type MonitoringGlobal = {
+  server?: { total_hashrate: number } | null;
+  sv1_clients?: { total_clients: number; total_hashrate: number } | null;
+  sv2_clients?: {
+    total_clients: number;
+    total_channels: number;
+    total_hashrate: number;
+  } | null;
+};
+
+type MonitoringServerChannel = {
+  channel_id: number;
+  user_identity: string;
+  best_diff: number;
+  blocks_found: number;
+  shares_submitted: number;
+  shares_acknowledged: number;
+  shares_rejected: number;
+};
+
+type MonitoringChannelsPage<T> = {
+  total_extended: number;
+  total_standard: number;
+  extended_channels: T[];
+  standard_channels: T[];
+};
+
+type MonitoringClient = {
+  client_id: number;
+};
+
+type MonitoringItemsPage<T> = {
+  total: number;
+  items: T[];
+};
+
+type TaggedMonitoringChannel<T> = {
+  kind: 'extended' | 'standard';
+  channel: T;
+};
+
+type MonitoringMiningChannel = {
+  channel_id: number;
+  user_identity: string;
+  best_diff: number;
+  blocks_found: number;
+};
+
+async function fetchMonitoringJson<T>(url: string): Promise<T | null> {
+  try {
+    const response = await fetch(url, {
+      signal: AbortSignal.timeout(5000),
+    });
+    return response.ok ? await response.json() as T : null;
+  } catch {
+    return null;
+  }
+}
+
+function combineMonitoringChannelPage<T>(
+  page: MonitoringChannelsPage<T>,
+): {
+  items: TaggedMonitoringChannel<T>[];
+  total: number;
+} {
+  return {
+    items: [
+      ...page.extended_channels.map((channel) => ({
+        kind: 'extended' as const,
+        channel,
+      })),
+      ...page.standard_channels.map((channel) => ({
+        kind: 'standard' as const,
+        channel,
+      })),
+    ],
+    total: Math.max(page.total_extended, page.total_standard),
+  };
+}
+
+async function fetchAllMonitoringChannels<T>(
+  endpoint: string,
+): Promise<TaggedMonitoringChannel<T>[] | null> {
+  return collectPaginatedMonitoringItems(async (offset, limit) => {
+    const page = await fetchMonitoringJson<MonitoringChannelsPage<T>>(
+      `${endpoint}?offset=${offset}&limit=${limit}`
+    );
+    return page ? combineMonitoringChannelPage(page) : null;
+  });
+}
+
+async function fetchAllMonitoringItems<T>(endpoint: string): Promise<T[] | null> {
+  return collectPaginatedMonitoringItems(async (offset, limit) => {
+    const page = await fetchMonitoringJson<MonitoringItemsPage<T>>(
+      `${endpoint}?offset=${offset}&limit=${limit}`
+    );
+    return page ? { items: page.items, total: page.total } : null;
+  });
+}
+
+async function getTelegramActivitySnapshot(): Promise<TelegramActivitySnapshot> {
+  const status = await getCurrentStatus();
+
+  if (!status.running || !status.mode) {
+    return {
+      running: false,
+      poolName: status.poolName,
+      activePoolIndex: status.activePoolIndex,
+      hashrate: null,
+      workers: null,
+      sharesSubmitted: null,
+      sharesAccepted: null,
+      sharesRejected: null,
+      channels: null,
+    };
+  }
+
+  const isJdMode = status.mode === 'jd';
+  const containerName = isJdMode ? 'sv2-jdc' : 'sv2-translator';
+  const port = isJdMode ? JDC_MONITORING_PORT : TRANSLATOR_MONITORING_PORT;
+  const baseUrl = `${getContainerUrl(containerName, port)}/api/v1`;
+  const [global, serverChannels, monitoringClients] = await Promise.all([
+    fetchMonitoringJson<MonitoringGlobal>(`${baseUrl}/global`),
+    fetchAllMonitoringChannels<MonitoringServerChannel>(`${baseUrl}/server/channels`),
+    isJdMode
+      ? fetchAllMonitoringItems<MonitoringClient>(`${baseUrl}/clients`)
+      : Promise.resolve(null),
+  ]);
+
+  const clients = isJdMode ? global?.sv2_clients : global?.sv1_clients;
+  let miningChannels: TelegramMiningChannel[] | null = null;
+
+  if (isJdMode && monitoringClients) {
+    const downstreamResponses = await Promise.all(
+      monitoringClients.map(async (client) => ({
+        clientId: client.client_id,
+        channels: await fetchAllMonitoringChannels<MonitoringMiningChannel>(
+          `${baseUrl}/clients/${client.client_id}/channels`
+        ),
+      }))
+    );
+
+    if (downstreamResponses.every((response) => response.channels !== null)) {
+      miningChannels = downstreamResponses.flatMap(({ clientId, channels }) => {
+        if (!channels) return [];
+        return channels.map(({ kind, channel }) => ({
+          key: `jdc:${clientId}:${kind}:${channel.channel_id}:${channel.user_identity}`,
+          userIdentity: channel.user_identity,
+          blocksFound: channel.blocks_found,
+          bestDifficulty: channel.best_diff,
+        }));
+      });
+    }
+  } else if (!isJdMode && serverChannels) {
+    miningChannels = serverChannels.map(({ kind, channel }) => ({
+      key: `translator:server:${kind}:${channel.channel_id}:${channel.user_identity}`,
+      userIdentity: channel.user_identity,
+      blocksFound: channel.blocks_found,
+      bestDifficulty: channel.best_diff,
+    }));
+  }
+
+  return {
+    running: true,
+    poolName: status.poolName,
+    activePoolIndex: status.activePoolIndex,
+    hashrate: clients?.total_hashrate ?? global?.server?.total_hashrate ?? null,
+    workers: getTelegramWorkerCount(
+      isJdMode,
+      global?.sv1_clients,
+      global?.sv2_clients,
+    ),
+    sharesSubmitted: serverChannels
+      ? serverChannels.reduce((sum, item) => sum + item.channel.shares_submitted, 0)
+      : null,
+    sharesAccepted: serverChannels
+      ? serverChannels.reduce((sum, item) => sum + item.channel.shares_acknowledged, 0)
+      : null,
+    sharesRejected: serverChannels
+      ? serverChannels.reduce((sum, item) => sum + item.channel.shares_rejected, 0)
+      : null,
+    channels: miningChannels,
+  };
+}
+
 /**
  * Proxy requests to Translator monitoring API
  * This avoids CORS issues when the frontend is served from a different port
@@ -774,12 +1327,27 @@ async function reconcileShouldBeRunning(): Promise<void> {
       }
     }
 
+    // Recreate config from saved state before starting. This also guarantees
+    // recovery to the original pool order if the process stopped mid-benchmark.
+    await writeStackConfigFiles(state.data);
+    activePoolTracker.reset();
     await startStack(state.data, CONFIG_DIR);
     console.log('Auto-start: containers started successfully');
   } catch (error) {
     console.error('Auto-start failed:', error);
   } finally {
     finishStackOperation('auto-start');
+  }
+}
+
+async function pollTelegramNotifications(): Promise<void> {
+  try {
+    await telegramService.poll(getTelegramActivitySnapshot);
+  } catch (error) {
+    console.warn(
+      'Telegram notification check failed:',
+      error instanceof Error ? error.message : 'Unknown error'
+    );
   }
 }
 
@@ -807,6 +1375,13 @@ app.listen(PORT, () => {
   setInterval(() => {
     void reconcileShouldBeRunning();
   }, AUTO_START_RETRY_INTERVAL_MS);
+
+  // Telegram notifications run in the local backend, so they keep working
+  // while the browser UI is closed.
+  void pollTelegramNotifications();
+  telegramMonitorTimer = setInterval(() => {
+    void pollTelegramNotifications();
+  }, TELEGRAM_POLL_INTERVAL_MS);
 });
 
 // Graceful shutdown: stop mining containers when sv2-ui exits
@@ -816,8 +1391,17 @@ async function shutdown(signal: string) {
   if (isShuttingDown) return;
   isShuttingDown = true;
 
+  if (telegramMonitorTimer) {
+    clearInterval(telegramMonitorTimer);
+    telegramMonitorTimer = null;
+  }
+
   console.log(`\n${signal} received. Stopping mining containers...`);
   try {
+    if (benchmarkManager.isActive()) {
+      benchmarkManager.stop();
+      await benchmarkManager.waitForCompletion();
+    }
     await stopStack();
     console.log('Mining containers stopped.');
   } catch {

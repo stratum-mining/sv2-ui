@@ -90,6 +90,7 @@ export function SetupWizard() {
   const [currentStep, setCurrentStep] = useState<SetupStep>('mining-mode');
   const [data, setData] = useState<SetupData>(initialSetupData);
   const [isReconfiguring, setIsReconfiguring] = useState(false);
+  const [isSetupReview, setIsSetupReview] = useState(false);
   const [loadingConfig, setLoadingConfig] = useState(true);
   const [bitcoinSetupNotice, setBitcoinSetupNotice] = useState<string | null>(null);
   const { results: discoveredNodes, isLoading: isDiscovering, retry: retryDiscovery } = useBitcoinRpcDiscovery();
@@ -110,6 +111,7 @@ export function SetupWizard() {
         const setupReviewRequested = window.sessionStorage.getItem(SETUP_REVIEW_STORAGE_KEY) === 'true';
         window.sessionStorage.removeItem(SETUP_TARGET_STEP_STORAGE_KEY);
         window.sessionStorage.removeItem(SETUP_REVIEW_STORAGE_KEY);
+        setIsSetupReview(setupReviewRequested);
 
         if (targetStep === 'bitcoin' && config.bitcoin) {
           nextConfig = {
@@ -290,7 +292,9 @@ export function SetupWizard() {
             <div key={currentStep} className="w-full max-w-xl animate-fade-in-up">
               {isReconfiguring && currentStepIndex === 1 && (
                 <Alert variant="warning" className="mb-6">
-                  Reconfiguring SV2 setup — this will replace your current configuration.
+                  {isSetupReview
+                    ? 'Review your setup to continue mining. Your saved settings are prefilled.'
+                    : 'Reconfiguring SV2 setup — this will replace your current configuration.'}
                 </Alert>
               )}
               {currentStep === 'template-mode' && <TemplateModeSelection {...stepProps} />}

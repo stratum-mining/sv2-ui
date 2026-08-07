@@ -620,6 +620,7 @@ export function UnifiedDashboard() {
       {!configurationIssue && configuredButStopped && showError && (
         <Alert
           variant="warning"
+          className="items-center [&>span]:mt-0"
           icon={autoStarting || isStarting ? (
             <div className="h-4 w-4 border-2 border-yellow-500/30 border-t-yellow-500 rounded-full animate-spin" />
           ) : (

@@ -1,9 +1,10 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { useLocation } from 'wouter';
-import { ArrowLeft, AlertCircle, Sun, Moon } from 'lucide-react';
+import { ArrowLeft, Sun, Moon } from 'lucide-react';
 import { SetupStep, SetupData, initialSetupData } from './types';
 import { shouldAggregateTranslatorChannelsForPools } from './poolRules';
 import { BITCOIN_MESSAGES } from '@/lib/messages';
+import { Alert } from '@/components/ui/alert';
 
 function useTheme() {
   const [isDark, setIsDark] = useState(() => {
@@ -252,85 +253,83 @@ export function SetupWizard() {
 
   return (
     <>
-    <div className="min-h-screen bg-background flex flex-col">
-      {/* Header */}
-      <div className="flex items-center px-6 md:px-10 h-14 border-b border-border/40 flex-shrink-0">
-        <button
-          type="button"
-          onClick={handleBack}
-          className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 rounded flex-shrink-0"
-          aria-label="Go back"
-        >
-          <ArrowLeft className="w-4 h-4" aria-hidden="true" />
-          <span>Back</span>
-        </button>
+      <div className="min-h-screen bg-background flex flex-col">
+        {/* Header */}
+        <div className="flex items-center px-6 md:px-10 h-14 border-b border-border/40 flex-shrink-0">
+          <button
+            type="button"
+            onClick={handleBack}
+            className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 rounded flex-shrink-0"
+            aria-label="Go back"
+          >
+            <ArrowLeft className="w-4 h-4" aria-hidden="true" />
+            <span>Back</span>
+          </button>
 
-        <div
-          className="flex-1 flex items-center justify-center gap-1.5"
-          role="progressbar"
-          aria-valuenow={dotIndex + 1}
-          aria-valuemin={1}
-          aria-valuemax={nonModeSteps.length}
-          aria-label={`Step ${dotIndex + 1} of ${nonModeSteps.length}`}
-        >
-          {nonModeSteps.map((_, idx) => (
-            <div
-              key={idx}
-              className={`h-1 rounded-full transition-all duration-300 ${
-                idx <= dotIndex ? 'bg-primary w-6' : 'bg-border w-6'
-              }`}
-            />
-          ))}
+          <div
+            className="flex-1 flex items-center justify-center gap-1.5"
+            role="progressbar"
+            aria-valuenow={dotIndex + 1}
+            aria-valuemin={1}
+            aria-valuemax={nonModeSteps.length}
+            aria-label={`Step ${dotIndex + 1} of ${nonModeSteps.length}`}
+          >
+            {nonModeSteps.map((_, idx) => (
+              <div
+                key={idx}
+                className={`h-1 rounded-full transition-all duration-300 ${idx <= dotIndex ? 'bg-primary w-6' : 'bg-border w-6'
+                  }`}
+              />
+            ))}
+          </div>
+
+          <ThemeToggle isDark={isDark} toggle={toggle} />
         </div>
 
-        <ThemeToggle isDark={isDark} toggle={toggle} />
-      </div>
-
-      {/* Step content */}
-      <div className="flex-1 flex flex-col overflow-y-auto">
-        <div className="flex-1 flex flex-col items-center justify-center px-6 py-10">
-          <div key={currentStep} className="w-full max-w-xl animate-fade-in-up">
-            {isReconfiguring && currentStepIndex === 1 && (
-              <div className="mb-6 p-3 rounded-xl bg-warning/[0.08] text-sm text-warning flex gap-2 items-start">
-                <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" aria-hidden="true" />
-                {isSetupReview
-                  ? 'Review your setup to continue mining. Your saved settings are prefilled.'
-                  : 'Reconfiguring SV2 setup — this will replace your current configuration.'}
-              </div>
-            )}
-            {currentStep === 'template-mode'  && <TemplateModeSelection {...stepProps} />}
-            {currentStep === 'pool'            && <PoolConfigStep {...stepProps} />}
-            {currentStep === 'bitcoin-prereq'  && (
-              <BitcoinPrereqStep
-                {...stepProps}
-                discoveredNodes={discoveredNodes}
-                isDiscovering={isDiscovering}
-                onRetryDiscovery={retryDiscovery}
-                onAutoAdvance={handleAutoAdvance}
-              />
-            )}
-            {currentStep === 'bitcoin'         && (
-              <BitcoinSetup
-                {...stepProps}
-                notice={bitcoinSetupNotice}
-                onDismissNotice={() => setBitcoinSetupNotice(null)}
-                discoveredNodes={discoveredNodes}
-              />
-            )}
-            {currentStep === 'hashrate'        && <HashrateStep {...stepProps} />}
-            {currentStep === 'identity'        && <MiningIdentityStep {...stepProps} />}
-            {currentStep === 'review'          && (
-              <ReviewStart
-                {...stepProps}
-                onComplete={handleComplete}
-                onGoToStep={setCurrentStep}
-              />
-            )}
+        {/* Step content */}
+        <div className="flex-1 flex flex-col overflow-y-auto">
+          <div className="flex-1 flex flex-col items-center justify-center px-6 py-10">
+            <div key={currentStep} className="w-full max-w-xl animate-fade-in-up">
+              {isReconfiguring && currentStepIndex === 1 && (
+                <Alert variant="warning" className="mb-6">
+                  {isSetupReview
+                    ? 'Review your setup to continue mining. Your saved settings are prefilled.'
+                    : 'Reconfiguring SV2 setup — this will replace your current configuration.'}
+                </Alert>
+              )}
+              {currentStep === 'template-mode' && <TemplateModeSelection {...stepProps} />}
+              {currentStep === 'pool' && <PoolConfigStep {...stepProps} />}
+              {currentStep === 'bitcoin-prereq' && (
+                <BitcoinPrereqStep
+                  {...stepProps}
+                  discoveredNodes={discoveredNodes}
+                  isDiscovering={isDiscovering}
+                  onRetryDiscovery={retryDiscovery}
+                  onAutoAdvance={handleAutoAdvance}
+                />
+              )}
+              {currentStep === 'bitcoin' && (
+                <BitcoinSetup
+                  {...stepProps}
+                  notice={bitcoinSetupNotice}
+                  onDismissNotice={() => setBitcoinSetupNotice(null)}
+                  discoveredNodes={discoveredNodes}
+                />
+              )}
+              {currentStep === 'hashrate' && <HashrateStep {...stepProps} />}
+              {currentStep === 'identity' && <MiningIdentityStep {...stepProps} />}
+              {currentStep === 'review' && (
+                <ReviewStart
+                  {...stepProps}
+                  onComplete={handleComplete}
+                  onGoToStep={setCurrentStep}
+                />
+              )}
+            </div>
           </div>
         </div>
       </div>
-    </div>
-    {flashOverlay}
+      {flashOverlay}
     </>
   );
 }

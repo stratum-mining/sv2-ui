@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react';
 import { ArrowDown, ArrowUp, GripVertical, X } from 'lucide-react';
 import { DEFAULT_POOL_PORT, type MiningMode, type PoolConfig } from '@sv2-ui/shared';
+import { FieldError } from '@/components/ui/field-error';
 import { PoolIcon } from '@/components/ui/pool-icon';
 import {
   createEmptyCustomPool,
@@ -380,7 +381,7 @@ function CustomPoolFields({
               pubkeyError ? 'border-destructive focus-visible:border-destructive' : 'border-input focus-visible:border-primary'
             }`}
           />
-          {pubkeyError && <p className="mt-1 text-xs text-destructive">{pubkeyError}</p>}
+          <FieldError message={pubkeyError} />
         </div>
       </div>
     </div>

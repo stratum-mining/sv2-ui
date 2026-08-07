@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from "react";
 import { SetupStep, StepProps } from "../types";
-import { Loader2, AlertCircle } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
+import { Alert } from "@/components/ui/alert";
 import { MinerConnectionInfo } from "../MinerConnectionInfo";
 import { shouldAggregateTranslatorChannelsForPools } from "../poolRules";
 import { isBitcoinSocketError } from "@/lib/bitcoinSocketErrors";
@@ -189,17 +190,9 @@ export function ReviewStart({ data, onComplete, onGoToStep }: ReviewStartProps) 
       </div>
 
       {error && (
-        <div
-          className="p-4 rounded-xl bg-destructive/[0.08] flex gap-3"
-          role="alert"
-          aria-live="assertive"
-        >
-          <AlertCircle
-            className="h-5 w-5 text-destructive flex-shrink-0 mt-0.5"
-            aria-hidden="true"
-          />
+        <Alert variant="destructive">
           <div>
-            <div className="font-medium text-sm text-destructive mb-1">
+            <div className="font-medium text-sm text-red-600 dark:text-red-500 mb-1">
               Error
             </div>
             <div className="text-sm text-muted-foreground">{error}</div>
@@ -210,13 +203,13 @@ export function ReviewStart({ data, onComplete, onGoToStep }: ReviewStartProps) 
                   setError(null);
                   onGoToStep("bitcoin");
                 }}
-                className="mt-3 inline-flex h-9 items-center justify-center rounded-full bg-destructive px-4 text-sm font-medium text-destructive-foreground transition-colors hover:bg-destructive/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-destructive/30"
+                className="mt-3 inline-flex h-9 items-center justify-center rounded-full bg-red-600 px-4 text-sm font-medium text-white transition-colors hover:bg-red-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500/30"
               >
                 Open Bitcoin Setup
               </button>
             )}
           </div>
-        </div>
+        </Alert>
       )}
 
       {/* Summary */}
@@ -264,12 +257,12 @@ export function ReviewStart({ data, onComplete, onGoToStep }: ReviewStartProps) 
                 </span>
               </div>
               {isAggregatedTproxy && (
-                <div className="mt-2 rounded-lg bg-warning/[0.08] px-3 py-2 text-xs leading-relaxed">
+                <Alert variant="warning" className="mt-2 py-2 px-3 text-xs leading-relaxed">
                   Translator aggregation is enabled for Braiins compatibility.
                   The Translator Proxy will aggregate all SV1 workers into one
                   single SV2 upstream channel, so the Braiins Pool dashboard
                   will not track workers individually.
-                </div>
+                </Alert>
               )}
             </div>
           </div>

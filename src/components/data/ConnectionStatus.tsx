@@ -1,4 +1,5 @@
 import { cn } from '@/lib/utils';
+import { StatusDot } from '@/components/ui/status-dot';
 
 type ConnectionState = 'connected' | 'connecting' | 'disconnected' | 'error';
 
@@ -17,23 +18,18 @@ export function ConnectionStatus({
   label,
   className,
 }: ConnectionStatusProps) {
-  const stateConfig: Record<ConnectionState, { color: string; text: string }> = {
-    connected: { color: 'bg-green-500', text: 'Connected' },
-    connecting: { color: 'bg-yellow-500 animate-pulse', text: 'Connecting' },
-    disconnected: { color: 'bg-muted-foreground', text: 'Disconnected' },
-    error: { color: 'bg-red-500', text: 'Error' },
+  const stateConfig: Record<ConnectionState, { status: 'connected' | 'connecting' | 'disconnected' | 'idle'; text: string }> = {
+    connected: { status: 'connected', text: 'Connected' },
+    connecting: { status: 'connecting', text: 'Connecting' },
+    disconnected: { status: 'idle', text: 'Disconnected' },
+    error: { status: 'disconnected', text: 'Error' },
   };
 
   const config = stateConfig[state];
 
   return (
     <div className={cn('flex items-center gap-2', className)}>
-      <div
-        className={cn(
-          'h-2 w-2 rounded-full shadow-sm',
-          config.color
-        )}
-      />
+      <StatusDot status={config.status} size="sm" className="shadow-sm" />
       <span className="text-sm text-muted-foreground">
         {label || config.text}
       </span>

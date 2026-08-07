@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import { AlertCircle } from 'lucide-react';
+import { Alert } from '@/components/ui/alert';
+import { FieldError } from '@/components/ui/field-error';
 import {
   shouldAggregateTranslatorChannels,
   type BitcoinNetwork,
@@ -64,13 +65,12 @@ export function PoolIdentityFields({
         <span className="sr-only">(required)</span>
       </label>
       {showBraiinsUsernameWarning && (
-        <div className="mb-3 flex gap-3 rounded-xl bg-warning/[0.08] p-4 text-sm text-warning" role="alert">
-          <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0" aria-hidden="true" />
+        <Alert variant="warning" className="mb-3">
           <p>
             Use the exact username from your Braiins Pool account. If this value does not match an existing
             Braiins account, the pool connection will not be established properly.
           </p>
-        </div>
+        </Alert>
       )}
       <input
         id={`${idPrefix}-identity`}
@@ -82,7 +82,7 @@ export function PoolIdentityFields({
         autoComplete="off"
         className="w-full h-10 px-3 rounded-lg border border-input bg-background focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/15 outline-none transition-all font-mono text-sm"
       />
-      {error && <p className="text-xs text-destructive mt-1">{error}</p>}
+      <FieldError message={error} />
       <p className="text-xs text-muted-foreground mt-2">
         {miningMode === 'solo'
           ? 'Bitcoin address used by the pool for solo mining payouts.'
@@ -147,9 +147,7 @@ function SriPoolIdentityFields({
             autoComplete="off"
             className="w-full h-10 px-3 rounded-lg border border-input bg-background focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/15 outline-none transition-all font-mono text-sm"
           />
-          {getBitcoinAddressError(payoutAddress, network) && (
-            <p className="text-xs text-destructive mt-1">{getBitcoinAddressError(payoutAddress, network)}</p>
-          )}
+          <FieldError message={getBitcoinAddressError(payoutAddress, network)} />
           <p className="text-xs text-muted-foreground mt-2">
             Used with worker and donation settings to build this pool identity.
           </p>
@@ -215,7 +213,7 @@ function SriPoolIdentityFields({
         </p>
       </div>
 
-      {identityError && <p className="text-xs text-destructive">{identityError}</p>}
+      <FieldError message={identityError} />
     </div>
   );
 }

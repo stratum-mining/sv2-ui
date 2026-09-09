@@ -46,6 +46,15 @@ export const POOL_MINING_JD: KnownPool[] = [
 
 export const SOLO_POOLS: KnownPool[] = [
   {
+    id: 'bitaxepool',
+    name: 'Bitaxe Pool',
+    address: 'stratum.bitaxe.de',
+    port: 3336,
+    authority_public_key: '9awpfZGWfrRBH8fkf82mWvnXMSTC7i9M3mshB8M56cw9UXTGdYi',
+    description: 'Bitaxe Pool',
+    monogram: 'BX',
+  },
+  {
     id: 'blitzpool',
     name: 'Blitzpool',
     address: 'blitzpool.yourdevice.ch',

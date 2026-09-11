@@ -101,6 +101,26 @@ Then open **http://localhost:5173**. On first run, you'll be guided through the 
 
 The backend auto-detects common local Docker sockets, including `/var/run/docker.sock` and `~/.docker/run/docker.sock`. To override detection, set `DOCKER_SOCKET_PATH` or `DOCKER_HOST` before starting the server.
 
+### End-to-End Tests
+
+Playwright tests cover the setup wizard, mocked Bitcoin Core discovery and IPC validation, dashboard recovery, diagnostics, navigation, and settings behavior. They do not require Docker or Bitcoin Core; external service responses are controlled by test fixtures.
+
+```bash
+# Install the Chromium browser once
+npx playwright install chromium
+
+# Run the E2E suite
+npm run test:e2e
+
+# Open Playwright's interactive runner
+npm run test:e2e:ui
+
+# Run with the Playwright debugger
+npm run test:e2e:debug
+```
+
+The test harness starts the Vite frontend and backend automatically with an isolated `.playwright/config` directory. The real Bitcoin Core IPC and JDC template-delivery integration remains a separate real-dependency test layer.
+
 ## What It Does
 
 1. **Setup Wizard** - Guides you through configuration

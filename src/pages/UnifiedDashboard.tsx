@@ -860,6 +860,7 @@ export function UnifiedDashboard() {
             <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
             <input
               type="text"
+              aria-label="Search workers or connections"
               placeholder="Search workers or connections..."
               className="w-full pl-9 h-9 rounded-lg border border-border bg-muted/50 text-sm outline-none transition-all focus:bg-background focus:ring-2 focus:ring-primary/20"
               value={searchTerm}

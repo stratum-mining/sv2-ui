@@ -1,5 +1,5 @@
-import { useEffect, useRef, useCallback } from 'react';
-import { Download } from 'lucide-react';
+import { useEffect, useRef, useCallback, useState } from 'react';
+import { Download, Pause, Play } from 'lucide-react';
 import type { ContainerLogLine } from '@/types/log-diagnostics';
 import { cn } from '@/lib/utils';
 
@@ -36,22 +36,21 @@ function getLogColorClass(line: ContainerLogLine) {
 
 export function ContainerLogsPanel({ lines, isLoading, isJdMode }: ContainerLogsPanelProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
-  const bottomRef = useRef<HTMLDivElement>(null);
-  const userScrolledUp = useRef(false);
+  const [isScrollPaused, setIsScrollPaused] = useState(false);
 
   const handleScroll = () => {
     const el = scrollRef.current;
     if (!el) return;
     const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 40;
-    userScrolledUp.current = !atBottom;
+    setIsScrollPaused(!atBottom);
   };
 
-  // Auto-scroll to bottom when new lines arrive unless the user scrolled up
   useEffect(() => {
-    if (!userScrolledUp.current) {
-      bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+    const el = scrollRef.current;
+    if (el && !isScrollPaused) {
+      el.scrollTop = el.scrollHeight;
     }
-  }, [lines]);
+  }, [lines, isScrollPaused]);
 
   const handleDownload = useCallback(async () => {
     try {
@@ -91,7 +90,16 @@ export function ContainerLogsPanel({ lines, isLoading, isJdMode }: ContainerLogs
 
   return (
     <div className="space-y-1">
-      <div className="flex justify-end">
+      <div className="flex justify-end gap-1">
+        <button
+          onClick={() => setIsScrollPaused((paused) => !paused)}
+          className="flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs text-muted-foreground hover:text-foreground hover:bg-muted/40 transition-colors"
+          title={isScrollPaused ? 'Resume auto-scrolling' : 'Pause auto-scrolling'}
+          aria-pressed={isScrollPaused}
+        >
+          {isScrollPaused ? <Play className="h-3.5 w-3.5" /> : <Pause className="h-3.5 w-3.5" />}
+          {isScrollPaused ? 'Resume scrolling' : 'Pause scrolling'}
+        </button>
         <button
           onClick={handleDownload}
           className="flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs text-muted-foreground hover:text-foreground hover:bg-muted/40 transition-colors"
@@ -134,7 +142,6 @@ export function ContainerLogsPanel({ lines, isLoading, isJdMode }: ContainerLogs
             <span className="break-all">{line.message}</span>
           </div>
         ))}
-        <div ref={bottomRef} />
       </div>
     </div>
   );

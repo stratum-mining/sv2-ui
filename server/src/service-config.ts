@@ -248,7 +248,8 @@ export async function reconcileServiceConfigFiles(
   files: ServiceConfigFile[],
   configDir: string,
 ): Promise<string[]> {
-  await fs.mkdir(configDir, { recursive: true });
+  // force only the owner to have access
+  await fs.mkdir(configDir, { recursive: true, mode: 0o700 });
 
   const desiredByName = new Map(files.map((file) => [file.filename, file.contents]));
   const changedFiles: string[] = [];

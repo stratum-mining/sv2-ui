@@ -9,6 +9,7 @@
  * config-generator.ts owns the actual Translator/JDC TOML field mapping.
  */
 
+import { constants } from 'node:fs';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import {
@@ -179,13 +180,17 @@ export function prepareServiceConfig(
 }
 
 async function readExistingFile(filePath: string): Promise<string | null> {
+  let handle: fs.FileHandle | null = null;
   try {
-    const stat = await fs.stat(filePath);
-    if (stat.isDirectory()) return null;
-    return await fs.readFile(filePath, 'utf8');
+    handle = await fs.open(filePath, constants.O_RDONLY | constants.O_NONBLOCK);
+    const stat = await handle.stat();
+    if (!stat.isFile()) return null;
+    return await handle.readFile('utf8');
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null;
     throw error;
+  } finally {
+    await handle?.close();
   }
 }
 
@@ -248,7 +253,8 @@ export async function reconcileServiceConfigFiles(
   files: ServiceConfigFile[],
   configDir: string,
 ): Promise<string[]> {
-  await fs.mkdir(configDir, { recursive: true });
+  // force only the owner to have access
+  await fs.mkdir(configDir, { recursive: true, mode: 0o700 });
 
   const desiredByName = new Map(files.map((file) => [file.filename, file.contents]));
   const changedFiles: string[] = [];

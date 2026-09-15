@@ -1,8 +1,10 @@
 import assert from 'node:assert/strict';
+import { execFile } from 'node:child_process';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
+import { promisify } from 'node:util';
 import { JDC_AUTHORITY_PUBLIC_KEY } from '@sv2-ui/shared';
 import {
   getServiceConfigDrift,
@@ -242,6 +244,38 @@ test('detects and removes an obsolete generated JDC config when switching to no-
     assert.deepEqual(await reconcileServiceConfigs(noJdData, configDir), ['translator.toml', 'jdc.toml']);
     await assert.rejects(readFile(path.join(configDir, 'jdc.toml'), 'utf8'), { code: 'ENOENT' });
     assert.deepEqual(await getServiceConfigDrift(prepared.files, configDir), []);
+  } finally {
+    await rm(configDir, { recursive: true, force: true });
+  }
+});
+
+test('does not block while inspecting a FIFO at a managed config path', async () => {
+  const configDir = await mkdtemp(path.join(os.tmpdir(), 'sv2-ui-config-'));
+  const managedPath = path.join(configDir, 'translator.toml');
+
+  try {
+    await promisify(execFile)('mkfifo', [managedPath]);
+
+    const driftPromise = getServiceConfigDrift([{
+      filename: 'translator.toml',
+      contents: 'trusted configuration',
+    }], configDir);
+    const outcome = await Promise.race([
+      driftPromise,
+      new Promise<'timed-out'>((resolve) => {
+        setTimeout(() => resolve('timed-out'), 250);
+      }),
+    ]);
+
+    if (outcome === 'timed-out') {
+      await Promise.all([
+        writeFile(managedPath, 'attacker-controlled input'),
+        driftPromise,
+      ]);
+      assert.fail('drift inspection blocked while opening an attacker-created FIFO');
+    }
+
+    assert.deepEqual(outcome, ['translator.toml']);
   } finally {
     await rm(configDir, { recursive: true, force: true });
   }

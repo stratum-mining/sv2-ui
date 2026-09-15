@@ -15,14 +15,18 @@ export async function writeFileAtomically(filePath: string, contents: string): P
 
   let mode: number | undefined;
   try {
-    mode = (await fs.stat(filePath)).mode & 0o777;
+    const stat = await fs.lstat(filePath);
+    if (stat.isSymbolicLink()) {
+      throw new Error('Refusing to inherit permissions from a symbolic link');
+    }
+    mode = stat.mode & 0o777;
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
   }
 
   let handle: fs.FileHandle | null = null;
   try {
-    handle = await fs.open(temporaryPath, 'w', mode ?? 0o644);
+    handle = await fs.open(temporaryPath, 'w', mode ?? 0o600);
     // The mode passed to fs.open is still filtered by the process umask, so an
     // existing 0644 file would become 0600 under umask 077. Re-apply the exact
     // mode we read from the original file so the rename preserves it.

@@ -13,6 +13,7 @@ export interface ContainerStatus {
 export interface StatusResponse {
   configured: boolean;
   running: boolean;
+  dockerError: string | null;
   autoStarting?: boolean;
   shouldBeRunning?: boolean;
   miningMode: MiningMode | null;

@@ -1,8 +1,9 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import fs from 'node:fs';
+import Docker from 'dockerode';
 
-import { getBitcoinRpcProbeTransports, normalizeDockerError } from './docker.js';
+import { getBitcoinRpcProbeTransports, normalizeDockerError, getStackStatus, DockerConnectionError } from './docker.js';
 
 test('Bitcoin RPC probing tries host loopback before Docker host gateway', () => {
   assert.deepEqual(getBitcoinRpcProbeTransports(), [
@@ -72,4 +73,35 @@ test('normalizeDockerError formats EACCES to hint at permissions', () => {
 
   assert.match(result.message, /^Permission denied when accessing Docker/);
   assert.match(result.message, /Check file permissions or ensure your user is in the 'docker' group/);
+});
+
+test('getStackStatus throws normalized error on ECONNREFUSED', async (t) => {
+  const err = new Error('connect ECONNREFUSED');
+  (err as NodeJS.ErrnoException).code = 'ECONNREFUSED';
+
+  t.mock.method(Docker.prototype, 'getContainer', () => {
+    return {
+      inspect: async () => { throw err; }
+    };
+  });
+
+  await assert.rejects(
+    async () => { await getStackStatus('no-jd'); },
+    (error: Error) => error instanceof DockerConnectionError
+  );
+});
+
+test('getStackStatus returns null on 404 (missing container)', async (t) => {
+  const err = new Error('No such container');
+  (err as Error & { statusCode?: number }).statusCode = 404;
+
+  t.mock.method(Docker.prototype, 'getContainer', () => {
+    return {
+      inspect: async () => { throw err; }
+    };
+  });
+
+  const status = await getStackStatus('jd');
+  assert.equal(status.translator, null);
+  assert.equal(status.jdc, null);
 });

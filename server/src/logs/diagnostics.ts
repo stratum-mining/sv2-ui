@@ -21,7 +21,7 @@ export type LogProvider = (
   options?: { tail?: number }
 ) => Promise<ContainerLogLine[]>;
 
-function isMissingContainerError(error: unknown): boolean {
+export function isMissingContainerError(error: unknown): boolean {
   let current = error;
 
   for (let depth = 0; depth < 8 && current && typeof current === 'object'; depth += 1) {

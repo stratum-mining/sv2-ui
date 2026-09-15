@@ -4,6 +4,7 @@ import { authFetch, AuthError } from '@/lib/auth-fetch';
 export interface SetupStatus {
   configured: boolean;
   running: boolean;
+  dockerError: string | null;
   autoStarting?: boolean;
   shouldBeRunning?: boolean;
   miningMode: 'solo' | 'pool' | null;
@@ -101,6 +102,7 @@ export function useSetupStatus() {
     isOrchestrated: status !== null && status !== undefined,
     isConfigured: status?.configured ?? false,
     isRunning: status?.running ?? false,
+    dockerError: status?.dockerError ?? null,
     autoStarting: status?.autoStarting ?? false,
     shouldBeRunning: status?.shouldBeRunning ?? false,
     miningMode: status?.miningMode ?? null,

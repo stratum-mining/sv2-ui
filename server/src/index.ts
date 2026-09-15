@@ -9,7 +9,7 @@ import path from 'path';
 import fs from 'fs/promises';
 import { fileURLToPath } from 'url';
 
-import type { PoolConfig, SetupData, StatusResponse, SetupResponse } from './types.js';
+import type { PoolConfig, SetupData, StatusResponse, SetupResponse, ContainerStatus } from './types.js';
 import { normalizeSetupData } from './config-generator.js';
 import {
   getServiceConfigDrift,
@@ -32,6 +32,7 @@ import {
   startStack,
   stopStack,
   getStackStatus,
+  DockerConnectionError,
   isDockerAvailable,
   ensureDockerAvailable,
   getDockerConnectionInfo,
@@ -507,7 +508,17 @@ app.get('/api/health', async (_req, res) => {
 app.get('/api/status', async (_req, res) => {
   try {
     const state = await loadState();
-    const containers = await getStackStatus(state.mode);
+    let containers: { translator: ContainerStatus | null; jdc: ContainerStatus | null } = { translator: null, jdc: null };
+    let dockerError: string | null = null;
+    try {
+      containers = await getStackStatus(state.mode);
+    } catch (error) {
+      if (error instanceof DockerConnectionError) {
+        dockerError = error.message;
+      } else {
+        throw error;
+      }
+    }
     const running = isStackRunning(state.mode, containers);
     const prepared = state.configured ? prepareServiceConfig(state.data) : null;
     const configurationIssues = prepared?.kind === 'needs-setup-review'
@@ -530,6 +541,7 @@ app.get('/api/status', async (_req, res) => {
     const response: StatusResponse = {
       configured: state.configured,
       running,
+      dockerError,
       autoStarting: stackBusyReason === 'auto-start',
       shouldBeRunning: state.shouldBeRunning,
       miningMode: state.miningMode,
@@ -554,6 +566,7 @@ app.get('/api/status', async (_req, res) => {
         // redirecting to a blank setup that could overwrite it.
         configured: true,
         running: false,
+        dockerError: null,
         autoStarting: false,
         shouldBeRunning: false,
         miningMode: null,
@@ -840,7 +853,7 @@ app.post('/api/stop', async (_req, res) => {
     res.json({ success: true });
   } catch (error) {
     console.error('Stop error:', error);
-    res.status(500).json({ success: false, error: 'Failed to stop stack' });
+    res.status(500).json({ success: false, error: error instanceof Error ? error.message : 'Failed to stop stack' });
   } finally {
     finishStackOperation('manual');
   }
@@ -890,7 +903,7 @@ app.post('/api/restart', async (_req, res) => {
       return res.status(409).json({ success: false, error: 'Saved setup could not be read. It has not been changed.' });
     }
     console.error('Restart error:', error);
-    res.status(500).json({ success: false, error: 'Failed to restart stack' });
+    res.status(500).json({ success: false, error: error instanceof Error ? error.message : 'Failed to restart stack' });
   } finally {
     finishStackOperation('manual');
   }
@@ -908,6 +921,7 @@ app.post('/api/reset', async (_req, res) => {
     // Stop containers first
     await stopStack();
 
+
     // Reset is the explicit recovery action, including for unreadable setup.
     await Promise.all([
       fs.rm(STATE_FILE, { recursive: true, force: true }),
@@ -922,7 +936,7 @@ app.post('/api/reset', async (_req, res) => {
     res.json({ success: true });
   } catch (error) {
     console.error('Reset error:', error);
-    res.status(500).json({ success: false, error: 'Failed to reset configuration' });
+    res.status(500).json({ success: false, error: error instanceof Error ? error.message : 'Failed to reset configuration' });
   } finally {
     finishStackOperation('manual');
   }
@@ -1000,7 +1014,13 @@ async function reconcileShouldBeRunning(): Promise<void> {
     }
 
     const prepared = prepareServiceConfig(state.data, { logFailure: !autoStartSetupReviewLogged });
-    const containers = await getStackStatus(state.mode);
+    let containers;
+    try {
+      containers = await getStackStatus(state.mode);
+    } catch (err) {
+      if (err instanceof DockerConnectionError) return;
+      throw err;
+    }
     const running = isStackRunning(state.mode, containers);
 
     if (prepared.kind !== 'ready') {

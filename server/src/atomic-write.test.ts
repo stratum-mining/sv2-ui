@@ -68,3 +68,19 @@ test('rejects a symlink destination instead of inheriting its writable mode', as
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+test('first-time write uses restrictive 0600 mode under a permissive umask', async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'sv2-ui-atomic-'));
+  const file = path.join(dir, 'state.json');
+  const previousUmask = process.umask(0o022);
+
+  try {
+    await writeFileAtomically(file, 'new file');
+
+    const finalMode = (await stat(file)).mode & 0o777;
+    assert.equal(finalMode, 0o600, 'newly created files must not be world-readable');
+  } finally {
+    process.umask(previousUmask);
+    await rm(dir, { recursive: true, force: true });
+  }
+});

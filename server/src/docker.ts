@@ -17,6 +17,7 @@ import {
 } from '@sv2-ui/shared';
 import type { SetupData, ContainerStatus } from './types.js';
 import type { ContainerLogLine, LogContainerRole, LogOutputStream } from './logs/types.js';
+import { isMissingContainerError } from './logs/diagnostics.js';
 import { getImageSelectionForSetup } from '@sv2-ui/shared';
 import { bitcoinSocketValidatorScript } from './bitcoin-socket-validator.js';
 import { bitcoinSocketExistsScript } from './bitcoin-socket-exists.js';
@@ -112,21 +113,31 @@ function resolveDockerConnection(): DockerConnectionConfig {
   };
 }
 
+export class DockerConnectionError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'DockerConnectionError';
+  }
+}
+
 export function normalizeDockerError(error: unknown): Error {
   if (!(error instanceof Error)) {
     return new Error(String(error));
   }
 
   const code = (error as NodeJS.ErrnoException).code;
-  if (code !== 'ENOENT' && code !== 'ECONNREFUSED' && code !== 'EACCES' && code !== 'EPERM') {
-    return error;
+  const isTimeout = error instanceof Error && (error.name === 'TimeoutError' || error.name === 'AbortError');
+  const networkErrors = ['ENOENT', 'ECONNREFUSED', 'ETIMEDOUT', 'EHOSTUNREACH', 'ENETUNREACH', 'ENOTFOUND', 'EAI_AGAIN', 'ECONNRESET'];
+  
+  if (code && !networkErrors.includes(code) && code !== 'EACCES' && code !== 'EPERM' && !isTimeout) {
+    return error as Error;
   }
 
   const endpoint = dockerConnection.endpoint;
   const source = dockerConnection.source;
 
   if (code === 'EACCES' || code === 'EPERM') {
-    return new Error(
+    return new DockerConnectionError(
       `Permission denied when accessing Docker at ${endpoint} (${source}). ` +
       `Check file permissions or ensure your user is in the 'docker' group.`
     );
@@ -141,8 +152,9 @@ export function normalizeDockerError(error: unknown): Error {
     helpText += ` Or check your DOCKER_SOCKET_PATH / DOCKER_HOST endpoint.`;
   }
 
-  return new Error(
-    `Docker is not reachable at ${endpoint} (${source}). ${helpText}`
+  const timeoutText = isTimeout ? ' (Connection timed out)' : '';
+  return new DockerConnectionError(
+    `Docker is not reachable at ${endpoint} (${source})${timeoutText}. ${helpText}`
   );
 }
 
@@ -763,8 +775,12 @@ async function getContainerStatus(name: string): Promise<ContainerStatus | null>
       status,
       ports,
     };
-  } catch {
-    return null;
+  } catch (error) {
+    if (isMissingContainerError(error)) return null;
+
+    const normalized = normalizeDockerError(error);
+    if (normalized instanceof DockerConnectionError) refreshDockerConnection();
+    throw normalized;
   }
 }
 
@@ -924,8 +940,10 @@ export async function getStackStatus(mode: 'jd' | 'no-jd' | null): Promise<{
   translator: ContainerStatus | null;
   jdc: ContainerStatus | null;
 }> {
-  const translator = await getContainerStatus(TRANSLATOR_CONTAINER);
-  const jdc = mode === 'jd' ? await getContainerStatus(JDC_CONTAINER) : null;
+  const [translator, jdc] = await Promise.all([
+    getContainerStatus(TRANSLATOR_CONTAINER),
+    mode === 'jd' ? getContainerStatus(JDC_CONTAINER) : Promise.resolve(null),
+  ]);
 
   return { translator, jdc };
 }

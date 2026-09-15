@@ -15,7 +15,11 @@ export async function writeFileAtomically(filePath: string, contents: string): P
 
   let mode: number | undefined;
   try {
-    mode = (await fs.stat(filePath)).mode & 0o777;
+    const stat = await fs.lstat(filePath);
+    if (stat.isSymbolicLink()) {
+      throw new Error('Refusing to inherit permissions from a symbolic link');
+    }
+    mode = stat.mode & 0o777;
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
   }

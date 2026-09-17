@@ -84,6 +84,7 @@ export function UnifiedDashboard() {
     isConfigured,
     isRunning,
     autoStarting,
+    dockerError,
     miningMode,
     mode: templateMode,
     poolName: configPoolName,
@@ -139,6 +140,12 @@ export function UnifiedDashboard() {
 
   const [isStarting, setIsStarting] = useState(false);
   const [startError, setStartError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (dockerError) {
+      setStartError(null);
+    }
+  }, [dockerError]);
 
   const handleStartMining = async () => {
     setIsStarting(true);
@@ -625,8 +632,21 @@ export function UnifiedDashboard() {
         </div>
       )}
 
+      {/* Docker Error Banner */}
+      {!configurationIssue && configuredButStopped && dockerError && (
+        <Alert
+          variant="destructive"
+          className="items-center [&>span]:mt-0"
+          icon={<AlertTriangle className="h-4 w-4 shrink-0" />}
+        >
+          <div className="flex flex-col gap-1">
+            <span>{dockerError}</span>
+          </div>
+        </Alert>
+      )}
+
       {/* Start Mining Banner (configured but stopped) */}
-      {!configurationIssue && configuredButStopped && showError && (
+      {!configurationIssue && configuredButStopped && !dockerError && showError && (
         <Alert
           variant="warning"
           className="items-center [&>span]:mt-0"
@@ -658,7 +678,7 @@ export function UnifiedDashboard() {
       )}
 
       {/* Connection Error Banner (not configured or unknown error) */}
-      {!configurationIssue && (startError || (showError && !configuredButStopped && diagnostics.length === 0)) && (
+      {!configurationIssue && !dockerError && (startError || (showError && !configuredButStopped && diagnostics.length === 0)) && (
         <Alert variant="destructive">
           <p>
             {startError || 'Cannot connect to pool. Make sure mining services are running.'}

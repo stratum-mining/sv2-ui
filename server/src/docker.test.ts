@@ -1,8 +1,10 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import fs from 'node:fs';
+import Docker from 'dockerode';
 
-import { getBitcoinRpcProbeTransports, normalizeDockerError } from './docker.js';
+import { getBitcoinRpcProbeTransports, normalizeDockerError, getStackStatus } from './docker.js';
+import { DockerConnectionError } from './docker-errors.js';
 
 test('Bitcoin RPC probing tries host loopback before Docker host gateway', () => {
   assert.deepEqual(getBitcoinRpcProbeTransports(), [
@@ -26,8 +28,7 @@ test('normalizeDockerError handles non-Error objects', () => {
 });
 
 test('normalizeDockerError passes through unrelated errors', () => {
-  const err = new Error('EADDRINUSE');
-  (err as NodeJS.ErrnoException).code = 'EADDRINUSE';
+  const err = new TypeError('Cannot read properties of undefined (reading \'id\')');
   const result = normalizeDockerError(err);
   assert.equal(result, err);
 });
@@ -72,4 +73,37 @@ test('normalizeDockerError formats EACCES to hint at permissions', () => {
 
   assert.match(result.message, /^Permission denied when accessing Docker/);
   assert.match(result.message, /Check file permissions or ensure your user is in the 'docker' group/);
+});
+
+test('getStackStatus throws normalized error on ECONNREFUSED', async (t) => {
+  const err = new Error('connect ECONNREFUSED');
+  (err as NodeJS.ErrnoException).code = 'ECONNREFUSED';
+
+  let callCount = 0;
+  t.mock.method(Docker.prototype, 'getContainer', () => {
+    return {
+      inspect: async () => { callCount++; throw err; }
+    };
+  });
+
+  await assert.rejects(
+    async () => { await getStackStatus('no-jd'); },
+    (error: Error) => error instanceof DockerConnectionError && error.message.includes('Docker is not reachable')
+  );
+  assert.equal(callCount, 1);
+});
+
+test('getStackStatus returns null on 404 (missing container)', async (t) => {
+  const err = new Error('HTTP code 404 from docker');
+  Object.assign(err, { statusCode: 404, reason: 'no such container', json: { message: 'No such container: jd' } });
+
+  t.mock.method(Docker.prototype, 'getContainer', () => {
+    return {
+      inspect: async () => { throw err; }
+    };
+  });
+
+  const status = await getStackStatus('jd');
+  assert.equal(status.translator, null);
+  assert.equal(status.jdc, null);
 });

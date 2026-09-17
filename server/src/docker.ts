@@ -68,15 +68,17 @@ function parseDockerHost(dockerHost: string): DockerConnectionConfig {
   }
 
   const defaultPort = protocol === 'https' ? 2376 : 2375;
+  const port = url.port ? Number(url.port) : defaultPort;
+  const redacted = `${protocol}://${url.hostname}:${port}`;
 
   return {
-    endpoint: dockerHost,
+    endpoint: redacted,
     options: {
       host: url.hostname,
-      port: url.port ? Number(url.port) : defaultPort,
+      port,
       protocol,
     },
-    source: `DOCKER_HOST=${dockerHost}`,
+    source: `DOCKER_HOST=${redacted}`,
   };
 }
 

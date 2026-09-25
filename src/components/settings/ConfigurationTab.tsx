@@ -3,6 +3,7 @@ import { useLocation } from 'wouter';
 import { useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Alert } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { PoolIcon } from '@/components/ui/pool-icon';
 import { HashrateInput } from '@/components/ui/hashrate-input';
@@ -77,6 +78,7 @@ export function ConfigurationTab() {
     miningMode: statusMiningMode,
     mode: statusMode,
     activePoolIndex,
+    dockerError,
   } = useSetupStatus();
   const {
     stop,
@@ -421,7 +423,7 @@ export function ConfigurationTab() {
                 <Button
                   size="sm"
                   onClick={handleRestart}
-                  disabled={isStoppingOrRestarting}
+                  disabled={isStoppingOrRestarting || !!dockerError}
                   className="w-full sm:w-auto"
                 >
                   {isStoppingOrRestarting ? (
@@ -435,6 +437,13 @@ export function ConfigurationTab() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Docker Error Alert */}
+      {dockerError && (
+        <Alert variant="destructive">
+          <p>{dockerError}</p>
+        </Alert>
+      )}
 
       {/* Error Messages */}
       {(stopError || restartError || setupError) && (

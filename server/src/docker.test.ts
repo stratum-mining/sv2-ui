@@ -113,3 +113,23 @@ test('getStackStatus returns null on 404 (missing container)', async (t) => {
   assert.equal(status.translator, null);
   assert.equal(status.jdc, null);
 });
+
+test('getStackStatus rejects with a standard Error when inspect throws 500', async (t) => {
+  const err = new Error('HTTP code 500 from docker');
+  Object.assign(err, { statusCode: 500, reason: 'server error' });
+
+  t.mock.method(Docker.prototype, 'getContainer', () => {
+    return {
+      inspect: async () => { throw err; }
+    };
+  });
+
+  await assert.rejects(
+    async () => await getStackStatus('jd'),
+    (error: Error) => {
+      assert.strictEqual(error.message, 'HTTP code 500 from docker');
+      assert.strictEqual(error instanceof DockerConnectionError, false);
+      return true;
+    }
+  );
+});

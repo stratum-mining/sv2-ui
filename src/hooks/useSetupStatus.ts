@@ -33,6 +33,13 @@ export class UnauthenticatedError extends Error {
   }
 }
 
+/** Thrown when the backend is reachable but returned a 5xx error. */
+export class BackendError extends Error {
+  constructor() {
+    super('Backend is struggling (5xx status)');
+    this.name = 'BackendError';
+  }
+}
 /**
  * Fetch setup status from the backend.
  * Returns null if backend is not available (standalone mode).
@@ -54,12 +61,15 @@ async function fetchSetupStatus(): Promise<SetupStatus | null> {
     }
 
     if (!response.ok) {
+      if (response.status >= 500) {
+        throw new BackendError();
+      }
       return null;
     }
 
     return response.json();
   } catch (error) {
-    if (error instanceof UnauthenticatedError || error instanceof AuthError) throw error;
+    if (error instanceof UnauthenticatedError || error instanceof AuthError || error instanceof BackendError) throw error;
     // Backend not available - standalone mode
     return null;
   }
@@ -87,6 +97,7 @@ export function useSetupStatus() {
 
   const status = query.data;
   const isUnauthenticated = query.error instanceof UnauthenticatedError;
+  const isBackendError = query.error instanceof BackendError;
 
   // Consider loaded when: we have data, OR we have an error, OR query is not loading
   // This ensures we don't get stuck in loading state
@@ -99,10 +110,10 @@ export function useSetupStatus() {
     // standalone mode.
     isUnauthenticated,
     // If status is null or undefined, we're in standalone mode (no backend)
-    isOrchestrated: status !== null && status !== undefined,
+    isOrchestrated: (status !== null && status !== undefined) || isUnauthenticated || isBackendError,
     isConfigured: status?.configured ?? false,
     isRunning: status?.running ?? false,
-    dockerError: status?.dockerError ?? null,
+    dockerError: isBackendError ? 'Backend is present but returned an error (5xx).' : (status?.dockerError ?? null),
     autoStarting: status?.autoStarting ?? false,
     shouldBeRunning: status?.shouldBeRunning ?? false,
     miningMode: status?.miningMode ?? null,

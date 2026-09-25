@@ -121,7 +121,7 @@ export function normalizeDockerError(error: unknown): Error {
   }
 
   const code = (error as NodeJS.ErrnoException).code;
-  const isTransportError = typeof code === 'string' && !('statusCode' in error);
+  const isTransportError = (typeof code === 'string' && !('statusCode' in error)) || ('level' in error);
   
   if (!isTransportError) {
     return error as Error;
@@ -141,14 +141,17 @@ export function normalizeDockerError(error: unknown): Error {
   const availableSockets = listAvailableDockerSockets().filter(s => s !== endpoint);
   
   let helpText = 'Ensure Docker Engine or Docker Desktop is running.';
-  if (availableSockets.length > 0) {
+  if (isRunningInsideDocker()) {
+    helpText = 'Ensure the /var/run/docker.sock volume is mounted into this container.';
+  } else if (availableSockets.length > 0) {
     helpText += ` Other available sockets found: ${availableSockets.join(', ')}. Try setting DOCKER_SOCKET_PATH to one of these.`;
   } else {
     helpText += ` Or check your DOCKER_SOCKET_PATH / DOCKER_HOST endpoint.`;
   }
 
+  const reasonCode = code || (error as Record<string, unknown>).level || 'unknown';
   return new DockerConnectionError(
-    `Docker is not reachable at ${endpoint} (${source}) [${code}]. ${helpText}`,
+    `Docker is not reachable at ${endpoint} (${source}) [${reasonCode}]. ${helpText}`,
     { cause: error }
   );
 }
@@ -748,7 +751,7 @@ async function removeContainer(name: string): Promise<void> {
 async function getContainerStatus(name: string): Promise<ContainerStatus | null> {
   try {
     const container = docker.getContainer(name);
-    const info = await container.inspect();
+    const info = await container.inspect({ abortSignal: AbortSignal.timeout(10000) });
 
     let status: HealthStatus = 'stopped';
     if (info.State.Running) {
@@ -947,7 +950,8 @@ export async function getStackStatus(mode: 'jd' | 'no-jd' | null): Promise<{
 export async function isDockerAvailable(): Promise<boolean> {
   try {
     refreshDockerConnection();
-    await docker.ping();
+    // @ts-expect-error dockerode typings do not expose the options argument for ping
+    await docker.ping({ abortSignal: AbortSignal.timeout(10000) });
     return true;
   } catch {
     return false;
@@ -957,7 +961,8 @@ export async function isDockerAvailable(): Promise<boolean> {
 export async function ensureDockerAvailable(): Promise<void> {
   try {
     refreshDockerConnection();
-    await docker.ping();
+    // @ts-expect-error dockerode typings do not expose the options argument for ping
+    await docker.ping({ abortSignal: AbortSignal.timeout(10000) });
   } catch (error) {
     throw normalizeDockerError(error);
   }

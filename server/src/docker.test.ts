@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import fs from 'node:fs';
 import Docker from 'dockerode';
 
-import { getBitcoinRpcProbeTransports, normalizeDockerError, getStackStatus } from './docker.js';
+import { getBitcoinRpcProbeTransports, getDockerConnectionInfo, normalizeDockerError, getStackStatus } from './docker.js';
 import { DockerConnectionError } from './docker-errors.js';
 
 test('Bitcoin RPC probing tries host loopback before Docker host gateway', () => {
@@ -112,4 +112,29 @@ test('getStackStatus returns null on 404 (missing container)', async (t) => {
   const status = await getStackStatus('jd');
   assert.equal(status.translator, null);
   assert.equal(status.jdc, null);
+});
+
+test('Docker connection metadata never exposes URL credentials', () => {
+  const previousHost = process.env.DOCKER_HOST;
+  const previousSocketPath = process.env.DOCKER_SOCKET_PATH;
+  const password = 'docker-password-must-stay-secret';
+
+  try {
+    delete process.env.DOCKER_SOCKET_PATH;
+    process.env.DOCKER_HOST = `https://docker-user:${password}@127.0.0.1:2376`;
+
+    const serializedConnection = JSON.stringify(getDockerConnectionInfo());
+
+    assert.doesNotMatch(serializedConnection, new RegExp(password));
+    assert.match(serializedConnection, /docker-user/, 'the username stays for a faithful display');
+  } finally {
+    if (previousHost === undefined) delete process.env.DOCKER_HOST;
+    else process.env.DOCKER_HOST = previousHost;
+
+    if (previousSocketPath === undefined) delete process.env.DOCKER_SOCKET_PATH;
+    else process.env.DOCKER_SOCKET_PATH = previousSocketPath;
+
+    // Re-resolve the cached connection against the restored environment.
+    getDockerConnectionInfo();
+  }
 });

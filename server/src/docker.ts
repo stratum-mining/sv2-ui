@@ -69,15 +69,20 @@ function parseDockerHost(dockerHost: string): DockerConnectionConfig {
   }
 
   const defaultPort = protocol === 'https' ? 2376 : 2375;
+  const port = url.port ? Number(url.port) : defaultPort;
+  // Echo the configured URL with only the password removed, so the startup
+  // log and error messages show the endpoint the operator actually set.
+  url.password = '';
+  const redacted = url.href;
 
   return {
-    endpoint: dockerHost,
+    endpoint: redacted,
     options: {
       host: url.hostname,
-      port: url.port ? Number(url.port) : defaultPort,
+      port,
       protocol,
     },
-    source: `DOCKER_HOST=${dockerHost}`,
+    source: `DOCKER_HOST=${redacted}`,
   };
 }
 

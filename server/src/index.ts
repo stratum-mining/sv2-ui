@@ -11,6 +11,7 @@ import { fileURLToPath } from 'url';
 
 import type { PoolConfig, SetupData, StatusResponse, SetupResponse } from './types.js';
 import { normalizeSetupData } from './config-generator.js';
+import { ensureConfigDir } from './config-dir.js';
 import {
   getServiceConfigDrift,
   getSetupValidationError,
@@ -308,7 +309,7 @@ app.post('/api/auth/setup-password', async (req, res) => {
       return res.status(400).json({ error: validationError });
     }
 
-    await fs.mkdir(CONFIG_DIR, { recursive: true });
+    await ensureConfigDir(CONFIG_DIR);
     const recoveryKey = generateRecoveryKey();
     await saveCredential(CREDENTIAL_FILE, {
       ...(await hashPassword(password as string)),

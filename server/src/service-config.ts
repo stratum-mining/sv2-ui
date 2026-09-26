@@ -19,6 +19,7 @@ import {
   isValidBitcoinNetwork,
 } from '@sv2-ui/shared';
 import { generateJdcConfig, generateTranslatorConfig, normalizeSetupData } from './config-generator.js';
+import { ensureConfigDir } from './config-dir.js';
 import { writeFileAtomically } from './atomic-write.js';
 import { BITCOIN_ERROR_MESSAGES } from './messages.js';
 import { getPoolConfigError, MAX_FALLBACK_POOLS } from './pool-validation.js';
@@ -178,14 +179,48 @@ export function prepareServiceConfig(
   }
 }
 
-async function readExistingFile(filePath: string): Promise<string | null> {
+type ManagedPathKind = 'absent' | 'regular-file' | 'foreign';
+
+type ExistingFile = { contents: string; mode: number };
+
+/**
+ * Inspect a managed path without following links. Drift and reconciliation
+ * decide based on the directory entry itself: a symlink, FIFO, socket or
+ * directory planted at a managed filename is foreign and must never be read
+ * through or written through.
+ */
+async function inspectManagedPath(filePath: string): Promise<ManagedPathKind> {
   try {
-    const stat = await fs.stat(filePath);
-    if (stat.isDirectory()) return null;
-    return await fs.readFile(filePath, 'utf8');
+    const stat = await fs.lstat(filePath);
+    return stat.isFile() ? 'regular-file' : 'foreign';
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null;
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return 'absent';
     throw error;
+  }
+}
+
+async function readExistingFile(filePath: string): Promise<ExistingFile | null> {
+  let handle: fs.FileHandle | null = null;
+  try {
+    // O_NOFOLLOW refuses a symlinked entry and O_NONBLOCK keeps a
+    // concurrently planted FIFO from wedging the open. ENOENT, ENXIO (opening
+    // a Unix socket) and ELOOP (an entry swapped to a link after the lstat)
+    // all read as "nothing usable at this path".
+    handle = await fs.open(
+      filePath,
+      fs.constants.O_RDONLY | fs.constants.O_NONBLOCK | fs.constants.O_NOFOLLOW,
+    );
+    const stat = await handle.stat();
+    if (!stat.isFile()) return null;
+    // The mode travels along so reconcile can migrate files written before
+    // the owner-only policy without rewriting their contents.
+    return { contents: await handle.readFile('utf8'), mode: stat.mode & 0o777 };
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code === 'ENOENT' || code === 'ENXIO' || code === 'ELOOP') return null;
+    throw error;
+  } finally {
+    await handle?.close();
   }
 }
 
@@ -199,14 +234,30 @@ async function pathExists(filePath: string): Promise<boolean> {
   }
 }
 
-async function makeFileTargetWritable(filePath: string): Promise<void> {
+/**
+ * Bring a managed regular file to the requested mode through a no-follow
+ * descriptor, without rewriting its contents. Best-effort on races (the entry
+ * may vanish or swap while re-opening) and on unprivileged EPERM: a file we
+ * cannot chmod must not fail the whole reconcile.
+ */
+async function tightenFileMode(filePath: string, mode: number): Promise<void> {
+  let handle: fs.FileHandle | null = null;
   try {
-    const stat = await fs.stat(filePath);
-    if (stat.isDirectory()) {
-      await fs.rm(filePath, { recursive: true, force: true });
-    }
+    handle = await fs.open(
+      filePath,
+      fs.constants.O_RDONLY | fs.constants.O_NONBLOCK | fs.constants.O_NOFOLLOW,
+    );
+    await handle.chmod(mode);
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code === 'ENOENT' || code === 'ENXIO' || code === 'ELOOP') return;
+    if (code === 'EPERM' || code === 'EACCES') {
+      console.warn(`Could not restrict permissions of ${filePath}: ${code}`);
+      return;
+    }
+    throw error;
+  } finally {
+    await handle?.close();
   }
 }
 
@@ -231,7 +282,11 @@ export async function getServiceConfigDrift(
       continue;
     }
 
-    if (await readExistingFile(filePath) !== desiredContents) {
+    // Anything other than a regular file is drift, even when a symlink
+    // happens to resolve to matching contents.
+    const kind = await inspectManagedPath(filePath);
+    const existing = kind === 'regular-file' ? await readExistingFile(filePath) : null;
+    if (existing?.contents !== desiredContents) {
       drift.push(filename);
     }
   }
@@ -248,7 +303,7 @@ export async function reconcileServiceConfigFiles(
   files: ServiceConfigFile[],
   configDir: string,
 ): Promise<string[]> {
-  await fs.mkdir(configDir, { recursive: true });
+  await ensureConfigDir(configDir);
 
   const desiredByName = new Map(files.map((file) => [file.filename, file.contents]));
   const changedFiles: string[] = [];
@@ -265,10 +320,24 @@ export async function reconcileServiceConfigFiles(
       continue;
     }
 
-    if (await readExistingFile(filePath) === desiredContents) continue;
+    // A symlink, FIFO or socket planted at a managed filename is replaced by
+    // the generated regular file, never written through.
+    if (await inspectManagedPath(filePath) === 'foreign') {
+      await fs.rm(filePath, { recursive: true, force: true });
+    }
 
-    await makeFileTargetWritable(filePath);
-    await writeFileAtomically(filePath, desiredContents);
+    const existing = await readExistingFile(filePath);
+    if (existing && existing.contents === desiredContents) {
+      // Contents match, but files written before the owner-only policy may
+      // still carry a permissive mode: tighten it in place.
+      if (existing.mode !== 0o600) {
+        await tightenFileMode(filePath, 0o600);
+        changedFiles.push(filename);
+      }
+      continue;
+    }
+
+    await writeFileAtomically(filePath, desiredContents, { mode: 0o600 });
     changedFiles.push(filename);
   }
 

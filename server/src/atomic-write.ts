@@ -6,27 +6,30 @@ import path from 'node:path';
  * Write a file using a same-directory temporary file and rename. A reader
  * therefore sees either the previous complete file or the new complete file,
  * never a partially-written one.
+ *
+ * The mode is supplied by the caller and applied unconditionally to the
+ * temporary file, so no mode is ever inherited from whatever inode happens to
+ * sit at the destination (a symlink, FIFO, socket or attacker-owned 0666
+ * regular file). rename replaces the destination entry, so a link planted at
+ * the path is swapped out for the new regular file, never written through.
  */
-export async function writeFileAtomically(filePath: string, contents: string): Promise<void> {
+export async function writeFileAtomically(
+  filePath: string,
+  contents: string,
+  options: { mode?: number } = {},
+): Promise<void> {
+  const mode = options.mode ?? 0o600;
   const temporaryPath = path.join(
     path.dirname(filePath),
     `.${path.basename(filePath)}.${randomUUID()}.tmp`,
   );
 
-  let mode: number | undefined;
-  try {
-    mode = (await fs.stat(filePath)).mode & 0o777;
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
-  }
-
   let handle: fs.FileHandle | null = null;
   try {
-    handle = await fs.open(temporaryPath, 'w', mode ?? 0o644);
-    // The mode passed to fs.open is still filtered by the process umask, so an
-    // existing 0644 file would become 0600 under umask 077. Re-apply the exact
-    // mode we read from the original file so the rename preserves it.
-    if (mode !== undefined) await handle.chmod(mode);
+    handle = await fs.open(temporaryPath, 'w', mode);
+    // The mode passed to fs.open is still filtered by the process umask, so
+    // re-apply the requested mode with fchmod to make the final mode exact.
+    await handle.chmod(mode);
     await handle.writeFile(contents, 'utf8');
     await handle.sync();
     await handle.close();

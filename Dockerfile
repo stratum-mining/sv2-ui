@@ -44,8 +44,8 @@ RUN npm install --omit=dev -w server && rm -f package.json package-lock.json
 # Create a symlink so @sv2-ui/shared resolves at runtime
 RUN mkdir -p /app/node_modules/@sv2-ui && ln -s ../../shared /app/node_modules/@sv2-ui/shared
 
-# Create data directory for configs
-RUN mkdir -p /app/data/config
+# Create data directory for configs (owner-only permissions)
+RUN mkdir -m 700 -p /app/data/config
 
 ENV NODE_ENV=production
 ENV PORT=8080

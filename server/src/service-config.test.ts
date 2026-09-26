@@ -1,8 +1,11 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { execFile } from 'node:child_process';
+import { chmod, constants, lstat, mkdtemp, open, readFile, rm, stat, symlink, writeFile } from 'node:fs/promises';
+import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
+import { promisify } from 'node:util';
 import { JDC_AUTHORITY_PUBLIC_KEY } from '@sv2-ui/shared';
 import {
   getServiceConfigDrift,
@@ -75,6 +78,28 @@ test('does not rewrite generated config files that already match', async () => {
       await getServiceConfigDrift(prepared.files, configDir),
       [],
     );
+  } finally {
+    await rm(configDir, { recursive: true, force: true });
+  }
+});
+
+test('migrates an existing matching managed file to the 0o600 mode', async () => {
+  const configDir = await mkdtemp(path.join(os.tmpdir(), 'sv2-ui-config-'));
+  const managedPath = path.join(configDir, 'translator.toml');
+
+  try {
+    await reconcileServiceConfigs(JD_DATA, configDir);
+    // Simulate a file written before the owner-only policy existed.
+    await chmod(managedPath, 0o644);
+
+    assert.deepEqual(await reconcileServiceConfigs(JD_DATA, configDir), ['translator.toml']);
+    assert.equal((await stat(managedPath)).mode & 0o777, 0o600);
+
+    // Contents are untouched, so the mode is not drift.
+    const prepared = prepareServiceConfig(JD_DATA);
+    assert.equal(prepared.kind, 'ready');
+    if (prepared.kind !== 'ready') assert.fail('Expected a ready configuration');
+    assert.deepEqual(await getServiceConfigDrift(prepared.files, configDir), []);
   } finally {
     await rm(configDir, { recursive: true, force: true });
   }
@@ -242,6 +267,126 @@ test('detects and removes an obsolete generated JDC config when switching to no-
     assert.deepEqual(await reconcileServiceConfigs(noJdData, configDir), ['translator.toml', 'jdc.toml']);
     await assert.rejects(readFile(path.join(configDir, 'jdc.toml'), 'utf8'), { code: 'ENOENT' });
     assert.deepEqual(await getServiceConfigDrift(prepared.files, configDir), []);
+  } finally {
+    await rm(configDir, { recursive: true, force: true });
+  }
+});
+
+test('does not block while inspecting a FIFO at a managed config path', async () => {
+  const configDir = await mkdtemp(path.join(os.tmpdir(), 'sv2-ui-config-'));
+  const managedPath = path.join(configDir, 'translator.toml');
+  let timeoutId: NodeJS.Timeout | undefined;
+
+  try {
+    await promisify(execFile)('mkfifo', ['-m', '666', managedPath]);
+
+    const timedOut = new Promise<'timed-out'>((resolve) => {
+      timeoutId = setTimeout(() => resolve('timed-out'), 250);
+      timeoutId.unref();
+    });
+    const outcome = await Promise.race([
+      getServiceConfigDrift([{
+        filename: 'translator.toml',
+        contents: 'trusted configuration',
+      }], configDir),
+      timedOut,
+    ]);
+
+    if (outcome === 'timed-out') {
+      // A spurious timeout on a stalled runner means the reader has already
+      // closed. Open the writer with O_NONBLOCK so this branch can never wedge
+      // a libuv worker and hang the whole test process; ENXIO means there is
+      // no blocked reader to release.
+      try {
+        const writer = await open(managedPath, constants.O_WRONLY | constants.O_NONBLOCK);
+        await writer.writeFile('attacker-controlled input');
+        await writer.close();
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'ENXIO') throw error;
+      }
+      assert.fail('drift inspection blocked while opening an attacker-created FIFO');
+    }
+
+    assert.deepEqual(outcome, ['translator.toml']);
+  } finally {
+    clearTimeout(timeoutId);
+    await rm(configDir, { recursive: true, force: true });
+  }
+});
+
+test('reports a symlink at a managed config path as drift even when it resolves to matching contents', async () => {
+  const configDir = await mkdtemp(path.join(os.tmpdir(), 'sv2-ui-config-'));
+  const managedPath = path.join(configDir, 'translator.toml');
+
+  try {
+    await writeFile(path.join(configDir, 'linked-target'), 'trusted configuration');
+    await symlink(path.join(configDir, 'linked-target'), managedPath);
+
+    assert.deepEqual(
+      await getServiceConfigDrift([{
+        filename: 'translator.toml',
+        contents: 'trusted configuration',
+      }], configDir),
+      ['translator.toml'],
+    );
+  } finally {
+    await rm(configDir, { recursive: true, force: true });
+  }
+});
+
+test('reports a Unix socket at a managed config path as drift without failing', async () => {
+  const configDir = await mkdtemp(path.join(os.tmpdir(), 'sv2-ui-config-'));
+  const managedPath = path.join(configDir, 'translator.toml');
+  const server = net.createServer();
+
+  try {
+    await new Promise<void>((resolve) => server.listen(managedPath, resolve));
+
+    assert.deepEqual(
+      await getServiceConfigDrift([{
+        filename: 'translator.toml',
+        contents: 'trusted configuration',
+      }], configDir),
+      ['translator.toml'],
+    );
+  } finally {
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+    await rm(configDir, { recursive: true, force: true });
+  }
+});
+
+test('replaces a symlink at a managed config path with a regular file', async () => {
+  const configDir = await mkdtemp(path.join(os.tmpdir(), 'sv2-ui-config-'));
+  const managedPath = path.join(configDir, 'translator.toml');
+
+  try {
+    await writeFile(path.join(configDir, 'linked-target'), 'attacker controlled');
+    await symlink(path.join(configDir, 'linked-target'), managedPath);
+
+    const changed = await reconcileServiceConfigs(JD_DATA, configDir);
+
+    const finalStat = await lstat(managedPath);
+    assert.ok(finalStat.isFile(), 'reconcile must replace the planted symlink with a regular file');
+    assert.equal(finalStat.mode & 0o777, 0o600);
+    assert.ok(changed.includes('translator.toml'));
+  } finally {
+    await rm(configDir, { recursive: true, force: true });
+  }
+});
+
+test('replaces a FIFO at a managed config path with a regular file', async () => {
+  const configDir = await mkdtemp(path.join(os.tmpdir(), 'sv2-ui-config-'));
+  const managedPath = path.join(configDir, 'translator.toml');
+
+  try {
+    await promisify(execFile)('mkfifo', ['-m', '666', managedPath]);
+
+    const changed = await reconcileServiceConfigs(JD_DATA, configDir);
+
+    const finalStat = await stat(managedPath);
+    assert.ok(finalStat.isFile(), 'reconcile must replace the planted FIFO with a regular file');
+    assert.equal(finalStat.mode & 0o777, 0o600);
+    assert.ok(changed.includes('translator.toml'));
   } finally {
     await rm(configDir, { recursive: true, force: true });
   }

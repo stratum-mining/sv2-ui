@@ -97,11 +97,22 @@ export async function verifyRecoveryKey(
 
 export async function loadCredential(filePath: string): Promise<StoredCredential | null> {
   let raw: string;
+  let handle: fs.FileHandle | null = null;
   try {
-    raw = await fs.readFile(filePath, 'utf8');
+    // Like state.ts: refuse to follow a symlinked credential file so a link
+    // planted at the path cannot feed credentials from outside the volume.
+    // O_NONBLOCK keeps a planted FIFO from wedging one threadpool worker per
+    // auth request, which stalls the whole server after a few requests.
+    handle = await fs.open(
+      filePath,
+      fs.constants.O_RDONLY | fs.constants.O_NONBLOCK | fs.constants.O_NOFOLLOW,
+    );
+    raw = await handle.readFile('utf8');
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null;
-    throw error;
+    throw new CredentialError('Stored credential could not be read.');
+  } finally {
+    await handle?.close();
   }
 
   let parsed: unknown;
@@ -126,6 +137,5 @@ export async function saveCredential(
   filePath: string,
   credential: StoredCredential,
 ): Promise<void> {
-  await writeFileAtomically(filePath, `${JSON.stringify(credential, null, 2)}\n`);
-  await fs.chmod(filePath, 0o600);
+  await writeFileAtomically(filePath, `${JSON.stringify(credential, null, 2)}\n`, { mode: 0o600 });
 }

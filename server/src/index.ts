@@ -19,7 +19,7 @@ import {
   reconcileServiceConfigFiles,
   type PreparedServiceConfig,
 } from './service-config.js';
-import { DockerConnectionError } from './docker-errors.js';
+import { DockerConnectionError, isMissingContainerError } from './docker-errors.js';
 import {
   TRANSLATOR_MONITORING_PORT,
   JDC_MONITORING_PORT,
@@ -39,9 +39,14 @@ import {
   getDockerConnectionInfo,
   expandHomePath,
   readContainerLogs,
+  streamContainerLogText,
   probeBitcoinSocketWithDocker,
   autoDiscoverBitcoinRpc
 } from './docker.js';
+import {
+  CONTAINER_LOG_EXPORT_MAX_BYTES,
+  type ContainerLogTextSink,
+} from './logs/export.js';
 import { getLogDiagnostics, getLogStreams, readCollatedLogLines } from './logs/diagnostics.js';
 import { ActivePoolTracker } from './active-pool.js';
 import {
@@ -747,22 +752,11 @@ app.get('/api/logs/diagnostics', async (_req, res) => {
 app.get('/api/logs/raw', async (req, res) => {
   try {
     const state = await loadState();
-    const tailStr = req.query.tail as string;
-    let lines: Awaited<ReturnType<typeof readCollatedLogLines>>;
-
-    if (tailStr === 'all') {
-      // Pull full history since container start by ignoring the per-container
-      // tail cap applied inside readCollatedLogLines.
-      lines = await readCollatedLogLines(state.mode, (container) =>
-        readContainerLogs(container)
-      );
-    } else {
-      const tailParam = parseInt(tailStr, 10);
-      const tail = Number.isFinite(tailParam) ? Math.min(Math.max(tailParam, 1), 500) : 200;
-      lines = await readCollatedLogLines(state.mode, (container, opts) =>
-        readContainerLogs(container, { ...opts, tail })
-      );
-    }
+    const tailParam = parseInt(req.query.tail as string, 10);
+    const tail = Number.isFinite(tailParam) ? Math.min(Math.max(tailParam, 1), 500) : 200;
+    const lines = await readCollatedLogLines(state.mode, (container, opts) =>
+      readContainerLogs(container, { ...opts, tail })
+    );
 
     res.json({
       configured: state.configured,
@@ -774,6 +768,66 @@ app.get('/api/logs/raw', async (req, res) => {
   } catch (error) {
     console.error('Raw logs error:', error);
     res.status(500).json({ error: 'Failed to get container logs' });
+  }
+});
+
+/**
+ * GET /api/logs/download - Stream the retained container log history as a
+ * plain-text attachment. Unlike the JSON routes this never materializes the
+ * full history: lines are demuxed and formatted as the docker stream
+ * produces them, the response is capped per container
+ * (CONTAINER_LOG_EXPORT_MAX_BYTES) with a truncation marker, and the client
+ * saves the streamed body as a single Blob.
+ */
+app.get('/api/logs/download', async (_req, res) => {
+  try {
+    const state = await loadState();
+    const containers = getLogStreams(state.mode).flatMap((stream) => stream.containers);
+    if (containers.length === 0) {
+      return res.status(404).json({ error: 'No log streams configured' });
+    }
+
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+    res.setHeader('content-type', 'text/plain; charset=utf-8');
+    res.setHeader('content-disposition', `attachment; filename="sv2-logs-${stamp}.txt"`);
+    res.write(`# sv2-logs exported ${new Date().toISOString()}\n`);
+
+    const sink: ContainerLogTextSink = {
+      write: (text) => res.write(text),
+      onDrain: (resume) => res.on('drain', resume),
+      onClose: (stop) => res.once('close', stop),
+    };
+
+    for (const container of containers) {
+      if (res.writableEnded || res.destroyed) {
+        break;
+      }
+
+      res.write(`# container: ${container}\n`);
+      try {
+        await streamContainerLogText(container, {
+          maxBytes: CONTAINER_LOG_EXPORT_MAX_BYTES,
+          sink,
+        });
+      } catch (error) {
+        // Downloads are best-effort: skip what cannot be read and keep the
+        // export going for the remaining containers.
+        const missing = isMissingContainerError(error);
+        if (!missing) {
+          console.error('Log download error:', error);
+        }
+        res.write(`[no logs exported for ${container}: ${missing ? 'container is not running' : 'log read failed'}]\n`);
+      }
+    }
+
+    res.end();
+  } catch (error) {
+    console.error('Log download error:', error);
+    if (res.headersSent) {
+      res.end();
+    } else {
+      res.status(500).json({ error: 'Failed to export container logs' });
+    }
   }
 });
 

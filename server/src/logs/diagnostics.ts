@@ -22,6 +22,17 @@ export type LogProvider = (
   options?: { tail?: number }
 ) => Promise<ContainerLogLine[]>;
 
+// Concurrent callers reading the same mode share one in-flight Docker log
+// snapshot per provider instead of each starting their own. The diagnostics
+// route is polled every few seconds, so overlapping callers (UI tabs or
+// request bursts) would otherwise multiply Docker-socket reads, parsing, and
+// heap use without bound. Entries are evicted as soon as their snapshot
+// settles, so the next caller always starts a fresh read.
+const inFlightSnapshots = new WeakMap<
+  LogProvider,
+  Map<SetupMode | null, Promise<ContainerLogLine[]>>
+>();
+
 function getStreamContainers(mode: SetupMode | null): LogContainerRole[] {
   if (mode === 'jd') {
     return ['translator', 'jdc'];
@@ -75,7 +86,18 @@ export async function readCollatedLogLines(
     return [];
   }
 
-  const logSets = await Promise.all(
+  let snapshots = inFlightSnapshots.get(readLogs);
+  if (!snapshots) {
+    snapshots = new Map();
+    inFlightSnapshots.set(readLogs, snapshots);
+  }
+
+  const inFlight = snapshots.get(mode);
+  if (inFlight) {
+    return inFlight;
+  }
+
+  const snapshot = Promise.all(
     containers.map(async (container) => {
       try {
         return await readLogs(container, { tail: RECENT_LOG_TAIL });
@@ -89,9 +111,17 @@ export async function readCollatedLogLines(
         throw error;
       }
     })
-  );
+  ).then((logSets) => logSets.flat().sort(sortLines));
 
-  return logSets.flat().sort(sortLines);
+  snapshots.set(mode, snapshot);
+
+  try {
+    return await snapshot;
+  } finally {
+    if (snapshots.get(mode) === snapshot) {
+      snapshots.delete(mode);
+    }
+  }
 }
 
 export async function getLogDiagnostics(

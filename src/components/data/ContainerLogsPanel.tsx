@@ -3,23 +3,15 @@ import { Download } from 'lucide-react';
 import type { ContainerLogLine } from '@/types/log-diagnostics';
 import { cn } from '@/lib/utils';
 
+// Full retained history is exported by a dedicated server endpoint that
+// streams formatted text with a hard byte cap, so the browser never
+// materializes a JSON object graph of the whole log history.
+export const LOG_DOWNLOAD_PATH = '/api/logs/download';
+
 interface ContainerLogsPanelProps {
   lines: ContainerLogLine[];
   isLoading: boolean;
   isJdMode: boolean;
-}
-
-function buildDownloadContent(lines: ContainerLogLine[]): string {
-  return lines
-    .map((line) => {
-      const parts: string[] = [];
-      if (line.timestamp) parts.push(line.timestamp);
-      parts.push(`[${line.container}]`);
-      parts.push(`[${line.stream}]`);
-      parts.push(line.message);
-      return parts.join(' ');
-    })
-    .join('\n');
 }
 
 function getLogColorClass(line: ContainerLogLine) {
@@ -55,13 +47,13 @@ export function ContainerLogsPanel({ lines, isLoading, isJdMode }: ContainerLogs
 
   const handleDownload = useCallback(async () => {
     try {
-      const response = await fetch('/api/logs/raw?tail=all', {
-        signal: AbortSignal.timeout(10000),
+      const response = await fetch(LOG_DOWNLOAD_PATH, {
+        signal: AbortSignal.timeout(30000),
       });
       if (!response.ok) return;
-      const data = await response.json() as { lines: ContainerLogLine[] };
-      const content = buildDownloadContent(data.lines);
-      const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+      // The streamed body is the only copy: no JSON parse, no object array,
+      // no re-joined string — just the file itself.
+      const blob = await response.blob();
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;

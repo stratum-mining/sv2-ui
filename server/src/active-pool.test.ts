@@ -211,3 +211,147 @@ test('invalidates the active pool when the authority key rotates without a new h
   // Then the authority key rotates (same endpoint) without a new handshake.
   assert.equal(await tracker.getActivePool('translator', poolsWithKey('rotated-key')), null);
 });
+
+test('coalesces concurrent initial polls into one full-history log read', async () => {
+  const calls: Array<{ since?: number } | undefined> = [];
+  let readCount = 0;
+  let releaseRead!: () => void;
+  const readGate = new Promise<void>((resolve) => {
+    releaseRead = resolve;
+  });
+  const tracker = new ActivePoolTracker(async (_container, options) => {
+    calls.push(options);
+    readCount += 1;
+    await readGate;
+    return [];
+  });
+
+  const requests = Array.from(
+    { length: 32 },
+    () => tracker.getActivePool('translator', POOLS)
+  );
+
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  assert.equal(readCount, 1);
+
+  releaseRead();
+  await Promise.all(requests);
+  assert.equal(readCount, 1);
+
+  // State was committed by the coalesced read, so the next poll reads
+  // incrementally instead of the full history again.
+  await tracker.getActivePool('translator', POOLS);
+  assert.equal(readCount, 2);
+  assert.equal(typeof calls[1]?.since, 'number');
+});
+
+test('does not coalesce concurrent polls with different configurations', async () => {
+  let readCount = 0;
+  let releaseRead!: () => void;
+  const readGate = new Promise<void>((resolve) => {
+    releaseRead = resolve;
+  });
+  const tracker = new ActivePoolTracker(async () => {
+    readCount += 1;
+    await readGate;
+    return [];
+  });
+
+  const rotated = [
+    { ...POOLS[0], authority_public_key: 'rotated-key' },
+    { ...POOLS[1] },
+  ];
+
+  const requests = [
+    tracker.getActivePool('translator', POOLS),
+    tracker.getActivePool('translator', rotated),
+  ];
+
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  assert.equal(readCount, 2);
+
+  releaseRead();
+  await Promise.all(requests);
+});
+
+test('clears the in-flight slot when a read fails so the next poll retries', async () => {
+  let readCount = 0;
+  let releaseRead!: () => void;
+  const readGate = new Promise<void>((resolve) => {
+    releaseRead = resolve;
+  });
+  const tracker = new ActivePoolTracker(async () => {
+    readCount += 1;
+    if (readCount === 1) {
+      await readGate;
+      throw new Error('container is restarting');
+    }
+    return [
+      log('Trying upstream 2 of 2: fallback.example.com:4444'),
+      log('Connected to upstream at 192.0.2.42:4444'),
+      log('Received: SetupConnectionSuccess(used_version: 2, flags: 0x00000000)'),
+    ];
+  });
+
+  const requests = Array.from(
+    { length: 32 },
+    () => tracker.getActivePool('translator', POOLS)
+  );
+
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  assert.equal(readCount, 1);
+
+  releaseRead();
+  // Without prior state a failed read reports no active pool for every
+  // caller that joined the read.
+  assert.deepEqual(await Promise.all(requests), Array<number>(32).fill(null));
+  assert.equal(readCount, 1);
+
+  // The next poll starts a fresh read instead of joining the dead one.
+  assert.deepEqual(await tracker.getActivePool('translator', POOLS), {
+    name: 'Fallback',
+    index: 1,
+  });
+  assert.equal(readCount, 2);
+});
+
+test('coalesces concurrent incremental polls into one incremental read', async () => {
+  const calls: Array<{ since?: number } | undefined> = [];
+  let readCount = 0;
+  let releaseRead!: () => void;
+  const readGate = new Promise<void>((resolve) => {
+    releaseRead = resolve;
+  });
+  const handshake = [
+    log('Trying upstream 2 of 2: fallback.example.com:4444'),
+    log('Connected to upstream at 192.0.2.42:4444'),
+    log('Received: SetupConnectionSuccess(used_version: 2, flags: 0x00000000)'),
+  ];
+  const tracker = new ActivePoolTracker(async (_container, options) => {
+    calls.push(options);
+    readCount += 1;
+    if (readCount === 1) return handshake;
+    await readGate;
+    return [];
+  });
+
+  assert.deepEqual(await tracker.getActivePool('translator', POOLS), {
+    name: 'Fallback',
+    index: 1,
+  });
+
+  const requests = Array.from(
+    { length: 8 },
+    () => tracker.getActivePool('translator', POOLS)
+  );
+
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  assert.equal(readCount, 2);
+  assert.equal(typeof calls[1]?.since, 'number');
+
+  releaseRead();
+  assert.deepEqual(await Promise.all(requests), Array.from({ length: 8 }, () => ({
+    name: 'Fallback',
+    index: 1,
+  })));
+});

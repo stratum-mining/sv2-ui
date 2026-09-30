@@ -17,6 +17,14 @@ import {
 } from '@sv2-ui/shared';
 import type { SetupData, ContainerStatus } from './types.js';
 import type { ContainerLogLine, LogContainerRole, LogOutputStream } from './logs/types.js';
+import {
+  createDockerLogDemuxer,
+  createLogLineFormatter,
+  DOCKER_LOG_HEADER_SIZE,
+  type ContainerLogExportStats,
+  type ContainerLogTextSink,
+  type DockerLogChunk,
+} from './logs/export.js';
 import { isMissingContainerError, DockerConnectionError } from './docker-errors.js';
 import { getImageSelectionForSetup } from '@sv2-ui/shared';
 import { bitcoinSocketValidatorScript } from './bitcoin-socket-validator.js';
@@ -185,7 +193,24 @@ const NETWORK_NAME = CONTAINER_NAMES.network;
 const CONFIG_VOLUME = CONTAINER_NAMES.configVolume;
 const TRANSLATOR_CONTAINER = CONTAINER_NAMES.translator;
 const JDC_CONTAINER = CONTAINER_NAMES.jdc;
-const DOCKER_LOG_HEADER_SIZE = 8;
+
+// Bound the retained log history of the mining containers at the source.
+// Without it the json-file driver keeps every byte ever logged: the history
+// the logs panel, diagnostics snapshots, and the download export all read
+// from grows without limit (an attacker spamming the network-facing
+// services can inflate it at will), and the host disk fills up. 3 x 10 MiB
+// keeps a useful diagnostic window per container.
+const CONTAINER_LOG_ROTATION = {
+  'max-size': '10m',
+  'max-file': '3',
+} as const;
+
+function miningContainerLogConfig(): { Type: 'json-file'; Config: typeof CONTAINER_LOG_ROTATION } {
+  return {
+    Type: 'json-file',
+    Config: { ...CONTAINER_LOG_ROTATION },
+  };
+}
 
 /**
  * Detect if we're running inside a Docker container.
@@ -562,11 +587,6 @@ const LOG_CONTAINER_NAMES: Record<LogContainerRole, string> = {
   jdc: JDC_CONTAINER,
 };
 
-type DockerLogChunk = {
-  stream: LogOutputStream;
-  payload: string;
-};
-
 // Docker uses an 8-byte framing header for non-TTY stdout/stderr multiplexing.
 // Reference: https://docs.docker.com/reference/api/engine/version/v1.45/#tag/Container/operation/ContainerAttach
 function demuxDockerLogBuffer(buffer: Buffer): DockerLogChunk[] {
@@ -660,6 +680,146 @@ export async function readContainerLogs(
       cause: error instanceof Error ? error : new Error(String(error)),
     });
   }
+}
+
+/**
+ * Stream a container's full retained log history as formatted text lines
+ * through `sink.write`, without ever buffering the whole history. Chunks
+ * are demuxed and formatted as they arrive; the byte cap stops the read by
+ * destroying the docker stream mid-flight (the daemon stops pushing); and
+ * `until: now` bounds what the daemon will deliver to the existing backlog.
+ *
+ * The daemon treats `until` as a filter but does NOT close a follow stream
+ * on a running container (verified with `docker logs --follow --until`):
+ * after the backlog it simply goes silent instead of emitting `end`. Since
+ * no line newer than `until` can legitimately arrive, silence for a short
+ * idle window means the export is complete and the stream is destroyed.
+ * The sink's backpressure signal (write returning false) pauses the docker
+ * stream until the writer drains, keeping memory bounded for slow readers.
+ *
+ * Unlike readContainerLogs there is no 2s abort: the export's lifetime is
+ * bounded by `until` plus the idle window, the byte cap, and the consumer
+ * going away instead.
+ */
+export async function streamContainerLogText(
+  container: LogContainerRole,
+  options: { maxBytes: number; sink: ContainerLogTextSink }
+): Promise<ContainerLogExportStats> {
+  refreshDockerConnection();
+
+  const dockerContainer = docker.getContainer(LOG_CONTAINER_NAMES[container]);
+  const info = await dockerContainer.inspect();
+  const startTime = info.State?.StartedAt;
+  const containerStart = startTime
+    ? Math.floor(new Date(startTime).getTime() / 1000)
+    : null;
+
+  let raw: NodeJS.ReadableStream & { destroy: (error?: Error) => void };
+  try {
+    raw = (await dockerContainer.logs({
+      stdout: true,
+      stderr: true,
+      follow: true,
+      timestamps: true,
+      ...(containerStart !== null ? { since: containerStart } : {}),
+      until: Math.floor(Date.now() / 1000),
+    })) as NodeJS.ReadableStream & { destroy: (error?: Error) => void };
+  } catch (error) {
+    throw new Error(`Failed to open log stream for ${container} container`, {
+      cause: error instanceof Error ? error : new Error(String(error)),
+    });
+  }
+
+  return await new Promise<ContainerLogExportStats>((resolve, reject) => {
+    let bytes = 0;
+    let truncated = false;
+    let settled = false;
+    let idleTimer: NodeJS.Timeout | null = null;
+
+    function finish(error?: Error): void {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      if (idleTimer) {
+        clearTimeout(idleTimer);
+        idleTimer = null;
+      }
+      raw.destroy();
+      if (error) {
+        reject(error);
+      } else {
+        resolve({ bytes, truncated });
+      }
+    }
+
+    // After the backlog the follow stream stays open but silent (until
+    // filters everything newer than now), so a brief silence means done.
+    const IDLE_COMPLETE_MS = 1000;
+    function armIdleTimer(): void {
+      if (idleTimer) {
+        clearTimeout(idleTimer);
+      }
+      idleTimer = setTimeout(() => finish(), IDLE_COMPLETE_MS);
+      idleTimer.unref();
+    }
+
+    const formatter = createLogLineFormatter(container, (line) => {
+      if (truncated) {
+        return;
+      }
+
+      const lineBytes = Buffer.byteLength(line, 'utf8') + 1;
+      if (bytes + lineBytes > options.maxBytes) {
+        truncated = true;
+        options.sink.write(`[log export truncated at ${options.maxBytes} bytes]\n`);
+        finish();
+        return;
+      }
+
+      bytes += lineBytes;
+      if (!options.sink.write(line + '\n')) {
+        raw.pause();
+      }
+    });
+
+    // TTY containers carry no frame headers; everything is stdout payload.
+    const demux = info.Config?.Tty
+      ? (chunk: Buffer) => formatter.consume({ stream: 'stdout', payload: chunk.toString('utf-8') })
+      : createDockerLogDemuxer((chunk) => formatter.consume(chunk));
+
+    raw.on('data', (chunk: Buffer) => {
+      try {
+        demux(chunk);
+      } catch (error) {
+        finish(new Error(`Failed to demux log stream for ${container} container`, {
+          cause: error instanceof Error ? error : new Error(String(error)),
+        }));
+        return;
+      }
+      armIdleTimer();
+    });
+
+    raw.on('end', () => {
+      formatter.flush();
+      finish();
+    });
+
+    raw.on('error', (error: Error) => {
+      finish(new Error(`Failed to read log stream for ${container} container`, {
+        cause: error,
+      }));
+    });
+
+    raw.on('close', () => finish());
+
+    options.sink.onDrain(() => raw.resume());
+    options.sink.onClose(() => finish());
+
+    // Covers a running container that never emits a single byte: without
+    // this the response would hang until the client gives up.
+    armIdleTimer();
+  });
 }
 
 /**
@@ -792,8 +952,10 @@ async function getContainerStatus(name: string): Promise<ContainerStatus | null>
  * Start the Translator container.
  * - In Docker: uses shared volume (sv2-config) for config
  * - In dev: bind-mounts config file from host filesystem
+ *
+ * Exported for tests so the container creation options stay asserted.
  */
-async function startTranslator(configPath: string, image: string): Promise<void> {
+export async function startTranslator(configPath: string, image: string): Promise<void> {
   await removeContainer(TRANSLATOR_CONTAINER);
 
   const binds = isRunningInDocker
@@ -814,6 +976,7 @@ async function startTranslator(configPath: string, image: string): Promise<void>
       },
       NetworkMode: NETWORK_NAME,
       RestartPolicy: { Name: 'no' },
+      LogConfig: miningContainerLogConfig(),
     },
     ExposedPorts: {
       '34255/tcp': {},
@@ -829,8 +992,10 @@ async function startTranslator(configPath: string, image: string): Promise<void>
  * Start the JDC container.
  * - In Docker: uses shared volume (sv2-config) for config
  * - In dev: bind-mounts config file from host filesystem
+ *
+ * Exported for tests so the container creation options stay asserted.
  */
-async function startJdc(
+export async function startJdc(
   configPath: string,
   bitcoinSocketPath: string,
   network: string,
@@ -866,6 +1031,7 @@ async function startJdc(
       },
       NetworkMode: NETWORK_NAME,
       RestartPolicy: { Name: 'no' },
+      LogConfig: miningContainerLogConfig(),
     },
     ExposedPorts: {
       '34265/tcp': {},

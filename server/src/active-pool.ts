@@ -127,6 +127,11 @@ function getConfigKey(container: LogContainerRole, pools: PoolConfig[]): string 
  */
 export class ActivePoolTracker {
   private state: TrackerState | null = null;
+  // Concurrent calls for the same configuration share one log read: the
+  // first caller stores its promise here and later callers join it. This
+  // prevents parallel full-history reads (no matching state yet) from
+  // piling up Docker log work on every status poll.
+  private readonly inFlight = new Map<string, Promise<ActivePool | null>>();
 
   constructor(private readonly readLogs: ActivePoolLogProvider) {}
 
@@ -144,6 +149,29 @@ export class ActivePoolTracker {
     }
 
     const configKey = getConfigKey(container, pools);
+    const inFlight = this.inFlight.get(configKey);
+    if (inFlight) return inFlight;
+
+    const read = this.readActivePool(container, pools, configKey);
+    this.inFlight.set(configKey, read);
+
+    try {
+      return await read;
+    } finally {
+      // Identity-checked so a completed read never removes a newer
+      // in-flight entry; failures also clear the slot so the next poll
+      // can retry.
+      if (this.inFlight.get(configKey) === read) {
+        this.inFlight.delete(configKey);
+      }
+    }
+  }
+
+  private async readActivePool(
+    container: LogContainerRole,
+    pools: PoolConfig[],
+    configKey: string
+  ): Promise<ActivePool | null> {
     const previous = this.state?.configKey === configKey ? this.state : null;
     const readStartedAt = Math.floor(Date.now() / 1000);
 

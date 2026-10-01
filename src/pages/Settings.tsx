@@ -188,6 +188,7 @@ export function Settings() {
                       <input
                         ref={logoInputRef}
                         type="file"
+                        aria-label="Upload logo"
                         accept="image/*"
                         className="hidden"
                         onChange={handleLogoUpload}

@@ -21,6 +21,9 @@
     "test:server": "npm run test --prefix server",
     "check:sv2-app-config": "node --import tsx server/src/sv2-app-config-compatibility.ts",
     "test:all": "npm run test && npm run test:server",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui",
+    "test:e2e:debug": "playwright test --debug",
     "typecheck": "tsc --noEmit",
     "generate:types": "orval"
   },
@@ -42,6 +45,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.39.4",
+    "@playwright/test": "^1.63.0",
     "@types/node": "^22.10.2",
     "@types/react": "^18.3.14",
     "@types/react-dom": "^18.3.3",

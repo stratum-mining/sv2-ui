@@ -62,6 +62,22 @@ import {
   buildSessionCookie,
   parseCookies,
 } from './sessions.js';
+import { readJsonWithLimit } from './bounded-json.js';
+import {
+  MAX_MONITORING_ITEMS,
+  collectPaginatedMonitoringItems,
+  getTelegramWorkerCount,
+  mapWithConcurrency,
+  TelegramApiError,
+  TelegramConfigError,
+  TelegramService,
+} from './telegram.js';
+import type {
+  MonitoringBudget,
+  TelegramActivitySnapshot,
+  TelegramMiningChannel,
+  TelegramSettingsUpdate,
+} from './telegram.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -82,6 +98,12 @@ const sessions = new SessionStore();
 const AUTO_START_RETRY_INTERVAL_MS = 30_000;
 const AUTO_START_MIN_BACKOFF_MS = 60_000;
 const AUTO_START_MAX_BACKOFF_MS = 5 * 60_000;
+const TELEGRAM_SETTINGS_FILE = path.join(CONFIG_DIR, 'telegram.json');
+// Bot commands and settings buttons are checked this often (one getUpdates call).
+const TELEGRAM_POLL_INTERVAL_MS = 5_000;
+// Mining activity for alerts (Docker inspect plus monitoring API reads) is
+// sampled less often so the background monitor stays cheap.
+const TELEGRAM_ACTIVITY_INTERVAL_MS = 30_000;
 
 type StackBusyReason = 'auto-start' | 'manual';
 
@@ -90,6 +112,10 @@ let autoStartFailureCount = 0;
 let nextAutoStartAttemptAt = 0;
 let autoStartSetupReviewLogged = false;
 const activePoolTracker = new ActivePoolTracker(readContainerLogs);
+const telegramService = new TelegramService(TELEGRAM_SETTINGS_FILE, fetch, {
+  activityIntervalMs: TELEGRAM_ACTIVITY_INTERVAL_MS,
+});
+let telegramMonitorTimer: ReturnType<typeof setInterval> | null = null;
 
 function isJsonObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -492,6 +518,60 @@ app.post('/api/auth/change-password', async (req, res) => {
   }
 });
 
+async function getCurrentStatus(): Promise<StatusResponse> {
+  const state = await loadState();
+  let containers: StatusResponse['containers'] = { translator: null, jdc: null };
+  let dockerError: string | null = null;
+  try {
+    containers = await getStackStatus(state.mode);
+  } catch (error) {
+    if (error instanceof DockerConnectionError) {
+      dockerError = error.message;
+    } else {
+      // Not a connectivity problem. Treat as not running rather than a 500,
+      // which the client reads as "no backend".
+      console.error('Status: container inspect failed:', error);
+    }
+  }
+  const running = isStackRunning(state.mode, containers);
+  const prepared = state.configured ? prepareServiceConfig(state.data) : null;
+  const configurationIssues = prepared?.kind === 'needs-setup-review'
+    ? prepared.issues
+    : [];
+  const isSovereignSolo = state.data?.miningMode === 'solo' && state.data?.mode === 'jd';
+  const pools = state.data && !isSovereignSolo ? configuredPools(state.data) : [];
+
+  if (!running) {
+    activePoolTracker.reset();
+  }
+
+  const activePool = running && state.mode && pools.length > 0
+    ? await activePoolTracker.getActivePool(
+      state.mode === 'jd' ? 'jdc' : 'translator',
+      pools
+    )
+    : null;
+
+  return {
+    configured: state.configured,
+    running,
+    dockerError,
+    autoStarting: stackBusyReason === 'auto-start',
+    shouldBeRunning: state.shouldBeRunning,
+    miningMode: state.miningMode,
+    mode: state.mode,
+    poolName: isSovereignSolo
+      ? 'Sovereign Solo Mining'
+      : (activePool?.name ?? null),
+    activePoolIndex: activePool?.index ?? null,
+    activePoolAddress: activePool ? pools[activePool.index]?.address ?? null : null,
+    activePoolPort: activePool ? pools[activePool.index]?.port ?? null : null,
+    activePoolAuthorityPublicKey: activePool ? pools[activePool.index]?.authority_public_key ?? null : null,
+    configurationIssues,
+    containers,
+  };
+}
+
 /**
  * GET /api/health - Health check
  */
@@ -508,59 +588,7 @@ app.get('/api/health', async (_req, res) => {
  */
 app.get('/api/status', async (_req, res) => {
   try {
-    const state = await loadState();
-    let containers: StatusResponse['containers'] = { translator: null, jdc: null };
-    let dockerError: string | null = null;
-    try {
-      containers = await getStackStatus(state.mode);
-    } catch (error) {
-      if (error instanceof DockerConnectionError) {
-        dockerError = error.message;
-      } else {
-        // Not a connectivity problem. Treat as not running rather than a 500,
-        // which the client reads as "no backend".
-        console.error('Status: container inspect failed:', error);
-      }
-    }
-    const running = isStackRunning(state.mode, containers);
-    const prepared = state.configured ? prepareServiceConfig(state.data) : null;
-    const configurationIssues = prepared?.kind === 'needs-setup-review'
-      ? prepared.issues
-      : [];
-    const isSovereignSolo = state.data?.miningMode === 'solo' && state.data?.mode === 'jd';
-    const pools = state.data && !isSovereignSolo ? configuredPools(state.data) : [];
-
-    if (!running) {
-      activePoolTracker.reset();
-    }
-
-    const activePool = running && state.mode && pools.length > 0
-      ? await activePoolTracker.getActivePool(
-        state.mode === 'jd' ? 'jdc' : 'translator',
-        pools
-      )
-      : null;
-
-    const response: StatusResponse = {
-      configured: state.configured,
-      running,
-      dockerError,
-      autoStarting: stackBusyReason === 'auto-start',
-      shouldBeRunning: state.shouldBeRunning,
-      miningMode: state.miningMode,
-      mode: state.mode,
-      poolName: isSovereignSolo
-        ? 'Sovereign Solo Mining'
-        : (activePool?.name ?? null),
-      activePoolIndex: activePool?.index ?? null,
-      activePoolAddress: activePool ? pools[activePool.index]?.address ?? null : null,
-      activePoolPort: activePool ? pools[activePool.index]?.port ?? null : null,
-      activePoolAuthorityPublicKey: activePool ? pools[activePool.index]?.authority_public_key ?? null : null,
-      configurationIssues,
-      containers,
-    };
-
-    res.json(response);
+    res.json(await getCurrentStatus());
   } catch (error) {
     if (error instanceof SavedStateError) {
       console.error('Saved setup error:', error.message);
@@ -620,6 +648,87 @@ app.get('/api/config', async (_req, res) => {
  */
 app.get('/api/env', (_req, res) => {
   res.json({ HOST_OS: process.env.HOST_OS || null, STRATUM_HOST: process.env.STRATUM_HOST || null });
+});
+
+function sendTelegramError(res: express.Response, error: unknown): void {
+  if (error instanceof TelegramConfigError) {
+    res.status(400).json({ success: false, error: error.message });
+    return;
+  }
+
+  if (error instanceof TelegramApiError) {
+    res.status(error.statusCode).json({ success: false, error: error.message });
+    return;
+  }
+
+  console.error(
+    'Telegram settings error:',
+    error instanceof Error ? error.message : 'Unknown error'
+  );
+  res.status(500).json({ success: false, error: 'Telegram settings could not be updated' });
+}
+
+/**
+ * Telegram notifications.
+ *
+ * The bot token and chat ID are stored only in CONFIG_DIR/telegram.json and
+ * are never included in an API response.
+ */
+app.get('/api/telegram', async (_req, res) => {
+  try {
+    res.json(await telegramService.getSettings());
+  } catch (error) {
+    sendTelegramError(res, error);
+  }
+});
+
+app.post('/api/telegram/connect', async (req, res) => {
+  try {
+    if (!isJsonObject(req.body) || typeof req.body.botToken !== 'string') {
+      throw new TelegramConfigError('A Telegram bot token is required');
+    }
+
+    res.json(await telegramService.connectBot(req.body.botToken));
+  } catch (error) {
+    sendTelegramError(res, error);
+  }
+});
+
+app.post('/api/telegram/pair', async (_req, res) => {
+  try {
+    res.json(await telegramService.pairChat());
+  } catch (error) {
+    sendTelegramError(res, error);
+  }
+});
+
+app.patch('/api/telegram', async (req, res) => {
+  try {
+    if (!isJsonObject(req.body)) {
+      throw new TelegramConfigError('Telegram settings must be a JSON object');
+    }
+
+    res.json(await telegramService.updateSettings(req.body as TelegramSettingsUpdate));
+  } catch (error) {
+    sendTelegramError(res, error);
+  }
+});
+
+app.post('/api/telegram/test', async (_req, res) => {
+  try {
+    await telegramService.sendTestMessage();
+    res.json({ success: true });
+  } catch (error) {
+    sendTelegramError(res, error);
+  }
+});
+
+app.delete('/api/telegram', async (_req, res) => {
+  try {
+    res.json(await telegramService.disconnect());
+  } catch (error) {
+    sendTelegramError(res, error);
+  }
 });
 
 /**
@@ -957,6 +1066,291 @@ function getContainerUrl(containerName: string, port: number): string {
     : `http://localhost:${port}`;
 }
 
+type MonitoringGlobal = {
+  server?: { total_hashrate: number } | null;
+  sv1_clients?: { total_clients: number; total_hashrate: number } | null;
+  sv2_clients?: {
+    total_clients: number;
+    total_channels: number;
+    total_hashrate: number;
+  } | null;
+};
+
+type MonitoringServerChannel = {
+  channel_id: number;
+  user_identity: string;
+  best_diff: number;
+  blocks_found: number;
+  shares_submitted: number;
+  shares_acknowledged: number;
+  shares_rejected: number;
+};
+
+type MonitoringChannelsPage<T> = {
+  total_extended: number;
+  total_standard: number;
+  extended_channels: T[];
+  standard_channels: T[];
+};
+
+type MonitoringClient = {
+  client_id: number;
+};
+
+type MonitoringItemsPage<T> = {
+  total: number;
+  items: T[];
+};
+
+type TaggedMonitoringChannel<T> = {
+  kind: 'extended' | 'standard';
+  channel: T;
+};
+
+type MonitoringMiningChannel = {
+  channel_id: number;
+  user_identity: string;
+  best_diff: number;
+  blocks_found: number;
+};
+
+// Same cap as the Bitcoin RPC probe: monitoring responses are untrusted input.
+const MAX_MONITORING_RESPONSE_BYTES = 1024 * 1024;
+// JD mode reads channels per downstream client. Anyone who can reach the JDC
+// can open connections, so bound both the fan-out and the parallelism.
+const MAX_TELEGRAM_MONITORED_CLIENTS = 200;
+// Bounds for one whole activity snapshot, across every monitoring request it
+// makes: total items read, and total time. Hitting either skips the round.
+const TELEGRAM_SNAPSHOT_MAX_ITEMS = MAX_MONITORING_ITEMS;
+const TELEGRAM_SNAPSHOT_TIMEOUT_MS = 20_000;
+const TELEGRAM_MONITORING_CONCURRENCY = 4;
+
+/** Shared limits for every monitoring request made by one snapshot. */
+type MonitoringReadContext = {
+  signal: AbortSignal;
+  budget: MonitoringBudget;
+};
+
+async function fetchMonitoringJson<T>(
+  url: string,
+  context: MonitoringReadContext,
+): Promise<T | null> {
+  if (context.signal.aborted || context.budget.remainingItems < 0) return null;
+  try {
+    const response = await fetch(url, {
+      signal: AbortSignal.any([AbortSignal.timeout(5000), context.signal]),
+    });
+    if (!response.ok) {
+      await response.body?.cancel().catch(() => undefined);
+      return null;
+    }
+    return await readJsonWithLimit(response, MAX_MONITORING_RESPONSE_BYTES) as T;
+  } catch {
+    return null;
+  }
+}
+
+function combineMonitoringChannelPage<T>(
+  page: MonitoringChannelsPage<T>,
+): {
+  items: TaggedMonitoringChannel<T>[];
+  total: number;
+} | null {
+  if (
+    !isJsonObject(page) ||
+    !Array.isArray(page.extended_channels) ||
+    !Array.isArray(page.standard_channels)
+  ) {
+    return null;
+  }
+
+  return {
+    items: [
+      ...page.extended_channels.map((channel) => ({
+        kind: 'extended' as const,
+        channel,
+      })),
+      ...page.standard_channels.map((channel) => ({
+        kind: 'standard' as const,
+        channel,
+      })),
+    ],
+    total: Math.max(page.total_extended, page.total_standard),
+  };
+}
+
+async function fetchAllMonitoringChannels<T>(
+  endpoint: string,
+  context: MonitoringReadContext,
+): Promise<TaggedMonitoringChannel<T>[] | null> {
+  return collectPaginatedMonitoringItems(async (offset, limit) => {
+    const page = await fetchMonitoringJson<MonitoringChannelsPage<T>>(
+      `${endpoint}?offset=${offset}&limit=${limit}`,
+      context,
+    );
+    return page ? combineMonitoringChannelPage(page) : null;
+  }, undefined, undefined, context.budget);
+}
+
+async function fetchAllMonitoringItems<T>(
+  endpoint: string,
+  context: MonitoringReadContext,
+): Promise<T[] | null> {
+  return collectPaginatedMonitoringItems(async (offset, limit) => {
+    const page = await fetchMonitoringJson<MonitoringItemsPage<T>>(
+      `${endpoint}?offset=${offset}&limit=${limit}`,
+      context,
+    );
+    return isJsonObject(page) ? { items: page.items, total: page.total } : null;
+  }, undefined, undefined, context.budget);
+}
+
+function toTelegramMiningChannel(
+  keyPrefix: string,
+  kind: TaggedMonitoringChannel<unknown>['kind'],
+  channel: Partial<MonitoringMiningChannel>,
+): TelegramMiningChannel | null {
+  if (
+    !isJsonObject(channel) ||
+    !Number.isSafeInteger(channel.channel_id) ||
+    typeof channel.user_identity !== 'string' ||
+    !Number.isSafeInteger(channel.blocks_found) ||
+    typeof channel.best_diff !== 'number' ||
+    !Number.isFinite(channel.best_diff)
+  ) {
+    return null;
+  }
+
+  return {
+    key: `${keyPrefix}:${kind}:${channel.channel_id}:${channel.user_identity}`,
+    userIdentity: channel.user_identity,
+    blocksFound: channel.blocks_found as number,
+    bestDifficulty: channel.best_diff,
+  };
+}
+
+function sumShareCounter(
+  channels: TaggedMonitoringChannel<MonitoringServerChannel>[] | null,
+  field: 'shares_submitted' | 'shares_acknowledged' | 'shares_rejected',
+): number | null {
+  if (!channels) return null;
+  let total = 0;
+  for (const { channel } of channels) {
+    const value = isJsonObject(channel) ? channel[field] : undefined;
+    if (typeof value !== 'number' || !Number.isFinite(value)) return null;
+    total += value;
+  }
+  return total;
+}
+
+async function getTelegramActivitySnapshot(): Promise<TelegramActivitySnapshot> {
+  const status = await getCurrentStatus();
+
+  if (!status.running || !status.mode) {
+    return {
+      unavailable: status.dockerError !== null,
+      running: false,
+      poolName: status.poolName,
+      activePoolIndex: status.activePoolIndex,
+      hashrate: null,
+      workers: null,
+      sharesSubmitted: null,
+      sharesAccepted: null,
+      sharesRejected: null,
+      channels: null,
+    };
+  }
+
+  const isJdMode = status.mode === 'jd';
+  const containerName = isJdMode ? 'sv2-jdc' : 'sv2-translator';
+  const port = isJdMode ? JDC_MONITORING_PORT : TRANSLATOR_MONITORING_PORT;
+  const baseUrl = `${getContainerUrl(containerName, port)}/api/v1`;
+  const context: MonitoringReadContext = {
+    signal: AbortSignal.timeout(TELEGRAM_SNAPSHOT_TIMEOUT_MS),
+    budget: { remainingItems: TELEGRAM_SNAPSHOT_MAX_ITEMS },
+  };
+  const [global, serverChannels, monitoringClients] = await Promise.all([
+    fetchMonitoringJson<MonitoringGlobal>(`${baseUrl}/global`, context),
+    fetchAllMonitoringChannels<MonitoringServerChannel>(`${baseUrl}/server/channels`, context),
+    isJdMode
+      ? fetchAllMonitoringItems<MonitoringClient>(`${baseUrl}/clients`, context)
+      : Promise.resolve(null),
+  ]);
+
+  const clients = isJdMode ? global?.sv2_clients : global?.sv1_clients;
+  let miningChannels: TelegramMiningChannel[] | null = null;
+
+  const clientIdsAreValid = monitoringClients?.every((client) =>
+    isJsonObject(client) && Number.isSafeInteger(client.client_id) && client.client_id >= 0
+  ) ?? false;
+
+  if (
+    isJdMode &&
+    monitoringClients &&
+    clientIdsAreValid &&
+    monitoringClients.length <= MAX_TELEGRAM_MONITORED_CLIENTS
+  ) {
+    const downstreamResponses = await mapWithConcurrency(
+      monitoringClients,
+      TELEGRAM_MONITORING_CONCURRENCY,
+      async (client) => ({
+        clientId: client.client_id,
+        channels: await fetchAllMonitoringChannels<MonitoringMiningChannel>(
+          `${baseUrl}/clients/${client.client_id}/channels`,
+          context,
+        ),
+      }),
+    );
+
+    if (downstreamResponses.every((response) => response.channels !== null)) {
+      miningChannels = downstreamResponses.flatMap(({ clientId, channels }) => {
+        if (!channels) return [];
+        return channels.flatMap(({ kind, channel }) => (
+          toTelegramMiningChannel(`jdc:${clientId}`, kind, channel) ?? []
+        ));
+      });
+    }
+  } else if (!isJdMode && serverChannels) {
+    miningChannels = serverChannels.flatMap(({ kind, channel }) => (
+      toTelegramMiningChannel('translator:server', kind, channel) ?? []
+    ));
+  }
+
+  // A snapshot that ran out of time or items is incomplete. Report it as
+  // unknown so the round is skipped instead of comparing partial data.
+  if (context.signal.aborted || context.budget.remainingItems < 0) {
+    console.warn('Telegram activity check skipped: monitoring data exceeded the time or size limit.');
+    return {
+      unavailable: true,
+      running: true,
+      poolName: status.poolName,
+      activePoolIndex: status.activePoolIndex,
+      hashrate: null,
+      workers: null,
+      sharesSubmitted: null,
+      sharesAccepted: null,
+      sharesRejected: null,
+      channels: null,
+    };
+  }
+
+  return {
+    running: true,
+    poolName: status.poolName,
+    activePoolIndex: status.activePoolIndex,
+    hashrate: clients?.total_hashrate ?? global?.server?.total_hashrate ?? null,
+    workers: getTelegramWorkerCount(
+      isJdMode,
+      global?.sv1_clients,
+      global?.sv2_clients,
+    ),
+    sharesSubmitted: sumShareCounter(serverChannels, 'shares_submitted'),
+    sharesAccepted: sumShareCounter(serverChannels, 'shares_acknowledged'),
+    sharesRejected: sumShareCounter(serverChannels, 'shares_rejected'),
+    channels: miningChannels,
+  };
+}
+
 /**
  * Proxy requests to Translator monitoring API
  * This avoids CORS issues when the frontend is served from a different port
@@ -1070,6 +1464,17 @@ async function reconcileShouldBeRunning(): Promise<void> {
   }
 }
 
+async function pollTelegramNotifications(): Promise<void> {
+  try {
+    await telegramService.poll(getTelegramActivitySnapshot);
+  } catch (error) {
+    console.warn(
+      'Telegram notification check failed:',
+      error instanceof Error ? error.message : 'Unknown error'
+    );
+  }
+}
+
 app.listen(PORT, () => {
   const dockerConnection = getDockerConnectionInfo();
 
@@ -1102,6 +1507,13 @@ app.listen(PORT, () => {
   setInterval(() => {
     void reconcileShouldBeRunning();
   }, AUTO_START_RETRY_INTERVAL_MS);
+
+  // Telegram notifications run in the local backend, so they keep working
+  // while the browser UI is closed.
+  void pollTelegramNotifications();
+  telegramMonitorTimer = setInterval(() => {
+    void pollTelegramNotifications();
+  }, TELEGRAM_POLL_INTERVAL_MS);
 });
 
 // Graceful shutdown: stop mining containers when sv2-ui exits
@@ -1110,6 +1522,11 @@ let isShuttingDown = false;
 async function shutdown(signal: string) {
   if (isShuttingDown) return;
   isShuttingDown = true;
+
+  if (telegramMonitorTimer) {
+    clearInterval(telegramMonitorTimer);
+    telegramMonitorTimer = null;
+  }
 
   console.log(`\n${signal} received. Stopping mining containers...`);
   try {

@@ -289,7 +289,7 @@ export function SetupWizard() {
         {/* Step content */}
         <div className="flex-1 flex flex-col overflow-y-auto">
           <div className="flex-1 flex flex-col items-center justify-center px-6 py-10">
-            <div key={currentStep} className="w-full max-w-xl animate-fade-in-up">
+            <div key={currentStep} className={`w-full ${currentStep === 'bitcoin' ? 'max-w-5xl' : 'max-w-xl'} animate-fade-in-up`}>
               {isReconfiguring && currentStepIndex === 1 && (
                 <Alert variant="warning" className="mb-6">
                   {isSetupReview

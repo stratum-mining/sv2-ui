@@ -12,11 +12,15 @@ import {
 } from '@sv2-ui/shared';
 import { BITCOIN_MESSAGES } from '@/lib/messages';
 import { StepProps, BitcoinConfig } from '../types';
-import { Check, Loader2, AlertCircle, CheckCircle2, RotateCw, Copy, ExternalLink } from 'lucide-react';
+import { Loader2, AlertCircle, CheckCircle2, RotateCw, ExternalLink } from 'lucide-react';
 import { Alert } from '@/components/ui/alert';
 import type { BitcoinRpcDiscoveryResult } from '@/hooks/useBitcoinRpcDiscovery';
 import { useHostEnv } from '@/hooks/useHostEnv';
-import { BitcoinNetworkSelector } from '../BitcoinNetworkSelector';
+
+const NETWORK_LABELS: Record<BitcoinNetwork, string> = {
+  mainnet: 'Mainnet',
+  testnet4: 'Testnet4',
+};
 
 interface BitcoinPrereqStepProps extends StepProps {
   discoveredNodes: BitcoinRpcDiscoveryResult[];
@@ -25,58 +29,13 @@ interface BitcoinPrereqStepProps extends StepProps {
   onAutoAdvance: () => void;
 }
 
-const START_COMMANDS: Record<BitcoinNetwork, string> = {
-  mainnet: 'bitcoin -m node -ipcbind=unix',
-  testnet4: 'bitcoin -m node -ipcbind=unix -testnet4',
-};
-
-const NETWORK_LABELS: Record<BitcoinNetwork, string> = {
-  mainnet: 'Mainnet',
-  testnet4: 'Testnet4',
-};
-
-function InstructionStep({
-  number,
-  title,
-  description,
-  children,
-}: {
-  number: number;
-  title: string;
-  description: string;
-  children?: React.ReactNode;
-}) {
-  return (
-    <div className="flex gap-4 p-4 sm:p-5 [&:not(:last-child)]:border-b [&:not(:last-child)]:border-border">
-      <div className="w-7 h-7 rounded-full bg-primary/10 text-primary text-xs flex items-center justify-center font-mono flex-shrink-0">
-        {number}
-      </div>
-      <div className="flex-1 min-w-0">
-        <h3 className="font-medium text-sm">{title}</h3>
-        <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{description}</p>
-        {children}
-      </div>
-    </div>
-  );
-}
+import { BitcoinStartupInstructions } from '../BitcoinStartupInstructions';
 
 export function BitcoinPrereqStep({ data, updateData, onNext, discoveredNodes, isDiscovering, onRetryDiscovery, onAutoAdvance }: BitcoinPrereqStepProps) {
   const { hostOs, isLoading: hostOsLoading } = useHostEnv();
   const [selectedNetwork, setSelectedNetwork] = useState<BitcoinNetwork>('mainnet');
-  const [copiedNetwork, setCopiedNetwork] = useState<BitcoinNetwork | null>(null);
   const [ipcStatus, setIpcStatus] = useState<'idle' | 'checking' | 'valid' | 'invalid'>('idle');
   const ipcCompletedRef = useRef(false);
-
-  const copy = async (network: BitcoinNetwork) => {
-    try {
-      await navigator.clipboard.writeText(START_COMMANDS[network]);
-      setCopiedNetwork(network);
-      setTimeout(() => setCopiedNetwork(null), 2000);
-    } catch (err) {
-      console.error('Failed to copy:', err);
-    }
-  };
-
   useEffect(() => {
     if (hostOsLoading) return;
 
@@ -316,62 +275,10 @@ export function BitcoinPrereqStep({ data, updateData, onNext, discoveredNodes, i
         </p>
       </div>
 
-      <div className="rounded-xl border border-border bg-card overflow-hidden text-left">
-        <InstructionStep
-          number={1}
-          title={BITCOIN_MESSAGES.installStep}
-          description={BITCOIN_MESSAGES.upgradePrompt}
-        >
-          <div className="mt-2">
-            <a
-              href="https://bitcoincore.org/en/download/"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-1.5 text-xs text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 rounded"
-            >
-              Download Bitcoin Core
-              <ExternalLink className="w-3 h-3" aria-hidden="true" />
-            </a>
-          </div>
-        </InstructionStep>
-
-        <InstructionStep
-          number={2}
-          title="Start your node with IPC"
-          description="Choose your network, then run the command in a terminal."
-        >
-          <BitcoinNetworkSelector
-            value={selectedNetwork}
-            onChange={setSelectedNetwork}
-            className="mt-3"
-          />
-          <div className="relative mt-3">
-            <pre
-              className="bg-muted/60 p-3 pr-12 rounded-lg text-xs font-mono overflow-x-auto"
-              aria-label={`${NETWORK_LABELS[selectedNetwork]} start command`}
-            >
-              {START_COMMANDS[selectedNetwork]}
-            </pre>
-            <button
-              type="button"
-              onClick={() => copy(selectedNetwork)}
-              aria-label={copiedNetwork === selectedNetwork ? 'Copied!' : `Copy ${NETWORK_LABELS[selectedNetwork]} command`}
-              aria-live="polite"
-              className="absolute top-2 right-2 p-1.5 rounded-md hover:bg-background/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 transition-colors"
-            >
-              {copiedNetwork === selectedNetwork
-                ? <Check className="w-4 h-4 text-success" aria-hidden="true" />
-                : <Copy className="w-4 h-4 text-muted-foreground" aria-hidden="true" />}
-            </button>
-          </div>
-        </InstructionStep>
-
-        <InstructionStep
-          number={3}
-          title="Wait for the node to sync"
-          description="Keep Bitcoin Core running until the initial block download is complete. We’ll detect when it is ready."
-        />
-      </div>
+      <BitcoinStartupInstructions 
+        network={selectedNetwork}
+        onNetworkChange={setSelectedNetwork}
+      />
 
       <Alert
         variant={readiness.tone}

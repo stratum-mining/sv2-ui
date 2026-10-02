@@ -19,6 +19,7 @@ import { UmbrelIcon } from '../icons/UmbrelIcon';
 import { useBitcoinSocketValidation } from '@/hooks/useBitcoinSocketValidation';
 import type { BitcoinRpcDiscoveryResult } from '@/hooks/useBitcoinRpcDiscovery';
 import { BitcoinNetworkSelector } from '../BitcoinNetworkSelector';
+import { BitcoinStartupInstructions } from '../BitcoinStartupInstructions';
 
 interface BitcoinSetupProps extends StepProps {
   notice?: string | null;
@@ -117,8 +118,10 @@ export function BitcoinSetup({ data, updateData, onNext, notice, onDismissNotice
         </Alert>
       )}
 
-      <div role="group" aria-labelledby="os-label">
-        <p id="os-label" className="block text-sm font-medium mb-3">Operating System</p>
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+        <div className="lg:col-span-7 space-y-8">
+          <div role="group" aria-labelledby="os-label">
+            <p id="os-label" className="block text-sm font-medium mb-3">Operating System</p>
         <div className={`grid gap-3 ${osPrefilled.current && !showAllOsOptions ? 'grid-cols-1' : 'grid-cols-1 sm:grid-cols-3'}`}>
           {(osPrefilled.current && !showAllOsOptions ? os === 'linux' : true) && (
             <button
@@ -310,7 +313,15 @@ export function BitcoinSetup({ data, updateData, onNext, notice, onDismissNotice
           </Alert>
         )}
       </div>
-
+      </div>
+      <div className="lg:col-span-5 relative">
+        <BitcoinStartupInstructions 
+          network={network}
+          customDataDir={customDataDir}
+          className="sticky top-6"
+        />
+      </div>
+    </div>
 
       <div className="flex justify-center">
         <button

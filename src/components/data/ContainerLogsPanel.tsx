@@ -10,14 +10,35 @@ interface ContainerLogsPanelProps {
 }
 
 function buildDownloadContent(lines: ContainerLogLine[]): string {
+  // Find the longest container name for padding so columns align perfectly
+  const maxContainerLen = Math.max(...lines.map(l => l.container.length), 10);
+
   return lines
     .map((line) => {
-      const parts: string[] = [];
-      if (line.timestamp) parts.push(line.timestamp);
-      parts.push(`[${line.container}]`);
-      parts.push(`[${line.stream}]`);
-      parts.push(line.message);
-      return parts.join(' ');
+      // Clean up the application's internal timestamp if it exists at the start of the message
+      // (e.g. matching "2026-07-28T11:45:20.166418Z ")
+      let cleanMessage = line.message.trim();
+      const isoDateRegex = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z\s+/;
+      if (isoDateRegex.test(cleanMessage)) {
+        cleanMessage = cleanMessage.replace(isoDateRegex, '');
+      }
+
+      // Format the docker timestamp to be shorter and cleaner (e.g. YYYY-MM-DD HH:MM:SS)
+      let displayTime = '';
+      if (line.timestamp) {
+        try {
+          const d = new Date(line.timestamp);
+          displayTime = `[${d.toISOString().replace('T', ' ').substring(0, 19)}] `;
+        } catch {
+          displayTime = `[${line.timestamp}] `;
+        }
+      }
+
+      // Pad container name for aligned columns
+      const containerStr = `[${line.container}]`.padEnd(maxContainerLen + 2);
+      const streamStr = line.stream === 'stderr' ? '[err]' : '[out]';
+
+      return `${displayTime}${containerStr} ${streamStr} ${cleanMessage}`;
     })
     .join('\n');
 }

@@ -488,6 +488,71 @@ app.post('/api/auth/change-password', async (req, res) => {
   }
 });
 
+async function getCurrentStatus(): Promise<StatusResponse> {
+  const state = await loadState();
+  let containers: StatusResponse['containers'] = { translator: null, jdc: null };
+  let dockerError: string | null = null;
+  try {
+    containers = await getStackStatus(state.mode);
+  } catch (error) {
+    if (error instanceof DockerConnectionError) {
+      dockerError = error.message;
+    } else {
+      // Not a connectivity problem. Treat as not running rather than a 500,
+      // which the client reads as "no backend".
+      console.error('Status: container inspect failed:', error);
+    }
+  }
+  const running = isStackRunning(state.mode, containers);
+  const recovery = translatorRecovery.status(Date.now());
+  const degraded = isDegraded(state.mode, containers, recovery.recovering);
+  const prepared = state.configured ? prepareServiceConfig(state.data) : null;
+  const configurationIssues = prepared?.kind === 'needs-setup-review'
+    ? prepared.issues
+    : [];
+  const isSovereignSolo = state.data?.miningMode === 'solo' && state.data?.mode === 'jd';
+  const pools = state.data && !isSovereignSolo ? configuredPools(state.data) : [];
+
+  // JDC keeps its upstream while the Translator restarts, so a degraded
+  // stack still reports the pool JDC is connected to.
+  const upstreamUp = running || degraded;
+  if (!upstreamUp) {
+    activePoolTracker.reset();
+  }
+
+  const activePool = upstreamUp && state.mode && pools.length > 0
+    ? await activePoolTracker.getActivePool(
+      state.mode === 'jd' ? 'jdc' : 'translator',
+      pools
+    )
+    : null;
+  const soloFallback = upstreamUp && state.mode === 'jd' && pools.length > 0 &&
+    activePool === null && activePoolTracker.isSoloFallback('jdc', pools);
+
+  return {
+    configured: state.configured,
+    running,
+    degraded,
+    degradedForSecs: degraded ? (recovery.downForSecs ?? 0) : null,
+    translatorFailing: degraded && recovery.failing,
+    soloFallback,
+    dockerError,
+    autoStarting: stackBusyReason === 'auto-start',
+    shouldBeRunning: state.shouldBeRunning,
+    miningMode: state.miningMode,
+    mode: state.mode,
+    poolName: isSovereignSolo
+      ? 'Sovereign Solo Mining'
+      : (activePool?.name ?? null),
+    activePoolIndex: activePool?.index ?? null,
+    activePoolAddress: activePool ? pools[activePool.index]?.address ?? null : null,
+    activePoolPort: activePool ? pools[activePool.index]?.port ?? null : null,
+    activePoolAuthorityPublicKey: activePool ? pools[activePool.index]?.authority_public_key ?? null : null,
+    configurationIssues,
+    containers,
+  };
+}
+
 /**
  * GET /api/health - Health check
  */
@@ -504,70 +569,7 @@ app.get('/api/health', async (_req, res) => {
  */
 app.get('/api/status', async (_req, res) => {
   try {
-    const state = await loadState();
-    let containers: StatusResponse['containers'] = { translator: null, jdc: null };
-    let dockerError: string | null = null;
-    try {
-      containers = await getStackStatus(state.mode);
-    } catch (error) {
-      if (error instanceof DockerConnectionError) {
-        dockerError = error.message;
-      } else {
-        // Not a connectivity problem. Treat as not running rather than a 500,
-        // which the client reads as "no backend".
-        console.error('Status: container inspect failed:', error);
-      }
-    }
-    const running = isStackRunning(state.mode, containers);
-    const recovery = translatorRecovery.status(Date.now());
-    const degraded = isDegraded(state.mode, containers, recovery.recovering);
-    const prepared = state.configured ? prepareServiceConfig(state.data) : null;
-    const configurationIssues = prepared?.kind === 'needs-setup-review'
-      ? prepared.issues
-      : [];
-    const isSovereignSolo = state.data?.miningMode === 'solo' && state.data?.mode === 'jd';
-    const pools = state.data && !isSovereignSolo ? configuredPools(state.data) : [];
-
-    // JDC keeps its upstream while the Translator restarts, so a degraded
-    // stack still reports the pool JDC is connected to.
-    const upstreamUp = running || degraded;
-    if (!upstreamUp) {
-      activePoolTracker.reset();
-    }
-
-    const activePool = upstreamUp && state.mode && pools.length > 0
-      ? await activePoolTracker.getActivePool(
-        state.mode === 'jd' ? 'jdc' : 'translator',
-        pools
-      )
-      : null;
-    const soloFallback = upstreamUp && state.mode === 'jd' && pools.length > 0 &&
-      activePool === null && activePoolTracker.isSoloFallback('jdc', pools);
-
-    const response: StatusResponse = {
-      configured: state.configured,
-      running,
-      degraded,
-      degradedForSecs: degraded ? (recovery.downForSecs ?? 0) : null,
-      translatorFailing: degraded && recovery.failing,
-      soloFallback,
-      dockerError,
-      autoStarting: stackBusyReason === 'auto-start',
-      shouldBeRunning: state.shouldBeRunning,
-      miningMode: state.miningMode,
-      mode: state.mode,
-      poolName: isSovereignSolo
-        ? 'Sovereign Solo Mining'
-        : (activePool?.name ?? null),
-      activePoolIndex: activePool?.index ?? null,
-      activePoolAddress: activePool ? pools[activePool.index]?.address ?? null : null,
-      activePoolPort: activePool ? pools[activePool.index]?.port ?? null : null,
-      activePoolAuthorityPublicKey: activePool ? pools[activePool.index]?.authority_public_key ?? null : null,
-      configurationIssues,
-      containers,
-    };
-
-    res.json(response);
+    res.json(await getCurrentStatus());
   } catch (error) {
     if (error instanceof SavedStateError) {
       console.error('Saved setup error:', error.message);

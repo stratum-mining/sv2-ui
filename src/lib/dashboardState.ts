@@ -8,6 +8,7 @@ export function clearPersistedDashboardState() {
     'sv2_blocks_found:',
     'sv2_best_diff:',
     'sv2_share_stats:',
+    'sv2_last_history_key',
   ];
 
   const keysToRemove: string[] = [];

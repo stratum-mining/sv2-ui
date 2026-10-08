@@ -5,6 +5,7 @@ import { renderToString } from 'react-dom/server';
 
 import {
   AGGREGATE_KEY,
+  mergeCounterEntries,
   mergeMetricEntries,
   mergeShareStatsEntries,
   normalizeMetricKey,
@@ -81,19 +82,19 @@ test('normalizeMetricKey hashes over-length keys instead of dropping them', () =
   assert.equal(normalizeMetricKey(AGGREGATE_KEY), AGGREGATE_KEY);
 });
 
-test('mergeMetricEntries bounds the entry count for over-cap snapshots', () => {
+test('mergeCounterEntries bounds the entry count for over-cap snapshots', () => {
   const channelCount = 300;
   const entries = Array.from({ length: channelCount }, (_, index) => ({
     key: `ch:${index}`,
     value: 1,
   }));
 
-  const { next } = mergeMetricEntries({}, entries);
+  const { next } = mergeCounterEntries({}, entries);
   const realKeys = Object.keys(next).filter((key) => key !== AGGREGATE_KEY);
 
   assert.ok(realKeys.length <= 256, `expected <=256 real keys, got ${realKeys.length}`);
   assert.ok(
-    !realKeys.some((key) => next[key] > 1),
+    !realKeys.some((key) => next[key].total > 1),
     'retained entries must keep their own values',
   );
 });
@@ -104,15 +105,16 @@ test('repeated identical over-cap snapshots never inflate scalar totals', () => 
     value: 1,
   }));
 
-  const sum = (state: Record<string, number>) =>
-    Object.values(state).reduce((total, value) => total + value, 0);
+  type CounterState = ReturnType<typeof mergeCounterEntries>['next'];
+  const sum = (state: CounterState) =>
+    Object.values(state).reduce((total, { total: value }) => total + value, 0);
 
-  let state = mergeMetricEntries({}, entries).next;
+  let state = mergeCounterEntries({}, entries).next;
   const baseline = sum(state);
   assert.ok(baseline <= 300 && baseline >= 256, `unexpected baseline total ${baseline}`);
 
   for (let merge = 2; merge <= 11; merge += 1) {
-    state = mergeMetricEntries(state, entries).next;
+    state = mergeCounterEntries(state, entries).next;
     const total = sum(state);
     assert.equal(
       total,
@@ -125,8 +127,8 @@ test('repeated identical over-cap snapshots never inflate scalar totals', () => 
   assert.ok(realKeys.length <= 256, 'entry count must stay bounded across repeats');
 });
 
-test('mergeMetricEntries keeps totals monotonic and bounded across channel churn', () => {
-  let state: Record<string, number> = {};
+test('mergeCounterEntries keeps totals monotonic and bounded across channel churn', () => {
+  let state: ReturnType<typeof mergeCounterEntries>['next'] = {};
   let previousTotal = 0;
 
   for (let batch = 0; batch < 5; batch += 1) {
@@ -134,8 +136,8 @@ test('mergeMetricEntries keeps totals monotonic and bounded across channel churn
       key: `ch:${batch}-${index}`,
       value: 1,
     }));
-    state = mergeMetricEntries(state, entries).next;
-    const total = Object.values(state).reduce((sum, value) => sum + value, 0);
+    state = mergeCounterEntries(state, entries).next;
+    const total = Object.values(state).reduce((sum, { total: value }) => sum + value, 0);
     assert.ok(total >= previousTotal, 'lifetime total must never decrease');
     assert.ok(
       total <= 256 * (batch + 1),
@@ -185,17 +187,17 @@ test('evicting the best-difficulty holder preserves the displayed maximum', () =
     key: `ch:${index}`,
     value: 10,
   }));
-  let state = mergeMetricEntries({}, baseEntries, 'max').next;
+  let state = mergeMetricEntries({}, baseEntries).next;
   assert.equal(maxOf(state), 10);
 
   // A much higher difficulty arrives alongside the base set, forcing the
   // eviction of the channel that reported it; the lifetime best must survive.
   const whaleEntries = [...baseEntries, { key: 'ch:whale', value: 1_000_000 }];
-  state = mergeMetricEntries(state, whaleEntries, 'max').next;
+  state = mergeMetricEntries(state, whaleEntries).next;
   assert.equal(maxOf(state), 1_000_000, 'the evicted lifetime best must stay visible');
 
   for (let merge = 3; merge <= 7; merge += 1) {
-    state = mergeMetricEntries(state, whaleEntries, 'max').next;
+    state = mergeMetricEntries(state, whaleEntries).next;
     assert.equal(maxOf(state), 1_000_000, `merge ${merge} lost the lifetime best`);
     assert.ok(maxOf(state) >= 1_000_000, 'displayed best difficulty must never decrease');
   }
@@ -341,5 +343,65 @@ test('usePersistentShareStats resets state when the stored payload exceeds the s
     renderToString(createElement(Probe));
     assert.equal(observed?.acknowledged, 0, 'oversized payload is discarded');
     assert.equal(observed?.rejectionReasons.length, 0);
+  });
+});
+
+test('share totals add up across a restart instead of freezing', () => {
+  const key = 'jdc:server:extended:1:worker';
+  const snapshot = (submitted: number, rejected: number) => [{
+    key,
+    acknowledged: submitted - rejected,
+    submitted,
+    rejected,
+    rejectedByReason: (rejected > 0 ? { 'invalid-share': rejected } : {}) as Record<string, number>,
+  }];
+  const totals = (state: ReturnType<typeof mergeShareStatsEntries>['next']) => ({
+    submitted: state[key].submitted,
+    rejected: state[key].rejected,
+    reasons: state[key].rejectedByReason,
+  });
+
+  let state = mergeShareStatsEntries({}, snapshot(654, 1)).next;
+  // The same counters again (cached data, a page reload) add nothing.
+  state = mergeShareStatsEntries(state, snapshot(654, 1)).next;
+  assert.deepEqual(totals(state), { submitted: 654, rejected: 1, reasons: { 'invalid-share': 1 } });
+
+  // Restart: the channel comes back under the same key with counters from 0.
+  state = mergeShareStatsEntries(state, snapshot(10, 0)).next;
+  assert.deepEqual(totals(state), { submitted: 664, rejected: 1, reasons: { 'invalid-share': 1 } });
+
+  state = mergeShareStatsEntries(state, snapshot(700, 2)).next;
+  assert.deepEqual(totals(state), { submitted: 1354, rejected: 3, reasons: { 'invalid-share': 3 } });
+});
+
+test('a total saved before live counters were kept carries on without doubling', () => {
+  const key = 'jdc:server:extended:1:worker';
+  const saved = { [key]: { acknowledged: 600, submitted: 600, rejected: 0, rejectedByReason: {} } };
+
+  const same = mergeShareStatsEntries(saved, [{ key, acknowledged: 610, submitted: 610, rejected: 0 }]).next;
+  assert.equal(same[key].submitted, 610, 'same run: only the 10 new shares are added');
+
+  const restarted = mergeShareStatsEntries(saved, [{ key, acknowledged: 5, submitted: 5, rejected: 0 }]).next;
+  assert.equal(restarted[key].submitted, 605, 'new run: its shares are added on top');
+});
+
+test('blocks found add up across a restart', () => {
+  const key = 'jdc:1:extended:1:worker';
+  let state = mergeCounterEntries({}, [{ key, value: 1 }]).next;
+  state = mergeCounterEntries(state, [{ key, value: 1 }]).next;
+  state = mergeCounterEntries(state, [{ key, value: 0 }]).next;
+  state = mergeCounterEntries(state, [{ key, value: 1 }]).next;
+  assert.equal(state[key].total, 2);
+});
+
+test('blocks found saved as plain numbers still load', () => {
+  withMockLocalStorage({ 'sv2_blocks_found:default': JSON.stringify({ a: 2, b: 1 }) }, () => {
+    let observed = -1;
+    function Probe() {
+      observed = usePersistentBlocksFound([], 'default');
+      return null;
+    }
+    renderToString(createElement(Probe));
+    assert.equal(observed, 3);
   });
 });

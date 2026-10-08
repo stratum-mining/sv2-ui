@@ -24,6 +24,7 @@ import {
   useJdcHealth,
 } from '@/hooks/usePoolData';
 import { useHashrateHistory } from '@/hooks/useHashrateHistory';
+import { useHistoryConfigKey } from '@/hooks/useHistoryConfigKey';
 import {
   usePersistentBestDifficulty,
   usePersistentBlocksFound,
@@ -67,6 +68,7 @@ const SETUP_REVIEW_STORAGE_KEY = 'sv2-ui-setup-review';
  * - Channel Type
  * - Username / Identity
  */
+
 export function UnifiedDashboard() {
   const queryClient = useQueryClient();
   const [searchTerm, setSearchTerm] = useState('');
@@ -314,10 +316,11 @@ export function UnifiedDashboard() {
     : (sv1Data ? sv1TotalHashrate : (poolGlobal?.sv1_clients?.total_hashrate ?? 0));
 
   // Scope hashrate history to the active pool + mode so stale samples from a
-  // previous configuration are never shown after a reconfigure.
-  // Falls back to 'default' while setup status is still loading or in
+  // previous configuration are never shown after a reconfigure. While the
+  // active pool is unknown (stopped or starting), the last pool's history is
+  // kept. Falls back to 'default' while setup status is still loading or in
   // standalone mode (no orchestration backend).
-  const historyConfigKey = [templateMode, configPoolName].filter(Boolean).join(':') || 'default';
+  const historyConfigKey = useHistoryConfigKey(templateMode, configPoolName);
 
   // Build hashrate history from real-time data.
   // Pass undefined until pool data has actually loaded to prevent injecting
@@ -332,10 +335,23 @@ export function UnifiedDashboard() {
   }, [hashrateHistory, timeRange]);
 
   const blocksFoundEntries = useMemo(() => {
-    if (isJdMode) {
-      if (!sv2Clients) return [];
+    // SV1 miners' blocks are counted on the translator's channels, in JD mode
+    // too. JDC's translator_proxy client would count them a second time.
+    const translatorEntries = sv1ServerChannels ? [
+      ...sv1ServerChannels.extended_channels.map((channel) => ({
+        key: `translator:server:extended:${channel.channel_id}:${channel.user_identity}`,
+        value: channel.blocks_found,
+      })),
+      ...sv1ServerChannels.standard_channels.map((channel) => ({
+        key: `translator:server:standard:${channel.channel_id}:${channel.user_identity}`,
+        value: channel.blocks_found,
+      })),
+    ] : [];
 
-      return directSv2Clients.flatMap((client) => [
+    if (!isJdMode || !sv2Clients) return translatorEntries;
+
+    return [
+      ...directSv2Clients.flatMap((client) => [
         ...client.extended_channels.map((channel) => ({
           key: `jdc:${client.client_id}:extended:${channel.channel_id}:${channel.user_identity}`,
           value: channel.blocks_found,
@@ -344,22 +360,10 @@ export function UnifiedDashboard() {
           key: `jdc:${client.client_id}:standard:${channel.channel_id}:${channel.user_identity}`,
           value: channel.blocks_found,
         })),
-      ]);
-    }
-
-    if (!serverChannels) return [];
-
-    return [
-      ...serverChannels.extended_channels.map((channel) => ({
-        key: `translator:server:extended:${channel.channel_id}:${channel.user_identity}`,
-        value: channel.blocks_found,
-      })),
-      ...serverChannels.standard_channels.map((channel) => ({
-        key: `translator:server:standard:${channel.channel_id}:${channel.user_identity}`,
-        value: channel.blocks_found,
-      })),
+      ]),
+      ...translatorEntries,
     ];
-  }, [directSv2Clients, isJdMode, serverChannels, sv2Clients]);
+  }, [directSv2Clients, isJdMode, sv1ServerChannels, sv2Clients]);
 
   const bestDiffEntries = useMemo(() => {
     const sv1BestDiffEntries = sv1ServerChannels ? [

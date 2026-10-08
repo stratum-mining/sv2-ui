@@ -22,12 +22,21 @@ export interface PersistentShareStats {
 }
 
 type PersistedMetricState = Record<string, number>;
-type PersistedShareStatsState = Record<string, {
+
+type ShareCounts = {
   acknowledged: number;
   submitted: number;
   rejected: number;
   rejectedByReason: Record<string, number>;
-}>;
+};
+
+// Totals per channel, plus the channel's live counters at the last update.
+// Live counters start from 0 again when the mining stack restarts, usually
+// under the same channel key, so they can't be stored as the total.
+type PersistedShareStatsState = Record<string, ShareCounts & { live?: ShareCounts }>;
+
+// Blocks found per channel: the total and the live counter last seen.
+type PersistedCounterState = Record<string, { total: number; live: number }>;
 
 function storageKeyFor(metricKey: string, configKey: string): string {
   return `sv2_${metricKey}:${configKey}`;
@@ -41,6 +50,19 @@ function createEmptyShareStatsState(): PersistedShareStatsState {
   return {};
 }
 
+function createEmptyCounterState(): PersistedCounterState {
+  return {};
+}
+
+/**
+ * How much a live counter grew since it was last seen. A live counter only
+ * goes down when its channel started over (a restart), and then all of it is
+ * new.
+ */
+function counterIncrease(live: number, lastLive: number, restarted: boolean): number {
+  return restarted ? live : Math.max(0, live - lastLive);
+}
+
 const MAX_SHARE_STATS_ENTRIES = 256;
 const MAX_REJECTION_REASONS = 32;
 const MAX_ENTRY_KEY_LENGTH = 256;
@@ -51,8 +73,6 @@ const MAX_SHARE_STATS_STORAGE_LENGTH = 2 * 1024 * 1024;
 // lifetime totals can never decrease. Cumulative counters (blocks_found) bank
 // additively; best_difficulty banks a running maximum.
 export const AGGREGATE_KEY = '@@evicted@@';
-
-type MetricAggregationMode = 'sum' | 'max';
 
 function normalizeCount(value: unknown): number {
   return typeof value === 'number' && Number.isFinite(value) ? Math.max(0, value) : 0;
@@ -176,30 +196,82 @@ function normalizeShareStatsState(value: unknown): PersistedShareStatsState {
           )
         : {};
 
-    normalized[normalizedKey] = {
+    const totals = {
       acknowledged: normalizeCount(storedEntry.acknowledged),
       submitted: normalizeCount(storedEntry.submitted),
       rejected: normalizeCount(storedEntry.rejected),
       rejectedByReason,
     };
+    const storedLive = storedEntry.live;
+    normalized[normalizedKey] = storedLive && typeof storedLive === 'object' && !Array.isArray(storedLive)
+      ? { ...totals, live: normalizeShareCounts(storedLive as Record<string, unknown>) }
+      : totals;
   });
 
   return normalized;
 }
 
-// Pure merge used by usePersistentMetric. Bounds key length (via hashing),
-// normalizes values, and enforces the entry-count cap by moving evicted
-// per-key maxima into the aggregate bucket so totals stay monotonic.
-//
-// 'sum' metrics (blocks_found) bank evicted values additively; 'max' metrics
-// (best_diff) bank a running maximum, which is idempotent under churn.
-// Entries the current snapshot itself just created are never banked additively,
-// otherwise re-supplying the same over-cap snapshot would inflate totals on
-// every merge.
+function normalizeShareCounts(source: Record<string, unknown>): ShareCounts {
+  const reasons = source.rejectedByReason;
+  return {
+    acknowledged: normalizeCount(source.acknowledged),
+    submitted: normalizeCount(source.submitted),
+    rejected: normalizeCount(source.rejected),
+    rejectedByReason:
+      reasons && typeof reasons === 'object' && !Array.isArray(reasons)
+        ? clampReasons(
+            Object.fromEntries(
+              Object.entries(reasons as Record<string, unknown>).map(([reason, count]) => [
+                reason,
+                normalizeCount(count),
+              ]),
+            ),
+          )
+        : {},
+  };
+}
+
+// Older saves hold plain numbers: the highest value seen, which is also the
+// live counter of the run it came from.
+function normalizeCounterState(value: unknown): PersistedCounterState {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return createEmptyCounterState();
+  }
+
+  const read = (stored: unknown) => {
+    if (stored && typeof stored === 'object' && !Array.isArray(stored)) {
+      const entry = stored as Record<string, unknown>;
+      return { total: normalizeCount(entry.total), live: normalizeCount(entry.live) };
+    }
+    const count = normalizeCount(stored);
+    return { total: count, live: count };
+  };
+
+  const source = value as Record<string, unknown>;
+  const normalized: PersistedCounterState = {};
+  if (AGGREGATE_KEY in source) {
+    normalized[AGGREGATE_KEY] = { total: read(source[AGGREGATE_KEY]).total, live: 0 };
+  }
+
+  Object.entries(source)
+    .filter(([key]) => key !== AGGREGATE_KEY)
+    .slice(-MAX_SHARE_STATS_ENTRIES)
+    .forEach(([key, stored]) => {
+      const normalizedKey = normalizeMetricKey(key);
+      if (normalizedKey === AGGREGATE_KEY) return;
+      normalized[normalizedKey] = read(stored);
+    });
+
+  return normalized;
+}
+
+// Pure merge used by usePersistentBestDifficulty. Bounds key length (via
+// hashing), normalizes values, and enforces the entry-count cap by moving
+// evicted per-key maxima into the aggregate bucket, which keeps a running
+// maximum so the displayed best never decreases.
 export function mergeMetricEntries(
   prev: PersistedMetricState,
   entries: PersistedMetricEntry[],
-  mode: MetricAggregationMode = 'sum',
 ): { next: PersistedMetricState; changed: boolean } {
   let changed = false;
   const next: PersistedMetricState = { ...prev };
@@ -208,9 +280,6 @@ export function mergeMetricEntries(
     .map((entry) => ({ key: normalizeMetricKey(entry.key), value: entry.value }))
     .filter((entry) => entry.key !== AGGREGATE_KEY);
   const liveKeys = new Set(boundedEntries.map((entry) => entry.key));
-  const createdKeys = new Set(
-    boundedEntries.filter(({ key }) => !(key in prev)).map(({ key }) => key),
-  );
 
   boundedEntries.forEach(({ key, value }) => {
     const normalizedValue = Math.max(0, value);
@@ -222,19 +291,61 @@ export function mergeMetricEntries(
 
   const evictable = Object.keys(next).filter((k) => k !== AGGREGATE_KEY);
   while (evictable.length > MAX_SHARE_STATS_ENTRIES) {
+    // Prefer entries that are no longer reported.
+    const victim = evictable.find((k) => !liveKeys.has(k)) ?? evictable[0];
+    next[AGGREGATE_KEY] = Math.max(next[AGGREGATE_KEY] ?? 0, next[victim] ?? 0);
+    delete next[victim];
+    evictable.splice(evictable.indexOf(victim), 1);
+    changed = true;
+  }
+
+  return { next, changed };
+}
+
+// Pure merge used by usePersistentBlocksFound. Adds each channel's new blocks
+// to its total, counting a restarted channel from 0. Evicted entries under the
+// entry-count cap are added to the aggregate bucket; entries the current
+// snapshot itself just created are never banked, otherwise re-supplying the
+// same over-cap snapshot would inflate totals on every merge.
+export function mergeCounterEntries(
+  prev: PersistedCounterState,
+  entries: PersistedMetricEntry[],
+): { next: PersistedCounterState; changed: boolean } {
+  let changed = false;
+  const next: PersistedCounterState = { ...prev };
+
+  const boundedEntries = entries
+    .map((entry) => ({ key: normalizeMetricKey(entry.key), value: Math.max(0, entry.value) }))
+    .filter((entry) => entry.key !== AGGREGATE_KEY);
+  const liveKeys = new Set(boundedEntries.map((entry) => entry.key));
+  const createdKeys = new Set(
+    boundedEntries.filter(({ key }) => !(key in prev)).map(({ key }) => key),
+  );
+
+  boundedEntries.forEach(({ key, value }) => {
+    const current = next[key] ?? { total: 0, live: 0 };
+    if (value === current.live) return;
+    next[key] = {
+      total: current.total + counterIncrease(value, current.live, value < current.live),
+      live: value,
+    };
+    changed = true;
+  });
+
+  const evictable = Object.keys(next).filter((k) => k !== AGGREGATE_KEY);
+  while (evictable.length > MAX_SHARE_STATS_ENTRIES) {
     // Prefer entries that are no longer reported, then entries the current
     // snapshot itself just created, and only then established live entries.
     const victim =
       evictable.find((k) => !liveKeys.has(k)) ??
       evictable.find((k) => createdKeys.has(k)) ??
       evictable[0];
-    const victimValue = next[victim] ?? 0;
     const freshlyCreatedLive = liveKeys.has(victim) && createdKeys.has(victim);
-    if (victimValue > 0 && !(mode === 'sum' && freshlyCreatedLive)) {
-      next[AGGREGATE_KEY] =
-        mode === 'max'
-          ? Math.max(next[AGGREGATE_KEY] ?? 0, victimValue)
-          : (next[AGGREGATE_KEY] ?? 0) + victimValue;
+    if (!freshlyCreatedLive && (next[victim]?.total ?? 0) > 0) {
+      next[AGGREGATE_KEY] = {
+        total: (next[AGGREGATE_KEY]?.total ?? 0) + next[victim].total,
+        live: 0,
+      };
     }
     delete next[victim];
     evictable.splice(evictable.indexOf(victim), 1);
@@ -272,45 +383,40 @@ export function mergeShareStatsEntries(
       rejected: 0,
       rejectedByReason: {},
     };
+    // Older saves have no live counters: their totals are the highest values
+    // seen, which are also the live counters of the run they came from.
+    const lastLive = current.live ?? current;
+    const live: ShareCounts = {
+      acknowledged: Math.max(0, entry.acknowledged),
+      submitted: Math.max(0, entry.submitted),
+      rejected: Math.max(0, entry.rejected),
+      rejectedByReason: Object.fromEntries(
+        Object.entries(entry.rejectedByReason ?? {})
+          .filter(([reason]) => reason.length <= MAX_REASON_LENGTH)
+          .slice(-MAX_REJECTION_REASONS)
+          .map(([reason, count]) => [reason, Math.max(0, count)]),
+      ),
+    };
+    const restarted =
+      live.acknowledged < lastLive.acknowledged ||
+      live.submitted < lastLive.submitted ||
+      live.rejected < lastLive.rejected;
+
     const rejectedByReason = { ...current.rejectedByReason };
-
-    const incomingReasons = Object.entries(entry.rejectedByReason ?? {})
-      .filter(([reason]) => reason.length <= MAX_REASON_LENGTH)
-      .slice(-MAX_REJECTION_REASONS);
-    const incomingReasonNames = new Set(incomingReasons.map(([reason]) => reason));
-
-    for (const [reason, count] of incomingReasons) {
-      const normalizedCount = Math.max(0, count);
-      if ((rejectedByReason[reason] ?? 0) < normalizedCount) {
-        if (
-          !(reason in rejectedByReason) &&
-          Object.keys(rejectedByReason).length >= MAX_REJECTION_REASONS
-        ) {
-          const reasons = Object.keys(rejectedByReason);
-          const reasonToEvict =
-            reasons.find((candidate) => !incomingReasonNames.has(candidate)) ?? reasons[0];
-          delete rejectedByReason[reasonToEvict];
-        }
-        rejectedByReason[reason] = normalizedCount;
-        changed = true;
-      }
+    for (const [reason, count] of Object.entries(live.rejectedByReason)) {
+      const added = counterIncrease(count, lastLive.rejectedByReason[reason] ?? 0, restarted);
+      if (added > 0) rejectedByReason[reason] = (rejectedByReason[reason] ?? 0) + added;
     }
 
     const nextEntry = {
-      acknowledged: Math.max(current.acknowledged, Math.max(0, entry.acknowledged)),
-      submitted: Math.max(current.submitted, Math.max(0, entry.submitted)),
-      rejected: Math.max(current.rejected, Math.max(0, entry.rejected)),
-      rejectedByReason,
+      acknowledged: current.acknowledged + counterIncrease(live.acknowledged, lastLive.acknowledged, restarted),
+      submitted: current.submitted + counterIncrease(live.submitted, lastLive.submitted, restarted),
+      rejected: current.rejected + counterIncrease(live.rejected, lastLive.rejected, restarted),
+      rejectedByReason: clampReasons(rejectedByReason),
+      live,
     };
 
-    if (
-      nextEntry.acknowledged !== current.acknowledged ||
-      nextEntry.submitted !== current.submitted ||
-      nextEntry.rejected !== current.rejected
-    ) {
-      changed = true;
-    }
-
+    if (JSON.stringify(nextEntry) !== JSON.stringify(current)) changed = true;
     next[entry.key] = nextEntry;
   });
 
@@ -413,11 +519,9 @@ function usePersistentState<T>(
 function usePersistentMetric(
   entries: PersistedMetricEntry[],
   configKey: string,
-  metricKey: string,
-  mode: MetricAggregationMode,
 ): PersistedMetricState {
   const [persistedCounts, updatePersistedCounts] = usePersistentState(
-    metricKey,
+    'best_diff',
     configKey,
     createEmptyMetricState,
     normalizeMetricState,
@@ -428,10 +532,10 @@ function usePersistentMetric(
     if (entries.length === 0) return;
 
     updatePersistedCounts((prev) => {
-      const { next, changed } = mergeMetricEntries(prev, entries, mode);
+      const { next, changed } = mergeMetricEntries(prev, entries);
       return changed ? next : prev;
     });
-  }, [entries, updatePersistedCounts, mode]);
+  }, [entries, updatePersistedCounts]);
 
   return persistedCounts;
 }
@@ -464,10 +568,25 @@ export function usePersistentBlocksFound(
   entries: PersistedMetricEntry[],
   configKey: string,
 ): number {
-  const persistedCounts = usePersistentMetric(entries, configKey, 'blocks_found', 'sum');
+  const [persistedCounts, updatePersistedCounts] = usePersistentState(
+    'blocks_found',
+    configKey,
+    createEmptyCounterState,
+    normalizeCounterState,
+    MAX_SHARE_STATS_STORAGE_LENGTH,
+  );
+
+  useEffect(() => {
+    if (entries.length === 0) return;
+
+    updatePersistedCounts((prev) => {
+      const { next, changed } = mergeCounterEntries(prev, entries);
+      return changed ? next : prev;
+    });
+  }, [entries, updatePersistedCounts]);
 
   return useMemo(
-    () => Object.values(persistedCounts).reduce((sum, count) => sum + count, 0),
+    () => Object.values(persistedCounts).reduce((sum, { total }) => sum + total, 0),
     [persistedCounts],
   );
 }
@@ -476,7 +595,7 @@ export function usePersistentBestDifficulty(
   entries: PersistedMetricEntry[],
   configKey: string,
 ): number {
-  const persistedCounts = usePersistentMetric(entries, configKey, 'best_diff', 'max');
+  const persistedCounts = usePersistentMetric(entries, configKey);
 
   return useMemo(
     // The aggregate bucket holds the running maximum of evicted entries, so

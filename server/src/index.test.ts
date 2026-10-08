@@ -22,3 +22,15 @@ test('every mutating control route sits behind the session middleware', () => {
   assert.match(source, /Authentication required/);
   assert.match(source, /sessions\.isValid\(getSessionToken\(req\)\)/);
 });
+
+test('a factory reset removes the Telegram pairing', () => {
+  const source = readFileSync(path.join(__dirname, 'index.ts'), 'utf8');
+  const handlerStart = source.indexOf("app.post('/api/reset'");
+  const resetHandler = source.slice(handlerStart, source.indexOf('sessions.destroyAll()', handlerStart));
+  assert.match(
+    resetHandler,
+    /telegramService\.disconnect\(\)/,
+    'A reset that leaves telegram.json keeps the previous owner paired, so ' +
+      'their chat receives alerts about the next setup.',
+  );
+});

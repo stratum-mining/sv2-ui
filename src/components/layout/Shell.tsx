@@ -49,13 +49,15 @@ function getNavItems(_features: AppFeatures, _appMode: AppMode): NavItem[] {
 interface ShellProps {
   children: React.ReactNode;
   appMode?: AppMode;
-  connectionStatus?: 'connected' | 'connecting' | 'disconnected';
+  connectionStatus?: 'connected' | 'fallback' | 'degraded' | 'connecting' | 'disconnected';
   connectionLabel?: string;
   poolName?: string;
   activePoolAddress?: string;
   activePoolPort?: number;
   activePoolAuthorityPublicKey?: string;
   uptime?: number;
+  /** The Translator has stayed down for a minute while JDC was connected upstream. */
+  translatorFailing?: boolean;
 }
 
 export function Shell({
@@ -68,6 +70,7 @@ export function Shell({
   activePoolPort,
   activePoolAuthorityPublicKey,
   uptime,
+  translatorFailing = false,
 }: ShellProps) {
   const [location] = useLocation();
   const { isDark, toggle } = useTheme();
@@ -80,6 +83,12 @@ export function Shell({
   const navItems = getNavItems(features, appMode);
   const connectedPool = getKnownPoolForConfig(activePoolAddress && activePoolPort && activePoolAuthorityPublicKey ? { address: activePoolAddress, port: activePoolPort, authority_public_key: activePoolAuthorityPublicKey } : undefined);
   const connectedStatusLabel = connectionLabel || `Connected to ${connectedPool?.name || (poolName ? 'Custom Pool' : 'Pool')}`;
+  const isDegraded = connectionStatus === 'degraded';
+  const statusHint = !isDegraded
+    ? undefined
+    : translatorFailing
+      ? 'The Translator keeps stopping. SV2 firmware keeps mining; SV1 firmware cannot connect. Check the logs in Settings.'
+      : 'The Translator is restarting. SV2 firmware keeps mining; SV1 firmware reconnects automatically.';
 
   // Close on route change
   useEffect(() => { setMenuOpen(false); }, [location]);
@@ -195,14 +204,14 @@ export function Shell({
             {connectionStatus && (
               <>
                 {/* Mobile: dot + uptime only (no status text to save space) */}
-                <span className="flex sm:hidden items-center gap-2 text-xs text-muted-foreground min-w-0">
+                <span title={statusHint} className="flex sm:hidden items-center gap-2 text-xs text-muted-foreground min-w-0">
                   <StatusDot status={connectionStatus} size="sm" />
                   <span className="truncate">Uptime: {formatUptime(uptime ?? 0)}</span>
                 </span>
                 {/* Desktop: dot + full status text + uptime */}
-                <span className="hidden sm:flex items-center gap-2 text-xs text-muted-foreground shrink-0">
+                <span title={statusHint} className="hidden sm:flex items-center gap-2 text-xs text-muted-foreground shrink-0">
                   <StatusDot status={connectionStatus} size="sm" />
-                  {connectionStatus === 'connected' ? (
+                  {connectionStatus === 'connected' || connectionStatus === 'fallback' || isDegraded ? (
                     <span className="inline-flex min-w-0 items-center gap-1.5">
                       <span className="truncate">{connectedStatusLabel}</span>
                       {!connectionLabel && connectedPool && (
@@ -217,6 +226,11 @@ export function Shell({
                           imageClassName="h-3.5 w-3.5"
                           fallbackClassName="h-3 w-3"
                         />
+                      )}
+                      {isDegraded && (
+                        <span className={cn('shrink-0', translatorFailing ? 'text-red-500' : 'text-amber-500')}>
+                          {translatorFailing ? '· SV1 offline' : '· SV1 reconnecting'}
+                        </span>
                       )}
                     </span>
                   ) : connectionStatus === 'connecting'

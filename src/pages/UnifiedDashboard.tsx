@@ -48,6 +48,9 @@ const BITCOIN_CORE_VERSION_MISMATCH_CODE = 'jdc-bitcoin-core-unsupported-mining-
 const BITCOIN_CORE_DISCONNECTED_CODE = 'jdc-bitcoin-core-disconnected';
 const SETUP_TARGET_STEP_STORAGE_KEY = 'sv2-ui-setup-target-step';
 const SETUP_REVIEW_STORAGE_KEY = 'sv2-ui-setup-review';
+// A Translator restart after a JDC pool switch usually takes a few seconds;
+// the header covers that, the banner only appears if it lasts longer.
+const TRANSLATOR_BANNER_DELAY_SECS = 15;
 
 /**
  * Unified Dashboard for the SV2 Mining Stack.
@@ -84,6 +87,9 @@ export function UnifiedDashboard() {
     isOrchestrated,
     isConfigured,
     isRunning,
+    isDegraded,
+    degradedForSecs,
+    soloFallback,
     autoStarting,
     dockerError,
     miningMode,
@@ -94,7 +100,7 @@ export function UnifiedDashboard() {
   } = useSetupStatus();
 
   // Header connection status (shared with Settings via hook)
-  const { status: connectionStatus, statusLabel: connectionLabel, poolName, activePoolAddress, activePoolPort, activePoolAuthorityPublicKey, uptime } = useConnectionStatus();
+  const { status: connectionStatus, statusLabel: connectionLabel, poolName, activePoolAddress, activePoolPort, activePoolAuthorityPublicKey, uptime, translatorFailing: headerTranslatorFailing } = useConnectionStatus();
   const isSovereignSolo = miningMode === 'solo' && templateMode === 'jd';
 
   // Data from JDC or Translator depending on configured mode
@@ -131,7 +137,14 @@ export function UnifiedDashboard() {
   const translatorDown = !translatorHealthLoading && !translatorHealthy;
   const jdcDown = isJdMode && !jdcHealthLoading && !jdcHealthy;
   const showError = poolError || translatorDown || jdcDown;
-  const configuredButStopped = isOrchestrated && isConfigured && !isRunning;
+  // A degraded JD stack is still mining through JDC. Offering Start Mining
+  // there would recreate JDC and send it back to the primary pool.
+  const configuredButStopped = isOrchestrated && isConfigured && !isRunning && !isDegraded;
+  // JDC is connected while the Translator is down: SV1 firmware is offline.
+  const translatorOutage = isDegraded && connectionStatus === 'degraded';
+  const showTranslatorFailing = translatorOutage && headerTranslatorFailing;
+  const showTranslatorRestarting = translatorOutage && !headerTranslatorFailing &&
+    (degradedForSecs ?? 0) >= TRANSLATOR_BANNER_DELAY_SECS;
   const configurationIssue = configurationIssues[0] ?? null;
   const canReviewConfiguration = configurationIssue?.code !== 'saved-setup-unavailable';
   const canResetConfiguration = configurationIssue?.code === 'saved-setup-unavailable';
@@ -544,6 +557,7 @@ export function UnifiedDashboard() {
       activePoolPort={activePoolPort ?? undefined}
       activePoolAuthorityPublicKey={activePoolAuthorityPublicKey ?? undefined}
       uptime={uptime}
+      translatorFailing={headerTranslatorFailing}
     >
       {/* Backend connection error banner */}
       {isBackendError && (
@@ -675,8 +689,59 @@ export function UnifiedDashboard() {
         </Alert>
       )}
 
+      {/* JDC fell back to solo mining after every pool failed (JD mode) */}
+      {!configurationIssue && soloFallback && (
+        <Alert variant="warning">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex flex-col gap-1">
+              <AlertTitle>Solo Mining (fallback)</AlertTitle>
+              <span>
+                Your pools aren't working. No pool payouts until you're back on a pool; if you
+                find a block, the reward goes to your solo fallback address.
+              </span>
+            </div>
+            {/* JDC stays solo until it restarts, which retries the pools in order. */}
+            <button
+              onClick={handleStartMining}
+              disabled={isStarting}
+              className="flex h-9 shrink-0 items-center gap-2 self-start rounded-full bg-yellow-500 px-4 font-medium text-black transition-colors hover:bg-yellow-400 disabled:opacity-50 sm:self-auto"
+            >
+              {isStarting && (
+                <span className="h-4 w-4 rounded-full border-2 border-black/30 border-t-black animate-spin" />
+              )}
+              Try my pools again
+            </button>
+          </div>
+        </Alert>
+      )}
+
+      {/* Translator down while JDC keeps mining (JD mode) */}
+      {!configurationIssue && showTranslatorRestarting && (
+        <Alert variant="warning">
+          <div className="flex flex-col gap-1">
+            <AlertTitle>The Translator is restarting</AlertTitle>
+            <span>
+              Miners on SV2 firmware keep mining through JDC. Miners on SV1 firmware
+              reconnect automatically once the Translator is back.
+            </span>
+          </div>
+        </Alert>
+      )}
+      {!configurationIssue && showTranslatorFailing && (
+        <Alert variant="destructive">
+          <div className="flex flex-col gap-1">
+            <AlertTitle>The Translator keeps stopping</AlertTitle>
+            <span>
+              Miners on SV2 firmware keep mining through JDC, but miners on SV1 firmware
+              can't connect. The Translator is restarted automatically; check its logs in
+              Settings → Logs if this continues.
+            </span>
+          </div>
+        </Alert>
+      )}
+
       {/* Connection Error Banner (not configured or unknown error) */}
-      {!configurationIssue && !dockerError && (startError || (showError && !configuredButStopped && diagnostics.length === 0)) && (
+      {!configurationIssue && !dockerError && (startError || (showError && !configuredButStopped && !isDegraded && diagnostics.length === 0)) && (
         <Alert variant="destructive">
           <p>
             {startError || 'Cannot connect to pool. Make sure mining services are running.'}

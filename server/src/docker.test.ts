@@ -12,12 +12,14 @@ import {
   getDockerConnectionInfo,
   normalizeDockerError,
   getStackStatus,
+  restartTranslator,
   startJdc,
   startTranslator,
   streamContainerLogText,
 } from './docker.js';
 import { formatMergedLogLine, type MergedLogLine } from './logs/export.js';
 import { DockerConnectionError, isMissingContainerError } from './docker-errors.js';
+import type { SetupData } from './types.js';
 
 test('Bitcoin RPC probing tries host loopback before Docker host gateway', () => {
   assert.deepEqual(getBitcoinRpcProbeTransports(), [
@@ -754,4 +756,27 @@ test('mining containers keep the operator log driver when it is not json-file', 
 
   assert.equal(created.length, 1);
   assert.equal((created[0].HostConfig as { LogConfig?: unknown }).LogConfig, undefined);
+});
+
+test('restartTranslator recreates only the Translator and leaves JDC running', async (t) => {
+  const touched: string[] = [];
+  const created: Array<Record<string, unknown>> = [];
+  t.mock.method(Docker.prototype, 'ping', (async () => 'OK') as never);
+  t.mock.method(Docker.prototype, 'getImage', (() => ({ inspect: async () => ({}) })) as never);
+  t.mock.method(Docker.prototype, 'getContainer', (name: string) => {
+    touched.push(name);
+    throw new Error('no such container');
+  });
+  t.mock.method(Docker.prototype, 'info', (async () => ({
+    LoggingDriver: 'json-file',
+  })) as never);
+  t.mock.method(Docker.prototype, 'createContainer', ((options: Record<string, unknown>) => {
+    created.push(options);
+    return Promise.resolve({ start: async () => undefined });
+  }) as never);
+
+  await restartTranslator({ mode: 'jd' } as SetupData, '/tmp/sv2-config');
+
+  assert.deepEqual(touched, ['sv2-translator']);
+  assert.deepEqual(created.map((options) => options.name), ['sv2-translator']);
 });

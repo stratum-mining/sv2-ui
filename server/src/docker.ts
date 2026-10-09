@@ -1296,6 +1296,22 @@ export async function startStack(
 }
 
 /**
+ * Recreate only the Translator, leaving a running JDC untouched so it keeps
+ * the upstream it failed over to.
+ * Config files must already exist in configDir before calling this.
+ */
+export async function restartTranslator(
+  data: SetupData,
+  configDir: string
+): Promise<void> {
+  await ensureDockerAvailable();
+
+  const { translator: image } = getImageSelectionForSetup(data);
+  await pullImage(image);
+  await startTranslator(`${configDir}/translator.toml`, image);
+}
+
+/**
  * Stop all containers
  */
 export async function stopStack(): Promise<void> {

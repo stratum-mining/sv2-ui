@@ -4,6 +4,14 @@ import { authFetch, AuthError } from '@/lib/auth-fetch';
 export interface SetupStatus {
   configured: boolean;
   running: boolean;
+  /** JD mode: JDC is up while the Translator is down and being restarted. */
+  degraded?: boolean;
+  /** Seconds since the Translator went down; null unless degraded. */
+  degradedForSecs?: number | null;
+  /** The Translator has stayed down for a minute while JDC was connected upstream. */
+  translatorFailing?: boolean;
+  /** JD pool mining: every pool failed and JDC is mining solo until restarted. */
+  soloFallback?: boolean;
   dockerError: string | null;
   autoStarting?: boolean;
   shouldBeRunning?: boolean;
@@ -83,6 +91,10 @@ export function deriveSetupStatus(
     isOrchestrated: status !== null && status !== undefined,
     isConfigured: status?.configured ?? false,
     isRunning: status?.running ?? false,
+    isDegraded: status?.degraded ?? false,
+    degradedForSecs: status?.degradedForSecs ?? null,
+    translatorFailing: status?.translatorFailing ?? false,
+    soloFallback: status?.soloFallback ?? false,
     dockerError: status?.dockerError ?? null,
     autoStarting: status?.autoStarting ?? false,
     shouldBeRunning: status?.shouldBeRunning ?? false,
@@ -107,6 +119,7 @@ export function deriveSetupStatus(
  * - isOrchestrated: true if running with orchestration backend
  * - isConfigured: true if setup has been completed
  * - isRunning: true if containers are running
+ * - isDegraded: true if JDC is running while the Translator restarts
  * - needsSetup: true if user should be redirected to /setup
  */
 export function useSetupStatus() {

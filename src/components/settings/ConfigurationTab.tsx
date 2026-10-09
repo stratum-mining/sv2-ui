@@ -79,6 +79,8 @@ export function ConfigurationTab() {
     isOrchestrated,
     isConfigured,
     isRunning,
+    isDegraded,
+    translatorFailing,
     miningMode: statusMiningMode,
     mode: statusMode,
     activePoolIndex,
@@ -403,13 +405,13 @@ export function ConfigurationTab() {
         <ConnectionAlert isOrchestrated={isOrchestrated} className="mb-6" />
       )}
       {/* Status Banner */}
-      <Card className={isRunning ? 'border-green-500/30 bg-green-500/5' : 'border-muted'}>
+      <Card className={isRunning ? 'border-green-500/30 bg-green-500/5' : isDegraded ? 'border-amber-500/30 bg-amber-500/5' : 'border-muted'}>
         <CardContent className="pt-6">
           <div className="flex flex-wrap items-center justify-between gap-4">
             <div className="flex min-w-0 items-center gap-3">
-              <StatusDot status={isRunning ? 'connected' : 'idle'} size="lg" />
+              <StatusDot status={isRunning ? 'connected' : isDegraded ? 'degraded' : 'idle'} size="lg" />
               <div className="min-w-0">
-                <p className="font-medium">{isRunning ? 'Services Running' : 'Services Stopped'}</p>
+                <p className="font-medium">{isRunning ? 'Services Running' : isDegraded ? (translatorFailing ? 'Translator Keeps Stopping' : 'Translator Restarting') : 'Services Stopped'}</p>
                 <p className="text-sm text-muted-foreground">
                   {isSovereignSolo ? 'Sovereign Solo Mining' : isSoloMode ? 'Solo Mining' : 'Pool Mining'}
                   {isJdMode && !isSovereignSolo && ' (Job Declaration)'}
@@ -417,7 +419,7 @@ export function ConfigurationTab() {
               </div>
             </div>
             <div className="flex flex-wrap gap-2 sm:flex-nowrap sm:justify-end">
-              {isRunning ? (
+              {isRunning || isDegraded ? (
                 <>
                   <Button
                     variant="outline"
@@ -613,7 +615,7 @@ export function ConfigurationTab() {
                     <PoolSummary
                       pool={config.pool}
                       miningMode={activeMiningMode}
-                      isActive={isRunning && activePoolIndex === 0}
+                      isActive={(isRunning || isDegraded) && activePoolIndex === 0}
                     />
                   </div>
                   {(config.fallbackPools ?? []).length > 0 && (
@@ -627,7 +629,7 @@ export function ConfigurationTab() {
                           pool={pool}
                           miningMode={activeMiningMode}
                           fallbackIndex={index}
-                          isActive={isRunning && activePoolIndex === index + 1}
+                          isActive={(isRunning || isDegraded) && activePoolIndex === index + 1}
                         />
                       ))}
                     </div>

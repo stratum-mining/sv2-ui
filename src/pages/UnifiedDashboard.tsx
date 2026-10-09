@@ -34,6 +34,7 @@ import { useSetupStatus } from '@/hooks/useSetupStatus';
 import { useConnectionStatus } from '@/hooks/useConnectionStatus';
 import { useLogDiagnostics } from '@/hooks/useLogDiagnostics';
 import { clearDashboardClientState } from '@/lib/dashboardState';
+import { getKnownPoolForConfig } from '@/lib/pools';
 import { resolveMinerHashrate } from '@/lib/minerTelemetry';
 import { formatHashrate, formatDifficulty, formatNumber } from '@/lib/utils';
 import type { Sv1ClientInfo } from '@/types/api';
@@ -51,6 +52,33 @@ const SETUP_REVIEW_STORAGE_KEY = 'sv2-ui-setup-review';
 // A Translator restart after a JDC pool switch usually takes a few seconds;
 // the header covers that, the banner only appears if it lasts longer.
 const TRANSLATOR_BANNER_DELAY_SECS = 15;
+
+/**
+ * Restarts mining from the dashboard. JDC and the Translator only try the
+ * configured pools from the primary again after a restart.
+ */
+function RestartMiningButton({
+  onClick,
+  isRestarting,
+  children,
+}: {
+  onClick: () => void;
+  isRestarting: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={isRestarting}
+      className="flex h-9 shrink-0 items-center gap-2 self-start rounded-full bg-yellow-500 px-4 font-medium text-black transition-colors hover:bg-yellow-400 disabled:opacity-50 sm:self-auto"
+    >
+      {isRestarting && (
+        <span className="h-4 w-4 rounded-full border-2 border-black/30 border-t-black animate-spin" />
+      )}
+      {children}
+    </button>
+  );
+}
 
 /**
  * Unified Dashboard for the SV2 Mining Stack.
@@ -100,7 +128,7 @@ export function UnifiedDashboard() {
   } = useSetupStatus();
 
   // Header connection status (shared with Settings via hook)
-  const { status: connectionStatus, statusLabel: connectionLabel, activePoolAddress, activePoolPort, activePoolAuthorityPublicKey, uptime, translatorFailing: headerTranslatorFailing } = useConnectionStatus();
+  const { status: connectionStatus, statusLabel: connectionLabel, activePoolAddress, activePoolPort, activePoolAuthorityPublicKey, activePoolIndex, uptime, translatorFailing: headerTranslatorFailing } = useConnectionStatus();
   const isSovereignSolo = miningMode === 'solo' && templateMode === 'jd';
 
   // Data from JDC or Translator depending on configured mode
@@ -142,6 +170,13 @@ export function UnifiedDashboard() {
   const configuredButStopped = isOrchestrated && isConfigured && !isRunning && !isDegraded;
   // JDC is connected while the Translator is down: SV1 firmware is offline.
   const translatorOutage = isDegraded && connectionStatus === 'degraded';
+  // JDC and the Translator only go back to the primary pool after a restart.
+  const onFallbackPool = activePoolIndex !== null && activePoolIndex > 0;
+  const fallbackPoolLabel = getKnownPoolForConfig(
+    activePoolAddress && activePoolPort && activePoolAuthorityPublicKey
+      ? { address: activePoolAddress, port: activePoolPort, authority_public_key: activePoolAuthorityPublicKey }
+      : undefined,
+  )?.name ?? activePoolAddress ?? 'a fallback pool';
   const showTranslatorFailing = translatorOutage && headerTranslatorFailing;
   const showTranslatorRestarting = translatorOutage && !headerTranslatorFailing &&
     (degradedForSecs ?? 0) >= TRANSLATOR_BANNER_DELAY_SECS;
@@ -555,6 +590,7 @@ export function UnifiedDashboard() {
       activePoolAddress={activePoolAddress ?? undefined}
       activePoolPort={activePoolPort ?? undefined}
       activePoolAuthorityPublicKey={activePoolAuthorityPublicKey ?? undefined}
+      activePoolIndex={activePoolIndex ?? undefined}
       uptime={uptime}
       translatorFailing={headerTranslatorFailing}
     >
@@ -699,17 +735,27 @@ export function UnifiedDashboard() {
                 find a block, the reward goes to your solo fallback address.
               </span>
             </div>
-            {/* JDC stays solo until it restarts, which retries the pools in order. */}
-            <button
-              onClick={handleStartMining}
-              disabled={isStarting}
-              className="flex h-9 shrink-0 items-center gap-2 self-start rounded-full bg-yellow-500 px-4 font-medium text-black transition-colors hover:bg-yellow-400 disabled:opacity-50 sm:self-auto"
-            >
-              {isStarting && (
-                <span className="h-4 w-4 rounded-full border-2 border-black/30 border-t-black animate-spin" />
-              )}
+            <RestartMiningButton onClick={handleStartMining} isRestarting={isStarting}>
               Try my pools again
-            </button>
+            </RestartMiningButton>
+          </div>
+        </Alert>
+      )}
+
+      {/* Mining on a fallback pool (both modes) */}
+      {!configurationIssue && onFallbackPool && (
+        <Alert variant="warning">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex flex-col gap-1">
+              <AlertTitle>Pool Mining (fallback)</AlertTitle>
+              <span>
+                Your primary pool isn't working, so mining switched to {fallbackPoolLabel}. It
+                won't switch back on its own.
+              </span>
+            </div>
+            <RestartMiningButton onClick={handleStartMining} isRestarting={isStarting}>
+              Try my primary pool again
+            </RestartMiningButton>
           </div>
         </Alert>
       )}

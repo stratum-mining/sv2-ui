@@ -59,6 +59,8 @@ interface ShellProps {
   activePoolAddress?: string;
   activePoolPort?: number;
   activePoolAuthorityPublicKey?: string;
+  /** 0 for the primary pool, 1+ for a fallback pool. */
+  activePoolIndex?: number;
   uptime?: number;
   /** The Translator has stayed down for a minute while JDC was connected upstream. */
   translatorFailing?: boolean;
@@ -72,6 +74,7 @@ export function Shell({
   activePoolAddress,
   activePoolPort,
   activePoolAuthorityPublicKey,
+  activePoolIndex,
   uptime,
   translatorFailing = false,
 }: ShellProps) {
@@ -85,20 +88,23 @@ export function Shell({
   const features = getAppFeatures(appMode);
   const navItems = getNavItems(features, appMode);
   const connectedPool = getKnownPoolForConfig(activePoolAddress && activePoolPort && activePoolAuthorityPublicKey ? { address: activePoolAddress, port: activePoolPort, authority_public_key: activePoolAuthorityPublicKey } : undefined);
+  const isDegraded = connectionStatus === 'degraded';
+  const onFallbackPool = (connectionStatus === 'fallback' || isDegraded) && !!activePoolIndex;
   // A configured pool name is free text and could pose as a known pool
   // (#266), so an unrecognized pool is shown by the address it was
   // authenticated at instead.
   const connectedStatusLabel = connectionLabel ||
-    `Connected to ${connectedPool?.name || activePoolAddress || 'Pool'}`;
+    `Connected to ${connectedPool?.name || activePoolAddress || 'Pool'}${onFallbackPool ? ' (fallback)' : ''}`;
   const customPoolEndpoint = !connectionLabel && !connectedPool && activePoolAddress
     ? formatEndpoint(activePoolAddress, activePoolPort)
     : null;
-  const isDegraded = connectionStatus === 'degraded';
-  const statusHint = !isDegraded
-    ? undefined
-    : translatorFailing
+  const statusHint = isDegraded
+    ? translatorFailing
       ? 'The Translator keeps stopping. SV2 firmware keeps mining; SV1 firmware cannot connect. Check the logs in Settings.'
-      : 'The Translator is restarting. SV2 firmware keeps mining; SV1 firmware reconnects automatically.';
+      : 'The Translator is restarting. SV2 firmware keeps mining; SV1 firmware reconnects automatically.'
+    : onFallbackPool
+      ? "Your primary pool isn't working, so mining switched to a fallback pool. It won't switch back on its own."
+      : undefined;
   const statusTitle = [statusHint, customPoolEndpoint].filter(Boolean).join('\n') || undefined;
 
   // Close on route change

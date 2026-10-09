@@ -7,6 +7,8 @@ export interface ConnectionStatus {
   activePoolAddress: string | null;
   activePoolPort: number | null;
   activePoolAuthorityPublicKey: string | null;
+  /** 0 for the primary pool, 1+ for a fallback pool; null when unknown. */
+  activePoolIndex: number | null;
   uptime: number;
   /** The Translator has stayed down for a minute while JDC was connected upstream. */
   translatorFailing: boolean;
@@ -44,8 +46,11 @@ export function resolveConnectionStatus({
 
   if (isHealthLoading || isAwaitingPool) return 'connecting';
   if (!hasConfirmedPool) return 'disconnected';
-  // Mining works, but without the pools the user set up: no pool payouts.
-  if (servicesHealthy) return isSoloFallback ? 'fallback' : 'connected';
+  // Mining works, but not on the pool the user put first: a fallback pool,
+  // or solo after every pool failed.
+  if (servicesHealthy) {
+    return isSoloFallback || (activePoolIndex ?? 0) > 0 ? 'fallback' : 'connected';
+  }
   // JDC stays on its upstream and keeps mining for SV2 firmware; SV1
   // firmware reconnects once auto-start brings the Translator back.
   return translatorOnlyDown ? 'degraded' : 'disconnected';
@@ -112,6 +117,7 @@ export function useConnectionStatus(): ConnectionStatus {
     activePoolAddress: hasUpstream ? activePoolAddress : null,
     activePoolPort: hasUpstream ? activePoolPort : null,
     activePoolAuthorityPublicKey: hasUpstream ? activePoolAuthorityPublicKey : null,
+    activePoolIndex: hasUpstream ? activePoolIndex : null,
     uptime:   showUptime ? (poolGlobal?.uptime_secs ?? 0) : 0,
     translatorFailing: status === 'degraded' && translatorFailing,
   };

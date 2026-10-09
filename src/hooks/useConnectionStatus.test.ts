@@ -25,8 +25,34 @@ test('reports connected only after an orchestrated pool is confirmed', () => {
     isRunning: true,
     isDegraded: false,
     isSoloMining: false,
-    activePoolIndex: 2,
+    activePoolIndex: 0,
   }), 'connected');
+});
+
+test('reports a fallback pool as its own state', () => {
+  assert.equal(resolveConnectionStatus({
+    isHealthLoading: false,
+    servicesHealthy: true,
+    translatorOnlyDown: false,
+    isOrchestrated: true,
+    isRunning: true,
+    isDegraded: false,
+    isSoloMining: false,
+    activePoolIndex: 2,
+  }), 'fallback');
+});
+
+test('a Translator outage on a fallback pool still reads as degraded', () => {
+  assert.equal(resolveConnectionStatus({
+    isHealthLoading: false,
+    servicesHealthy: false,
+    translatorOnlyDown: true,
+    isOrchestrated: true,
+    isRunning: false,
+    isDegraded: true,
+    isSoloMining: false,
+    activePoolIndex: 1,
+  }), 'degraded');
 });
 
 test('keeps standalone monitoring compatible without an active pool index', () => {

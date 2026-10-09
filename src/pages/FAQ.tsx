@@ -36,7 +36,7 @@ function FaqAccordionItem({ item, isOpen, onToggle }: { item: FaqItem; isOpen: b
 }
 
 export function FAQ() {
-  const { status: connectionStatus, statusLabel: connectionLabel, activePoolAddress, activePoolPort, activePoolAuthorityPublicKey, uptime, translatorFailing: headerTranslatorFailing } = useConnectionStatus();
+  const { status: connectionStatus, statusLabel: connectionLabel, activePoolAddress, activePoolPort, activePoolAuthorityPublicKey, activePoolIndex, uptime, translatorFailing: headerTranslatorFailing } = useConnectionStatus();
   const [openIndex, setOpenIndex] = useState<number | null>(null);
 
   const handleToggle = (index: number) => {
@@ -50,6 +50,7 @@ export function FAQ() {
       activePoolAddress={activePoolAddress ?? undefined}
       activePoolPort={activePoolPort ?? undefined}
       activePoolAuthorityPublicKey={activePoolAuthorityPublicKey ?? undefined}
+      activePoolIndex={activePoolIndex ?? undefined}
       uptime={uptime}
       translatorFailing={headerTranslatorFailing}
     >

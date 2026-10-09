@@ -84,6 +84,7 @@ export function UnifiedDashboard() {
     isOrchestrated,
     isConfigured,
     isRunning,
+    isDegraded,
     autoStarting,
     dockerError,
     miningMode,
@@ -131,7 +132,10 @@ export function UnifiedDashboard() {
   const translatorDown = !translatorHealthLoading && !translatorHealthy;
   const jdcDown = isJdMode && !jdcHealthLoading && !jdcHealthy;
   const showError = poolError || translatorDown || jdcDown;
-  const configuredButStopped = isOrchestrated && isConfigured && !isRunning;
+  // A degraded JD stack is still mining through JDC. Offering Start Mining
+  // there would recreate JDC and send it back to the primary pool.
+  const configuredButStopped = isOrchestrated && isConfigured && !isRunning && !isDegraded;
+  const translatorRecovering = isDegraded || connectionStatus === 'degraded';
   const configurationIssue = configurationIssues[0] ?? null;
   const canReviewConfiguration = configurationIssue?.code !== 'saved-setup-unavailable';
   const canResetConfiguration = configurationIssue?.code === 'saved-setup-unavailable';
@@ -675,8 +679,21 @@ export function UnifiedDashboard() {
         </Alert>
       )}
 
+      {/* Translator restarting while JDC keeps mining */}
+      {!configurationIssue && translatorRecovering && (
+        <Alert variant="warning">
+          <div className="flex flex-col gap-1">
+            <AlertTitle>The Translator is restarting</AlertTitle>
+            <span>
+              JDC keeps its pool connection and miners on SV2 firmware keep mining.
+              Miners on SV1 firmware reconnect automatically once the Translator is back.
+            </span>
+          </div>
+        </Alert>
+      )}
+
       {/* Connection Error Banner (not configured or unknown error) */}
-      {!configurationIssue && !dockerError && (startError || (showError && !configuredButStopped && diagnostics.length === 0)) && (
+      {!configurationIssue && !dockerError && (startError || (showError && !configuredButStopped && !translatorRecovering && diagnostics.length === 0)) && (
         <Alert variant="destructive">
           <p>
             {startError || 'Cannot connect to pool. Make sure mining services are running.'}

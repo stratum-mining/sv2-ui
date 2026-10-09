@@ -12,7 +12,14 @@ export interface ContainerStatus {
 
 export interface StatusResponse {
   configured: boolean;
+  /** Every service the configured mode needs is up. */
   running: boolean;
+  /**
+   * JD mode only: JDC is up while the Translator is down. JDC keeps its
+   * upstream and SV2 firmware keeps mining; SV1 firmware reconnects once
+   * auto-start brings the Translator back.
+   */
+  degraded: boolean;
   dockerError: string | null;
   autoStarting?: boolean;
   shouldBeRunning?: boolean;

@@ -8,6 +8,7 @@ const statusDotVariants = cva(
     variants: {
       status: {
         connected: 'bg-green-500',
+        degraded: 'bg-amber-500',
         connecting: 'bg-yellow-500 animate-pulse',
         disconnected: 'bg-red-500',
         idle: 'bg-muted-foreground',

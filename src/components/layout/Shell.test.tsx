@@ -56,3 +56,24 @@ test('presents a recognized pool name when address, port, and authority key matc
     'a recognized pool should display its authenticated name',
   );
 });
+
+test('keeps the pool and explains SV1 reconnecting while the stack is degraded', () => {
+  const queryClient = new QueryClient();
+  const html = renderToStaticMarkup(
+    <QueryClientProvider client={queryClient}>
+      <Router ssrPath="/">
+        <Shell
+          connectionStatus="degraded"
+          connectionLabel="Sovereign Solo"
+          uptime={125}
+        >
+          <div>dashboard</div>
+        </Shell>
+      </Router>
+    </QueryClientProvider>,
+  );
+
+  assert.match(html, /Sovereign Solo/);
+  assert.match(html, /SV1 reconnecting/);
+  assert.doesNotMatch(html, /Disconnected/);
+});

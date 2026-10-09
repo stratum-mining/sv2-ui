@@ -521,6 +521,7 @@ app.get('/api/status', async (_req, res) => {
       }
     }
     const running = isStackRunning(state.mode, containers);
+    const degraded = isOnlyTranslatorStopped(state.mode, containers);
     const prepared = state.configured ? prepareServiceConfig(state.data) : null;
     const configurationIssues = prepared?.kind === 'needs-setup-review'
       ? prepared.issues
@@ -528,11 +529,14 @@ app.get('/api/status', async (_req, res) => {
     const isSovereignSolo = state.data?.miningMode === 'solo' && state.data?.mode === 'jd';
     const pools = state.data && !isSovereignSolo ? configuredPools(state.data) : [];
 
-    if (!running) {
+    // JDC keeps its upstream while the Translator restarts, so a degraded
+    // stack still reports the pool JDC is connected to.
+    const upstreamUp = running || degraded;
+    if (!upstreamUp) {
       activePoolTracker.reset();
     }
 
-    const activePool = running && state.mode && pools.length > 0
+    const activePool = upstreamUp && state.mode && pools.length > 0
       ? await activePoolTracker.getActivePool(
         state.mode === 'jd' ? 'jdc' : 'translator',
         pools
@@ -542,6 +546,7 @@ app.get('/api/status', async (_req, res) => {
     const response: StatusResponse = {
       configured: state.configured,
       running,
+      degraded,
       dockerError,
       autoStarting: stackBusyReason === 'auto-start',
       shouldBeRunning: state.shouldBeRunning,
@@ -567,6 +572,7 @@ app.get('/api/status', async (_req, res) => {
         // redirecting to a blank setup that could overwrite it.
         configured: true,
         running: false,
+        degraded: false,
         dockerError: null,
         autoStarting: false,
         shouldBeRunning: false,

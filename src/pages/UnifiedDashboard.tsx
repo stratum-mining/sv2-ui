@@ -34,6 +34,7 @@ import { useSetupStatus } from '@/hooks/useSetupStatus';
 import { useConnectionStatus } from '@/hooks/useConnectionStatus';
 import { useLogDiagnostics } from '@/hooks/useLogDiagnostics';
 import { clearDashboardClientState } from '@/lib/dashboardState';
+import { tileMetricEntries } from '@/lib/dashboardTileMetrics';
 import { resolveMinerHashrate } from '@/lib/minerTelemetry';
 import { formatHashrate, formatDifficulty, formatNumber } from '@/lib/utils';
 import type { Sv1ClientInfo } from '@/types/api';
@@ -331,64 +332,19 @@ export function UnifiedDashboard() {
     return hashrateHistory.filter(p => p.timestamp > cutoff);
   }, [hashrateHistory, timeRange]);
 
-  const blocksFoundEntries = useMemo(() => {
-    if (isJdMode) {
-      if (!sv2Clients) return [];
-
-      return directSv2Clients.flatMap((client) => [
-        ...client.extended_channels.map((channel) => ({
-          key: `jdc:${client.client_id}:extended:${channel.channel_id}:${channel.user_identity}`,
-          value: channel.blocks_found,
-        })),
-        ...client.standard_channels.map((channel) => ({
-          key: `jdc:${client.client_id}:standard:${channel.channel_id}:${channel.user_identity}`,
-          value: channel.blocks_found,
-        })),
-      ]);
-    }
-
-    if (!serverChannels) return [];
-
-    return [
-      ...serverChannels.extended_channels.map((channel) => ({
-        key: `translator:server:extended:${channel.channel_id}:${channel.user_identity}`,
-        value: channel.blocks_found,
-      })),
-      ...serverChannels.standard_channels.map((channel) => ({
-        key: `translator:server:standard:${channel.channel_id}:${channel.user_identity}`,
-        value: channel.blocks_found,
-      })),
-    ];
-  }, [directSv2Clients, isJdMode, serverChannels, sv2Clients]);
-
-  const bestDiffEntries = useMemo(() => {
-    const sv1BestDiffEntries = sv1ServerChannels ? [
-      ...sv1ServerChannels.extended_channels.map((channel) => ({
-        key: `translator:server:extended:${channel.channel_id}:${channel.user_identity}`,
-        value: channel.best_diff,
-      })),
-      ...sv1ServerChannels.standard_channels.map((channel) => ({
-        key: `translator:server:standard:${channel.channel_id}:${channel.user_identity}`,
-        value: channel.best_diff,
-      })),
-    ] : [];
-
-    if (!isJdMode || !sv2Clients) return sv1BestDiffEntries;
-
-    return [
-      ...directSv2Clients.flatMap((client) => [
-        ...client.extended_channels.map((channel) => ({
-          key: `jdc:${client.client_id}:extended:${channel.channel_id}:${channel.user_identity}`,
-          value: channel.best_diff,
-        })),
-        ...client.standard_channels.map((channel) => ({
-          key: `jdc:${client.client_id}:standard:${channel.channel_id}:${channel.user_identity}`,
-          value: channel.best_diff,
-        })),
-      ]),
-      ...sv1BestDiffEntries,
-    ];
-  }, [directSv2Clients, isJdMode, sv1ServerChannels, sv2Clients]);
+  const tileMetricSources = useMemo(() => ({
+    isJdMode,
+    jdcClients: sv2Clients,
+    translatorServerChannels: sv1ServerChannels,
+  }), [isJdMode, sv1ServerChannels, sv2Clients]);
+  const blocksFoundEntries = useMemo(
+    () => tileMetricEntries(tileMetricSources, 'blocks_found'),
+    [tileMetricSources]
+  );
+  const bestDiffEntries = useMemo(
+    () => tileMetricEntries(tileMetricSources, 'best_diff'),
+    [tileMetricSources]
+  );
 
   const sv1BestDiffByChannelId = useMemo(() => {
     const bestDiffByChannelId = new Map<number, number>();
@@ -428,9 +384,7 @@ export function UnifiedDashboard() {
   const bestDiff = usePersistentBestDifficulty(bestDiffEntries, historyConfigKey);
   const shareStats = usePersistentShareStats(shareStatsEntries, historyConfigKey);
 
-  const hasBestDiffSource = isJdMode
-    ? !!sv2Clients || !!sv1ServerChannels
-    : !!sv1ServerChannels;
+  const hasBestDiffSource = isJdMode ? !!sv2Clients : !!sv1ServerChannels;
 
   useEffect(() => {
     if (isAggregatedTproxy && sortKey === 'best_diff') {

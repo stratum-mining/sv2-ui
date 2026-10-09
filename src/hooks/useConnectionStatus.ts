@@ -4,7 +4,6 @@ import { useSetupStatus } from './useSetupStatus';
 export interface ConnectionStatus {
   status: 'connected' | 'fallback' | 'degraded' | 'connecting' | 'disconnected';
   statusLabel: string | null;
-  poolName: string | null;
   activePoolAddress: string | null;
   activePoolPort: number | null;
   activePoolAuthorityPublicKey: string | null;
@@ -65,7 +64,6 @@ export function useConnectionStatus(): ConnectionStatus {
     soloFallback,
     miningMode,
     mode: templateMode,
-    poolName,
     activePoolIndex,
     activePoolAddress,
     activePoolPort,
@@ -111,7 +109,6 @@ export function useConnectionStatus(): ConnectionStatus {
     statusLabel: isSovereignSolo
       ? 'Sovereign Solo'
       : soloFallback ? 'Solo Mining (fallback)' : null,
-    poolName: hasUpstream ? (poolName ?? null) : null,
     activePoolAddress: hasUpstream ? activePoolAddress : null,
     activePoolPort: hasUpstream ? activePoolPort : null,
     activePoolAuthorityPublicKey: hasUpstream ? activePoolAuthorityPublicKey : null,

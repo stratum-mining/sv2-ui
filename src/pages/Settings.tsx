@@ -25,7 +25,7 @@ import { ConfigurationTab } from '@/components/settings/ConfigurationTab';
  */
 export function Settings() {
   const { config, updateConfig, resetConfig } = useUiConfig();
-  const { status: connectionStatus, statusLabel: connectionLabel, poolName, activePoolAddress, activePoolPort, activePoolAuthorityPublicKey, uptime, translatorFailing: headerTranslatorFailing } = useConnectionStatus();
+  const { status: connectionStatus, statusLabel: connectionLabel, activePoolAddress, activePoolPort, activePoolAuthorityPublicKey, uptime, translatorFailing: headerTranslatorFailing } = useConnectionStatus();
   const { mode } = useSetupStatus();
   const isJdMode = mode === 'jd';
   const { recoveryKeySet, regenerateRecoveryKey, changePassword } = useAuth();
@@ -118,7 +118,6 @@ export function Settings() {
     <Shell
       connectionStatus={connectionStatus}
       connectionLabel={connectionLabel ?? undefined}
-      poolName={poolName ?? undefined}
       activePoolAddress={activePoolAddress ?? undefined}
       activePoolPort={activePoolPort ?? undefined}
       activePoolAuthorityPublicKey={activePoolAuthorityPublicKey ?? undefined}

@@ -33,6 +33,7 @@ import {
 import {
   startStack,
   stopStack,
+  restartTranslator,
   getStackStatus,
   isDockerAvailable,
   ensureDockerAvailable,
@@ -47,6 +48,7 @@ import { createMergedLogWriter } from './logs/merge.js';
 import { CONTAINER_LOG_EXPORT_MAX_BYTES } from './logs/export.js';
 import { getLogDiagnostics, getLogStreams, readCollatedLogLines } from './logs/diagnostics.js';
 import { ActivePoolTracker } from './active-pool.js';
+import { isOnlyTranslatorStopped, isStackRunning } from './stack-health.js';
 import {
   CredentialError,
   generateRecoveryKey,
@@ -216,18 +218,6 @@ async function reconcileAndStartStack(prepared: Extract<PreparedServiceConfig, {
   await saveState(prepared.data, true);
   await startStack(prepared.data, CONFIG_DIR);
   resetAutoStartRecoveryState();
-}
-
-function isStackRunning(
-  mode: SavedState['mode'],
-  containers: StatusResponse['containers']
-): boolean {
-  const healthyOrStarting = (status: string | undefined) =>
-    status === 'healthy' || status === 'starting';
-
-  return mode === 'jd'
-    ? healthyOrStarting(containers.translator?.status) && healthyOrStarting(containers.jdc?.status)
-    : healthyOrStarting(containers.translator?.status);
 }
 
 function beginStackOperation(reason: StackBusyReason): boolean {
@@ -1110,6 +1100,14 @@ async function reconcileShouldBeRunning(): Promise<void> {
     const drift = await getServiceConfigDrift(prepared.files, CONFIG_DIR);
     if (running && drift.length === 0) {
       resetAutoStartRecoveryState();
+      return;
+    }
+
+    if (drift.length === 0 && isOnlyTranslatorStopped(state.mode, containers)) {
+      console.log('Auto-start: Translator stopped while JDC is running. Restarting Translator only...');
+      await restartTranslator(prepared.data, CONFIG_DIR);
+      resetAutoStartRecoveryState();
+      console.log('Auto-start: Translator restarted successfully');
       return;
     }
 

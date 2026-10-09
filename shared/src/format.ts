@@ -1,6 +1,12 @@
 import { SUPPORTED_BITCOIN_CORE_VERSIONS, DEFAULT_BITCOIN_PATHS } from './constants.js';
 import type { BitcoinCoreVersion, OperatingSystem } from './types.js';
 
+export function formatSummaryInterval(minutes: number): string {
+  if (minutes === 0) return 'Off';
+  if (minutes % 60 === 0) return `Every ${minutes / 60} h`;
+  return `Every ${minutes} min`;
+}
+
 export function formatBitcoinCoreVersion(version: BitcoinCoreVersion): string {
   return `${version}.x`;
 }

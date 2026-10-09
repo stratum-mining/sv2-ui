@@ -19,9 +19,10 @@ import {
 } from 'lucide-react';
 import { CopyableValue } from '@/components/ui/copyable-value';
 import { ConfigurationTab } from '@/components/settings/ConfigurationTab';
+import { ExperimentalTab } from '@/components/settings/ExperimentalTab';
 
 /**
- * Settings page with Configuration and Appearance tabs.
+ * Settings page with Configuration, Logs, Appearance, Security, and Experimental tabs.
  */
 export function Settings() {
   const { config, updateConfig, resetConfig } = useUiConfig();
@@ -129,17 +130,18 @@ export function Settings() {
           <div>
             <h2 className="text-2xl font-bold tracking-tight">Settings</h2>
             <p className="text-muted-foreground">
-              Manage your configuration and appearance.
+              Manage your configuration, appearance, and experimental features.
             </p>
           </div>
         </div>
 
         <Tabs defaultValue="configuration" value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className="grid w-full grid-cols-4 lg:w-[600px]">
+          <TabsList className="flex w-full justify-start overflow-x-auto [&>button]:shrink-0 sm:grid sm:grid-cols-5 lg:w-[750px]">
             <TabsTrigger value="configuration">Configuration</TabsTrigger>
             <TabsTrigger value="logs">Logs</TabsTrigger>
             <TabsTrigger value="appearance">Appearance</TabsTrigger>
             <TabsTrigger value="security">Security</TabsTrigger>
+            <TabsTrigger value="experimental">Experimental</TabsTrigger>
           </TabsList>
 
           <TabsContent value="configuration">
@@ -371,6 +373,10 @@ export function Settings() {
                 </CardContent>
               </Card>
             </div>
+          </TabsContent>
+
+          <TabsContent value="experimental">
+            <ExperimentalTab />
           </TabsContent>
         </Tabs>
       </div>

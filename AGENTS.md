@@ -57,13 +57,35 @@ Judge a PR against the problem and the expected outcome of the issues it closes.
 
 ## Drafting issues
 
-SRI repositories try to leverage github subissue clustering. When helping humans draft new github issues, always look for issues that might be either adjacent, correlated, duplicate. Also take into consideration umbrella issues that have already been closed.
+SRI repositories try to leverage github subissue clustering. When helping humans draft new github issues, always look for issues that might be either adjacent, correlated, duplicate. Also take into consideration umbrella issues that have already been closed. A security, correctness or robustness issue that falls within one of the area trackers listed under "Triaging audit findings" belongs under that tracker, with its area label.
 
 Many problems that surface in the UI originate in `sv2-apps`: a JDC or tProxy behavior, a config field, a monitoring API response. Search `sv2-apps` issues too, and say whether the fix belongs there, here, or both. An issue here that cannot progress until `sv2-apps` changes gets the `awaiting sv2-apps feature` label.
 
 You always draft github issues under human supervision. Your role here is to help human SRI contributors reason about the issues being reported, not create github noise.
 
 Describe the problem and the outcome a fix must guarantee, observable from outside the code. Implementation and test ideas are suggestions for whoever picks the issue up, so mark them as non-binding: written as requirements, they make reviewers flag every PR that solves the problem another way.
+
+## Triaging audit findings
+
+SRI maintainers triage findings from the private Loupe audit repository `project-loupe/audit-sv2-ui` into public sv2-ui issues, so the work is tracked where it happens. Draft them from `.github/ISSUE_TEMPLATE/audit-finding.md`, and:
+
+- Before publishing, check with the maintainer whether the finding is safe to disclose. A severe finding that can be exploited remotely stays in Loupe until its fix has landed.
+- Open one issue per defect, listing every Loupe finding that reports it: Loupe often reports the same defect more than once.
+- Check the frontend (`src/`), the backend (`server/`) and `shared/` for the same defect, and record the ones that are not affected along with the reason. Validation and parsing often exist on both sides of the API, so a defect in one can have a twin in the other.
+- If the defect comes from something `sv2-ui` takes from `sv2-apps` (a key, a config default, a monitoring field), say so, and check whether `sv2-apps` needs its own issue.
+- Make the issue a sub-issue of exactly one area tracker, and apply that tracker's area label. Trackers are split by area of the code rather than by layer, so a defect whose fix spans `src/` and `server/` still has a single home: the area that owns the invariant the fix restores. Each tracker carries the `tracker` label plus its area label:
+  - `area:auth`, authentication and sessions: credential storage, login sessions, recovery keys, and their UI;
+  - `area:http-boundary`, request origin and HTTP boundary: origin and host checks, and what the backend serves back from upstream APIs;
+  - `area:config-files`, config directory and file handling: the config directory, managed and saved files, files read from the host, and what gets mounted into containers;
+  - `area:docker`, Docker orchestration and generated configs: the Docker connection, container lifecycle, generated TOML and Noise keys, and the config compatibility check;
+  - `area:logs`, logs, diagnostics and active-pool detection: container log reads and downloads, diagnostics, and pool detection from logs;
+  - `area:dashboard`, dashboard metrics: monitoring API reads, aggregation, persisted metrics, and charts;
+  - `area:setup`, setup and settings flows: the setup wizard, settings editing, pool and identity forms, and uploads.
+- Look trackers up by the `tracker` label rather than by issue number. If none of them covers the defect, or the one it belongs to does not exist on GitHub, stop and tell the maintainer instead of stretching another tracker's scope or leaving the issue without a tracker. Propose the tracker it needs: title, area label, the code it covers, and the open issues that would move under it. The maintainer creates trackers and labels, and a new tracker comes with a PR that adds it to the list above, so the list keeps matching GitHub.
+- Leave PR grouping to whoever picks the issue up. If two issues should land together, say why under "Related issues and PRs".
+- Record progress in dated comments rather than by editing the issue body.
+
+An issue and every Loupe finding it lists close together, with the PR that completes the fix. A PR that fixes only part of it references them with `ref` instead of `Closes`.
 
 ## Ponytail
 

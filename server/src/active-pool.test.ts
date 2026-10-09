@@ -72,7 +72,7 @@ test('an invalid attempt cannot clear a previously connected pool', () => {
   const result = detectActivePool(
     POOLS,
     [log('Trying upstream 2 of 2: attacker.example.com:4444')],
-    { activeIndex: 1, pendingIndex: null, connectedIndex: null }
+    { activeIndex: 1, pendingIndex: null, connectedIndex: null, soloFallback: false }
   );
 
   assert.equal(result.activeIndex, 1);
@@ -402,4 +402,45 @@ test('coalesces concurrent incremental polls into one incremental read', async (
     name: 'Fallback',
     index: 1,
   })));
+});
+
+test('detects JDC falling back to solo mining after every upstream failed', () => {
+  const result = detectActivePool(POOLS, [
+    log('Trying upstream 1 of 2: pool=primary.example.com:3333, jds=primary.example.com:3334'),
+    log('Trying upstream 2 of 2: pool=fallback.example.com:4444, jds=fallback.example.com:4445'),
+    log('All upstreams failed after 3 retries each'),
+    log('Upstream initialization failed; falling back to solo mining mode'),
+    log('Starting in solo mining mode'),
+  ]);
+
+  assert.equal(result.activeIndex, null);
+  assert.equal(result.soloFallback, true);
+});
+
+test('a later upstream attempt ends the solo fallback', () => {
+  const result = detectActivePool(POOLS, [
+    log('Starting in solo mining mode'),
+    log('Trying upstream 1 of 2: pool=primary.example.com:3333, jds=primary.example.com:3334'),
+  ]);
+
+  assert.equal(result.soloFallback, false);
+});
+
+test('tracker keeps reporting the solo fallback across incremental polls', async () => {
+  let readCount = 0;
+  const tracker = new ActivePoolTracker(async () => {
+    readCount += 1;
+    return readCount === 1
+      ? [
+          log('Trying upstream 2 of 2: pool=fallback.example.com:4444, jds=fallback.example.com:4445'),
+          log('Starting in solo mining mode'),
+        ]
+      : [];
+  });
+
+  assert.equal(await tracker.getActivePool('jdc', POOLS), null);
+  assert.equal(tracker.isSoloFallback('jdc', POOLS), true);
+  assert.equal(await tracker.getActivePool('jdc', POOLS), null);
+  assert.equal(tracker.isSoloFallback('jdc', POOLS), true);
+  assert.equal(tracker.isSoloFallback('translator', POOLS), false);
 });

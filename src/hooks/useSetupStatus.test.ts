@@ -73,3 +73,34 @@ test('deriveSetupStatus with authentication error', () => {
   assert.strictEqual(result.isUnauthenticated, true);
   assert.strictEqual(result.isOrchestrated, false);
 });
+
+test('deriveSetupStatus reports a degraded JD stack as not running', () => {
+  const data: SetupStatus = {
+    configured: true,
+    running: false,
+    degraded: true,
+    dockerError: null,
+    autoStarting: false,
+    shouldBeRunning: true,
+    miningMode: 'pool',
+    mode: 'jd',
+    poolName: 'Blitzpool',
+    activePoolIndex: 1,
+    activePoolAddress: 'blitzpool.yourdevice.ch',
+    activePoolPort: 3333,
+    activePoolAuthorityPublicKey: 'abc',
+    configurationIssues: [],
+    containers: { translator: null, jdc: null },
+  };
+
+  const result = deriveSetupStatus(data, null, false);
+
+  assert.strictEqual(result.isRunning, false);
+  assert.strictEqual(result.isDegraded, true);
+});
+
+test('deriveSetupStatus treats a missing degraded flag as not degraded', () => {
+  const result = deriveSetupStatus(undefined, null, false);
+
+  assert.strictEqual(result.isDegraded, false);
+});

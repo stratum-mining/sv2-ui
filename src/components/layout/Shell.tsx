@@ -38,6 +38,11 @@ interface NavItem {
   href: string;
 }
 
+function formatEndpoint(address: string, port: number | undefined): string {
+  if (port === undefined) return address;
+  return address.includes(':') ? `[${address}]:${port}` : `${address}:${port}`;
+}
+
 function getNavItems(_features: AppFeatures, _appMode: AppMode): NavItem[] {
   return [
     { icon: LayoutDashboard, label: 'Dashboard', href: '/' },
@@ -49,13 +54,16 @@ function getNavItems(_features: AppFeatures, _appMode: AppMode): NavItem[] {
 interface ShellProps {
   children: React.ReactNode;
   appMode?: AppMode;
-  connectionStatus?: 'connected' | 'connecting' | 'disconnected';
+  connectionStatus?: 'connected' | 'fallback' | 'degraded' | 'connecting' | 'disconnected';
   connectionLabel?: string;
-  poolName?: string;
   activePoolAddress?: string;
   activePoolPort?: number;
   activePoolAuthorityPublicKey?: string;
+  /** 0 for the primary pool, 1+ for a fallback pool. */
+  activePoolIndex?: number;
   uptime?: number;
+  /** The Translator has stayed down for a minute while JDC was connected upstream. */
+  translatorFailing?: boolean;
 }
 
 export function Shell({
@@ -63,11 +71,12 @@ export function Shell({
   appMode = 'translator',
   connectionStatus,
   connectionLabel,
-  poolName,
   activePoolAddress,
   activePoolPort,
   activePoolAuthorityPublicKey,
+  activePoolIndex,
   uptime,
+  translatorFailing = false,
 }: ShellProps) {
   const [location] = useLocation();
   const { isDark, toggle } = useTheme();
@@ -79,7 +88,24 @@ export function Shell({
   const features = getAppFeatures(appMode);
   const navItems = getNavItems(features, appMode);
   const connectedPool = getKnownPoolForConfig(activePoolAddress && activePoolPort && activePoolAuthorityPublicKey ? { address: activePoolAddress, port: activePoolPort, authority_public_key: activePoolAuthorityPublicKey } : undefined);
-  const connectedStatusLabel = connectionLabel || `Connected to ${connectedPool?.name || (poolName ? 'Custom Pool' : 'Pool')}`;
+  const isDegraded = connectionStatus === 'degraded';
+  const onFallbackPool = (connectionStatus === 'fallback' || isDegraded) && !!activePoolIndex;
+  // A configured pool name is free text and could pose as a known pool
+  // (#266), so an unrecognized pool is shown by the address it was
+  // authenticated at instead.
+  const connectedStatusLabel = connectionLabel ||
+    `Connected to ${connectedPool?.name || activePoolAddress || 'Pool'}${onFallbackPool ? ' (fallback)' : ''}`;
+  const customPoolEndpoint = !connectionLabel && !connectedPool && activePoolAddress
+    ? formatEndpoint(activePoolAddress, activePoolPort)
+    : null;
+  const statusHint = isDegraded
+    ? translatorFailing
+      ? 'The Translator keeps stopping. SV2 firmware keeps mining; SV1 firmware cannot connect. Check the logs in Settings.'
+      : 'The Translator is restarting. SV2 firmware keeps mining; SV1 firmware reconnects automatically.'
+    : onFallbackPool
+      ? "Your primary pool isn't working, so mining switched to a fallback pool. It won't switch back on its own."
+      : undefined;
+  const statusTitle = [statusHint, customPoolEndpoint].filter(Boolean).join('\n') || undefined;
 
   // Close on route change
   useEffect(() => { setMenuOpen(false); }, [location]);
@@ -195,14 +221,14 @@ export function Shell({
             {connectionStatus && (
               <>
                 {/* Mobile: dot + uptime only (no status text to save space) */}
-                <span className="flex sm:hidden items-center gap-2 text-xs text-muted-foreground min-w-0">
+                <span title={statusTitle} className="flex sm:hidden items-center gap-2 text-xs text-muted-foreground min-w-0">
                   <StatusDot status={connectionStatus} size="sm" />
                   <span className="truncate">Uptime: {formatUptime(uptime ?? 0)}</span>
                 </span>
                 {/* Desktop: dot + full status text + uptime */}
-                <span className="hidden sm:flex items-center gap-2 text-xs text-muted-foreground shrink-0">
+                <span title={statusTitle} className="hidden sm:flex items-center gap-2 text-xs text-muted-foreground shrink-0">
                   <StatusDot status={connectionStatus} size="sm" />
-                  {connectionStatus === 'connected' ? (
+                  {connectionStatus === 'connected' || connectionStatus === 'fallback' || isDegraded ? (
                     <span className="inline-flex min-w-0 items-center gap-1.5">
                       <span className="truncate">{connectedStatusLabel}</span>
                       {!connectionLabel && connectedPool && (
@@ -217,6 +243,11 @@ export function Shell({
                           imageClassName="h-3.5 w-3.5"
                           fallbackClassName="h-3 w-3"
                         />
+                      )}
+                      {isDegraded && (
+                        <span className={cn('shrink-0', translatorFailing ? 'text-red-500' : 'text-amber-500')}>
+                          {translatorFailing ? '· SV1 offline' : '· SV1 reconnecting'}
+                        </span>
                       )}
                     </span>
                   ) : connectionStatus === 'connecting'

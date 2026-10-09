@@ -33,6 +33,7 @@ import {
 import {
   startStack,
   stopStack,
+  restartTranslator,
   getStackStatus,
   isDockerAvailable,
   ensureDockerAvailable,
@@ -47,6 +48,8 @@ import { createMergedLogWriter } from './logs/merge.js';
 import { CONTAINER_LOG_EXPORT_MAX_BYTES } from './logs/export.js';
 import { getLogDiagnostics, getLogStreams, readCollatedLogLines } from './logs/diagnostics.js';
 import { ActivePoolTracker } from './active-pool.js';
+import { isDegraded, isOnlyTranslatorStopped, isStackRunning } from './stack-health.js';
+import { TranslatorRecovery } from './translator-recovery.js';
 import {
   CredentialError,
   generateRecoveryKey,
@@ -85,14 +88,17 @@ const sessions = new SessionStore();
 const AUTO_START_RETRY_INTERVAL_MS = 30_000;
 const AUTO_START_MIN_BACKOFF_MS = 60_000;
 const AUTO_START_MAX_BACKOFF_MS = 5 * 60_000;
+const TRANSLATOR_RECOVERY_INTERVAL_MS = 5_000;
 
-type StackBusyReason = 'auto-start' | 'manual';
+type StackBusyReason = 'auto-start' | 'manual' | 'translator-restart';
 
 let stackBusyReason: StackBusyReason | null = null;
 let autoStartFailureCount = 0;
 let nextAutoStartAttemptAt = 0;
 let autoStartSetupReviewLogged = false;
 const activePoolTracker = new ActivePoolTracker(readContainerLogs);
+const translatorRecovery = new TranslatorRecovery();
+let translatorRecoveryCheckRunning = false;
 
 function isJsonObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -216,18 +222,6 @@ async function reconcileAndStartStack(prepared: Extract<PreparedServiceConfig, {
   await saveState(prepared.data, true);
   await startStack(prepared.data, CONFIG_DIR);
   resetAutoStartRecoveryState();
-}
-
-function isStackRunning(
-  mode: SavedState['mode'],
-  containers: StatusResponse['containers']
-): boolean {
-  const healthyOrStarting = (status: string | undefined) =>
-    status === 'healthy' || status === 'starting';
-
-  return mode === 'jd'
-    ? healthyOrStarting(containers.translator?.status) && healthyOrStarting(containers.jdc?.status)
-    : healthyOrStarting(containers.translator?.status);
 }
 
 function beginStackOperation(reason: StackBusyReason): boolean {
@@ -531,6 +525,8 @@ app.get('/api/status', async (_req, res) => {
       }
     }
     const running = isStackRunning(state.mode, containers);
+    const recovery = translatorRecovery.status(Date.now());
+    const degraded = isDegraded(state.mode, containers, recovery.recovering);
     const prepared = state.configured ? prepareServiceConfig(state.data) : null;
     const configurationIssues = prepared?.kind === 'needs-setup-review'
       ? prepared.issues
@@ -538,20 +534,29 @@ app.get('/api/status', async (_req, res) => {
     const isSovereignSolo = state.data?.miningMode === 'solo' && state.data?.mode === 'jd';
     const pools = state.data && !isSovereignSolo ? configuredPools(state.data) : [];
 
-    if (!running) {
+    // JDC keeps its upstream while the Translator restarts, so a degraded
+    // stack still reports the pool JDC is connected to.
+    const upstreamUp = running || degraded;
+    if (!upstreamUp) {
       activePoolTracker.reset();
     }
 
-    const activePool = running && state.mode && pools.length > 0
+    const activePool = upstreamUp && state.mode && pools.length > 0
       ? await activePoolTracker.getActivePool(
         state.mode === 'jd' ? 'jdc' : 'translator',
         pools
       )
       : null;
+    const soloFallback = upstreamUp && state.mode === 'jd' && pools.length > 0 &&
+      activePool === null && activePoolTracker.isSoloFallback('jdc', pools);
 
     const response: StatusResponse = {
       configured: state.configured,
       running,
+      degraded,
+      degradedForSecs: degraded ? (recovery.downForSecs ?? 0) : null,
+      translatorFailing: degraded && recovery.failing,
+      soloFallback,
       dockerError,
       autoStarting: stackBusyReason === 'auto-start',
       shouldBeRunning: state.shouldBeRunning,
@@ -577,6 +582,10 @@ app.get('/api/status', async (_req, res) => {
         // redirecting to a blank setup that could overwrite it.
         configured: true,
         running: false,
+        degraded: false,
+        degradedForSecs: null,
+        translatorFailing: false,
+        soloFallback: false,
         dockerError: null,
         autoStarting: false,
         shouldBeRunning: false,
@@ -1113,6 +1122,13 @@ async function reconcileShouldBeRunning(): Promise<void> {
       return;
     }
 
+    // recoverTranslator restarts the Translator on its own schedule. A full
+    // restart here would recreate JDC and send it back to the primary pool.
+    if (drift.length === 0 && isOnlyTranslatorStopped(state.mode, containers)) {
+      resetAutoStartRecoveryState();
+      return;
+    }
+
     if (prepared.data.mode === 'jd') {
       const socketError = await getBitcoinSocketStartupError(prepared.data);
       if (socketError) {
@@ -1141,6 +1157,69 @@ async function reconcileShouldBeRunning(): Promise<void> {
     recordAutoStartFailure(error);
   } finally {
     finishStackOperation('auto-start');
+  }
+}
+
+/**
+ * JD mode only: restart a Translator that stopped while JDC keeps running,
+ * without touching JDC. Runs more often than reconcileShouldBeRunning so
+ * SV1 firmware reconnects within seconds after JDC switches pools, and only
+ * takes the stack lock when it actually restarts the Translator.
+ */
+async function recoverTranslator(): Promise<void> {
+  if (translatorRecoveryCheckRunning || stackBusyReason || isShuttingDown) return;
+  translatorRecoveryCheckRunning = true;
+
+  try {
+    const state = await loadState();
+    if (!state.configured || !state.data || !state.shouldBeRunning || state.mode !== 'jd') {
+      translatorRecovery.observe({ kind: 'not-applicable' }, Date.now());
+      return;
+    }
+
+    const containers = await getStackStatus('jd');
+    if (isStackRunning('jd', containers)) {
+      translatorRecovery.observe({ kind: 'up' }, Date.now());
+      return;
+    }
+    if (!isOnlyTranslatorStopped('jd', containers)) {
+      // JDC is down too: reconcileShouldBeRunning restarts the whole stack.
+      translatorRecovery.observe({ kind: 'not-applicable' }, Date.now());
+      return;
+    }
+
+    // JDC listens for downstreams once it has an upstream or mines solo.
+    const pools = configuredPools(state.data);
+    const jdcHasUpstream = state.data.miningMode === 'solo' || (pools.length > 0 && (
+      await activePoolTracker.getActivePool('jdc', pools) !== null ||
+      activePoolTracker.isSoloFallback('jdc', pools)
+    ));
+    translatorRecovery.observe({ kind: 'down', jdcHasUpstream }, Date.now());
+    if (!translatorRecovery.restartDue()) return;
+
+    // Setup review and configuration drift need the full restart path.
+    const prepared = prepareServiceConfig(state.data, { logFailure: false });
+    if (prepared.kind !== 'ready') return;
+    if ((await getServiceConfigDrift(prepared.files, CONFIG_DIR)).length > 0) return;
+
+    if (!beginStackOperation('translator-restart')) return;
+    try {
+      // A manual stop or restart may have finished since the check above.
+      if (!isOnlyTranslatorStopped('jd', await getStackStatus('jd'))) return;
+
+      translatorRecovery.recordRestart();
+      console.log('Translator recovery: Translator stopped while JDC is running. Restarting Translator only...');
+      await restartTranslator(prepared.data, CONFIG_DIR);
+      console.log('Translator recovery: Translator restarted');
+    } catch (error) {
+      console.error('Translator recovery: restart failed:', error);
+    } finally {
+      finishStackOperation('translator-restart');
+    }
+  } catch {
+    // Docker or saved-state problems are reported by reconcileShouldBeRunning.
+  } finally {
+    translatorRecoveryCheckRunning = false;
   }
 }
 
@@ -1176,6 +1255,9 @@ app.listen(PORT, () => {
   setInterval(() => {
     void reconcileShouldBeRunning();
   }, AUTO_START_RETRY_INTERVAL_MS);
+  setInterval(() => {
+    void recoverTranslator();
+  }, TRANSLATOR_RECOVERY_INTERVAL_MS);
 });
 
 // Graceful shutdown: stop mining containers when sv2-ui exits

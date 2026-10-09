@@ -28,3 +28,6 @@ npm-debug.log*
 
 # Generated config files
 data/config/
+
+# Personal agent guidance (see AGENTS.md)
+AGENTS_CUSTOM.md

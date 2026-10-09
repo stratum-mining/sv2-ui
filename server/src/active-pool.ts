@@ -19,6 +19,9 @@ type DetectionState = {
   activeIndex: number | null;
   pendingIndex: number | null;
   connectedIndex: number | null;
+  // JDC tried every configured upstream and is mining solo to the
+  // configured solo fallback address until it restarts.
+  soloFallback: boolean;
 };
 
 type TrackerState = DetectionState & {
@@ -29,6 +32,7 @@ type TrackerState = DetectionState & {
 const TRYING_UPSTREAM_PATTERN = /\bTrying upstream\s+(\d+)\s+of\s+\d+:\s+(?:pool=)?(\[[^\]]+\]|[^:\s,]+):(\d{1,5})(?:[,\s]|$)/;
 const CONNECTED_UPSTREAM_PATTERN = /\bConnected to upstream at\s+(\[[^\]]+\]|[^:\s]+):(\d{1,5})(?:\s|$)/;
 const SETUP_CONNECTION_SUCCESS_PATTERN = /\bSetupConnectionSuccess(?:\(|\b)/;
+const SOLO_MINING_PATTERN = /\bStarting in solo mining mode\b/;
 
 function normalizeHost(host: string): string {
   return host.replace(/^\[|\]$/g, '').toLowerCase();
@@ -56,11 +60,13 @@ export function detectActivePool(
     activeIndex: null,
     pendingIndex: null,
     connectedIndex: null,
+    soloFallback: false,
   }
 ): DetectionState {
   let activeIndex = initialState.activeIndex;
   let pendingIndex = initialState.pendingIndex;
   let connectedIndex = initialState.connectedIndex;
+  let soloFallback = initialState.soloFallback;
 
   for (const line of lines) {
     const tryingMatch = line.message.match(TRYING_UPSTREAM_PATTERN);
@@ -80,6 +86,15 @@ export function detectActivePool(
       connectedIndex = null;
       // A new attempt means the previous upstream is no longer current.
       activeIndex = null;
+      soloFallback = false;
+      continue;
+    }
+
+    if (SOLO_MINING_PATTERN.test(line.message)) {
+      activeIndex = null;
+      pendingIndex = null;
+      connectedIndex = null;
+      soloFallback = true;
       continue;
     }
 
@@ -99,13 +114,14 @@ export function detectActivePool(
     if (SETUP_CONNECTION_SUCCESS_PATTERN.test(line.message)) {
       if (connectedIndex !== null && pools[connectedIndex]) {
         activeIndex = connectedIndex;
+        soloFallback = false;
       }
       pendingIndex = null;
       connectedIndex = null;
     }
   }
 
-  return { activeIndex, pendingIndex, connectedIndex };
+  return { activeIndex, pendingIndex, connectedIndex, soloFallback };
 }
 
 function getConfigKey(container: LogContainerRole, pools: PoolConfig[]): string {
@@ -138,6 +154,14 @@ export class ActivePoolTracker {
   private generation = 0;
 
   constructor(private readonly readLogs: ActivePoolLogProvider) {}
+
+  /**
+   * Whether the last getActivePool read for this configuration saw JDC fall
+   * back to solo mining after every configured upstream failed.
+   */
+  isSoloFallback(container: LogContainerRole, pools: PoolConfig[]): boolean {
+    return this.state?.configKey === getConfigKey(container, pools) && this.state.soloFallback;
+  }
 
   reset(): void {
     this.generation += 1;
@@ -206,6 +230,7 @@ export class ActivePoolTracker {
         activeIndex,
         pendingIndex: detected.pendingIndex,
         connectedIndex: detected.connectedIndex,
+        soloFallback: detected.soloFallback,
         // Docker's `since` value is inclusive and has one-second precision.
         // Overlap one second so events at the polling boundary are not lost.
         since: Math.max(0, readStartedAt - 1),

@@ -10,6 +10,8 @@ export interface SetupStatus {
   degradedForSecs?: number | null;
   /** The Translator has stayed down for a minute while JDC was connected upstream. */
   translatorFailing?: boolean;
+  /** JD pool mining: every pool failed and JDC is mining solo until restarted. */
+  soloFallback?: boolean;
   dockerError: string | null;
   autoStarting?: boolean;
   shouldBeRunning?: boolean;
@@ -92,6 +94,7 @@ export function deriveSetupStatus(
     isDegraded: status?.degraded ?? false,
     degradedForSecs: status?.degradedForSecs ?? null,
     translatorFailing: status?.translatorFailing ?? false,
+    soloFallback: status?.soloFallback ?? false,
     dockerError: status?.dockerError ?? null,
     autoStarting: status?.autoStarting ?? false,
     shouldBeRunning: status?.shouldBeRunning ?? false,

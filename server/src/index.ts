@@ -547,6 +547,8 @@ app.get('/api/status', async (_req, res) => {
         pools
       )
       : null;
+    const soloFallback = upstreamUp && state.mode === 'jd' && pools.length > 0 &&
+      activePool === null && activePoolTracker.isSoloFallback('jdc', pools);
 
     const response: StatusResponse = {
       configured: state.configured,
@@ -554,6 +556,7 @@ app.get('/api/status', async (_req, res) => {
       degraded,
       degradedForSecs: degraded ? (recovery.downForSecs ?? 0) : null,
       translatorFailing: degraded && recovery.failing,
+      soloFallback,
       dockerError,
       autoStarting: stackBusyReason === 'auto-start',
       shouldBeRunning: state.shouldBeRunning,
@@ -582,6 +585,7 @@ app.get('/api/status', async (_req, res) => {
         degraded: false,
         degradedForSecs: null,
         translatorFailing: false,
+        soloFallback: false,
         dockerError: null,
         autoStarting: false,
         shouldBeRunning: false,
@@ -1184,9 +1188,12 @@ async function recoverTranslator(): Promise<void> {
       return;
     }
 
+    // JDC listens for downstreams once it has an upstream or mines solo.
     const pools = configuredPools(state.data);
-    const jdcHasUpstream = state.data.miningMode === 'solo' ||
-      (pools.length > 0 && await activePoolTracker.getActivePool('jdc', pools) !== null);
+    const jdcHasUpstream = state.data.miningMode === 'solo' || (pools.length > 0 && (
+      await activePoolTracker.getActivePool('jdc', pools) !== null ||
+      activePoolTracker.isSoloFallback('jdc', pools)
+    ));
     translatorRecovery.observe({ kind: 'down', jdcHasUpstream }, Date.now());
     if (!translatorRecovery.restartDue()) return;
 

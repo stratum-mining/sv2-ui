@@ -49,7 +49,7 @@ function getNavItems(_features: AppFeatures, _appMode: AppMode): NavItem[] {
 interface ShellProps {
   children: React.ReactNode;
   appMode?: AppMode;
-  connectionStatus?: 'connected' | 'degraded' | 'connecting' | 'disconnected';
+  connectionStatus?: 'connected' | 'fallback' | 'degraded' | 'connecting' | 'disconnected';
   connectionLabel?: string;
   poolName?: string;
   activePoolAddress?: string;
@@ -211,7 +211,7 @@ export function Shell({
                 {/* Desktop: dot + full status text + uptime */}
                 <span title={statusHint} className="hidden sm:flex items-center gap-2 text-xs text-muted-foreground shrink-0">
                   <StatusDot status={connectionStatus} size="sm" />
-                  {connectionStatus === 'connected' || isDegraded ? (
+                  {connectionStatus === 'connected' || connectionStatus === 'fallback' || isDegraded ? (
                     <span className="inline-flex min-w-0 items-center gap-1.5">
                       <span className="truncate">{connectedStatusLabel}</span>
                       {!connectionLabel && connectedPool && (

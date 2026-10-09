@@ -24,6 +24,11 @@ export interface StatusResponse {
   degradedForSecs: number | null;
   /** The Translator has stayed down for a minute while JDC was connected upstream. */
   translatorFailing: boolean;
+  /**
+   * JD pool mining only: every configured pool failed, so JDC is mining solo
+   * to the solo fallback address until mining restarts.
+   */
+  soloFallback: boolean;
   dockerError: string | null;
   autoStarting?: boolean;
   shouldBeRunning?: boolean;

@@ -89,6 +89,7 @@ export function UnifiedDashboard() {
     isRunning,
     isDegraded,
     degradedForSecs,
+    soloFallback,
     autoStarting,
     dockerError,
     miningMode,
@@ -684,6 +685,32 @@ export function UnifiedDashboard() {
                 Start Mining
               </button>
             )}
+          </div>
+        </Alert>
+      )}
+
+      {/* JDC fell back to solo mining after every pool failed (JD mode) */}
+      {!configurationIssue && soloFallback && (
+        <Alert variant="warning">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex flex-col gap-1">
+              <AlertTitle>Solo Mining (fallback)</AlertTitle>
+              <span>
+                Your pools aren't working. No pool payouts until you're back on a pool; if you
+                find a block, the reward goes to your solo fallback address.
+              </span>
+            </div>
+            {/* JDC stays solo until it restarts, which retries the pools in order. */}
+            <button
+              onClick={handleStartMining}
+              disabled={isStarting}
+              className="flex h-9 shrink-0 items-center gap-2 self-start rounded-full bg-yellow-500 px-4 font-medium text-black transition-colors hover:bg-yellow-400 disabled:opacity-50 sm:self-auto"
+            >
+              {isStarting && (
+                <span className="h-4 w-4 rounded-full border-2 border-black/30 border-t-black animate-spin" />
+              )}
+              Try my pools again
+            </button>
           </div>
         </Alert>
       )}

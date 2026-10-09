@@ -11,7 +11,7 @@ test('does not report a configured pool as connected before SV2 setup succeeds',
     isOrchestrated: true,
     isRunning: true,
     isDegraded: false,
-    isSovereignSolo: false,
+    isSoloMining: false,
     activePoolIndex: null,
   }), 'connecting');
 });
@@ -24,7 +24,7 @@ test('reports connected only after an orchestrated pool is confirmed', () => {
     isOrchestrated: true,
     isRunning: true,
     isDegraded: false,
-    isSovereignSolo: false,
+    isSoloMining: false,
     activePoolIndex: 2,
   }), 'connected');
 });
@@ -37,7 +37,7 @@ test('keeps standalone monitoring compatible without an active pool index', () =
     isOrchestrated: false,
     isRunning: false,
     isDegraded: false,
-    isSovereignSolo: false,
+    isSoloMining: false,
     activePoolIndex: null,
   }), 'connected');
 });
@@ -50,7 +50,7 @@ test('reports a JD stack as degraded while only the Translator is down', () => {
     isOrchestrated: true,
     isRunning: false,
     isDegraded: true,
-    isSovereignSolo: false,
+    isSoloMining: false,
     activePoolIndex: 1,
   }), 'degraded');
 });
@@ -63,7 +63,7 @@ test('reports sovereign solo as degraded while only the Translator is down', () 
     isOrchestrated: true,
     isRunning: false,
     isDegraded: true,
-    isSovereignSolo: true,
+    isSoloMining: true,
     activePoolIndex: null,
   }), 'degraded');
 });
@@ -76,7 +76,7 @@ test('keeps connecting while JDC works through its pools and the Translator is d
     isOrchestrated: true,
     isRunning: false,
     isDegraded: true,
-    isSovereignSolo: false,
+    isSoloMining: false,
     activePoolIndex: null,
   }), 'connecting');
 });
@@ -89,7 +89,7 @@ test('reports disconnected when JDC is down too', () => {
     isOrchestrated: true,
     isRunning: false,
     isDegraded: false,
-    isSovereignSolo: false,
+    isSoloMining: false,
     activePoolIndex: null,
   }), 'disconnected');
 });
@@ -103,7 +103,35 @@ test('shows connecting, not disconnected, while JDC switches pools before the Tr
     isOrchestrated: true,
     isRunning: false,
     isDegraded: true,
-    isSovereignSolo: false,
+    isSoloMining: false,
     activePoolIndex: null,
   }), 'connecting');
+});
+
+test('reports JDC solo fallback as its own state instead of waiting for a pool', () => {
+  assert.equal(resolveConnectionStatus({
+    isHealthLoading: false,
+    servicesHealthy: true,
+    translatorOnlyDown: false,
+    isOrchestrated: true,
+    isRunning: true,
+    isDegraded: false,
+    isSoloMining: true,
+    isSoloFallback: true,
+    activePoolIndex: null,
+  }), 'fallback');
+});
+
+test('a Translator outage during the solo fallback still reads as degraded', () => {
+  assert.equal(resolveConnectionStatus({
+    isHealthLoading: false,
+    servicesHealthy: false,
+    translatorOnlyDown: true,
+    isOrchestrated: true,
+    isRunning: false,
+    isDegraded: true,
+    isSoloMining: true,
+    isSoloFallback: true,
+    activePoolIndex: null,
+  }), 'degraded');
 });

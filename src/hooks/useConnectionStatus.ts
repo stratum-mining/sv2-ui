@@ -2,7 +2,7 @@ import { useTranslatorHealth, useJdcHealth, usePoolData } from './usePoolData';
 import { useSetupStatus } from './useSetupStatus';
 
 export interface ConnectionStatus {
-  status: 'connected' | 'degraded' | 'connecting' | 'disconnected';
+  status: 'connected' | 'fallback' | 'degraded' | 'connecting' | 'disconnected';
   statusLabel: string | null;
   poolName: string | null;
   activePoolAddress: string | null;
@@ -22,7 +22,10 @@ type ResolveConnectionStatusOptions = {
   isRunning: boolean;
   /** Server-side: JDC is up while the Translator is down or restarting. */
   isDegraded: boolean;
-  isSovereignSolo: boolean;
+  /** Sovereign solo, or JDC's solo fallback: there is no pool to confirm. */
+  isSoloMining: boolean;
+  /** JDC fell back to solo mining after every configured pool failed. */
+  isSoloFallback?: boolean;
   activePoolIndex: number | null;
 };
 
@@ -33,15 +36,17 @@ export function resolveConnectionStatus({
   isOrchestrated,
   isRunning,
   isDegraded,
-  isSovereignSolo,
+  isSoloMining,
+  isSoloFallback = false,
   activePoolIndex,
 }: ResolveConnectionStatusOptions): ConnectionStatus['status'] {
-  const hasConfirmedPool = !isOrchestrated || isSovereignSolo || activePoolIndex !== null;
-  const isAwaitingPool = isOrchestrated && (isRunning || isDegraded) && !isSovereignSolo && activePoolIndex === null;
+  const hasConfirmedPool = !isOrchestrated || isSoloMining || activePoolIndex !== null;
+  const isAwaitingPool = isOrchestrated && (isRunning || isDegraded) && !isSoloMining && activePoolIndex === null;
 
   if (isHealthLoading || isAwaitingPool) return 'connecting';
   if (!hasConfirmedPool) return 'disconnected';
-  if (servicesHealthy) return 'connected';
+  // Mining works, but without the pools the user set up: no pool payouts.
+  if (servicesHealthy) return isSoloFallback ? 'fallback' : 'connected';
   // JDC stays on its upstream and keeps mining for SV2 firmware; SV1
   // firmware reconnects once auto-start brings the Translator back.
   return translatorOnlyDown ? 'degraded' : 'disconnected';
@@ -57,6 +62,7 @@ export function useConnectionStatus(): ConnectionStatus {
     isRunning,
     isDegraded,
     translatorFailing,
+    soloFallback,
     miningMode,
     mode: templateMode,
     poolName,
@@ -66,7 +72,7 @@ export function useConnectionStatus(): ConnectionStatus {
     activePoolAuthorityPublicKey,
     containers,
   } = useSetupStatus();
-  const { isJdMode, global: poolGlobal } = usePoolData(templateMode);
+  const { isJdMode, global: poolGlobal, isError: poolGlobalError } = usePoolData(templateMode);
 
   const { data: translatorOk, isLoading: translatorHealthLoading, isError: translatorHealthError } =
     useTranslatorHealth();
@@ -91,20 +97,25 @@ export function useConnectionStatus(): ConnectionStatus {
     isOrchestrated,
     isRunning,
     isDegraded,
-    isSovereignSolo,
+    isSoloMining: isSovereignSolo || soloFallback,
+    isSoloFallback: soloFallback,
     activePoolIndex,
   });
-  // In JD mode the uptime comes from JDC, which keeps running while degraded.
-  const hasUpstream = status === 'connected' || status === 'degraded';
+  const hasUpstream = status === 'connected' || status === 'fallback' || status === 'degraded';
+  // The uptime is the service's own (JDC in JD mode), so it keeps counting
+  // while that service is still connecting to or switching pools.
+  const showUptime = status !== 'disconnected' && !poolGlobalError;
 
   return {
     status,
-    statusLabel: isSovereignSolo ? 'Sovereign Solo' : null,
+    statusLabel: isSovereignSolo
+      ? 'Sovereign Solo'
+      : soloFallback ? 'Solo Mining (fallback)' : null,
     poolName: hasUpstream ? (poolName ?? null) : null,
     activePoolAddress: hasUpstream ? activePoolAddress : null,
     activePoolPort: hasUpstream ? activePoolPort : null,
     activePoolAuthorityPublicKey: hasUpstream ? activePoolAuthorityPublicKey : null,
-    uptime:   hasUpstream ? (poolGlobal?.uptime_secs ?? 0) : 0,
+    uptime:   showUptime ? (poolGlobal?.uptime_secs ?? 0) : 0,
     translatorFailing: status === 'degraded' && translatorFailing,
   };
 }

@@ -97,3 +97,24 @@ test('says SV1 is offline once the Translator keeps failing', () => {
   assert.match(html, /SV1 offline/);
   assert.doesNotMatch(html, /SV1 reconnecting/);
 });
+
+test('labels the solo fallback without a degraded note', () => {
+  const queryClient = new QueryClient();
+  const html = renderToStaticMarkup(
+    <QueryClientProvider client={queryClient}>
+      <Router ssrPath="/">
+        <Shell
+          connectionStatus="fallback"
+          connectionLabel="Solo Mining (fallback)"
+          uptime={125}
+        >
+          <div>dashboard</div>
+        </Shell>
+      </Router>
+    </QueryClientProvider>,
+  );
+
+  assert.match(html, /Solo Mining \(fallback\)/);
+  assert.match(html, /bg-amber-500/);
+  assert.doesNotMatch(html, /SV1 reconnecting|Disconnected/);
+});

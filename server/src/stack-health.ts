@@ -26,3 +26,16 @@ export function isStackRunning(mode: StackMode, containers: StackContainers): bo
 export function isOnlyTranslatorStopped(mode: StackMode, containers: StackContainers): boolean {
   return mode === 'jd' && isUp(containers.jdc?.status) && !isUp(containers.translator?.status);
 }
+
+/**
+ * JDC is up while the Translator is down, or was restarted and has not yet
+ * stayed up long enough to count as recovered.
+ */
+export function isDegraded(
+  mode: StackMode,
+  containers: StackContainers,
+  translatorRecovering: boolean
+): boolean {
+  return isOnlyTranslatorStopped(mode, containers) ||
+    (translatorRecovering && mode === 'jd' && isUp(containers.jdc?.status));
+}

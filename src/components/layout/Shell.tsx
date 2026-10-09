@@ -56,6 +56,8 @@ interface ShellProps {
   activePoolPort?: number;
   activePoolAuthorityPublicKey?: string;
   uptime?: number;
+  /** The Translator has stayed down for a minute while JDC was connected upstream. */
+  translatorFailing?: boolean;
 }
 
 export function Shell({
@@ -68,6 +70,7 @@ export function Shell({
   activePoolPort,
   activePoolAuthorityPublicKey,
   uptime,
+  translatorFailing = false,
 }: ShellProps) {
   const [location] = useLocation();
   const { isDark, toggle } = useTheme();
@@ -81,9 +84,11 @@ export function Shell({
   const connectedPool = getKnownPoolForConfig(activePoolAddress && activePoolPort && activePoolAuthorityPublicKey ? { address: activePoolAddress, port: activePoolPort, authority_public_key: activePoolAuthorityPublicKey } : undefined);
   const connectedStatusLabel = connectionLabel || `Connected to ${connectedPool?.name || (poolName ? 'Custom Pool' : 'Pool')}`;
   const isDegraded = connectionStatus === 'degraded';
-  const statusHint = isDegraded
-    ? 'The Translator is restarting. SV2 firmware keeps mining; SV1 firmware reconnects automatically.'
-    : undefined;
+  const statusHint = !isDegraded
+    ? undefined
+    : translatorFailing
+      ? 'The Translator keeps stopping. SV2 firmware keeps mining; SV1 firmware cannot connect. Check the logs in Settings.'
+      : 'The Translator is restarting. SV2 firmware keeps mining; SV1 firmware reconnects automatically.';
 
   // Close on route change
   useEffect(() => { setMenuOpen(false); }, [location]);
@@ -223,7 +228,9 @@ export function Shell({
                         />
                       )}
                       {isDegraded && (
-                        <span className="shrink-0 text-amber-500">· SV1 reconnecting</span>
+                        <span className={cn('shrink-0', translatorFailing ? 'text-red-500' : 'text-amber-500')}>
+                          {translatorFailing ? '· SV1 offline' : '· SV1 reconnecting'}
+                        </span>
                       )}
                     </span>
                   ) : connectionStatus === 'connecting'

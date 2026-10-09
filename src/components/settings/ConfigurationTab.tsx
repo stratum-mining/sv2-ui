@@ -80,6 +80,7 @@ export function ConfigurationTab() {
     isConfigured,
     isRunning,
     isDegraded,
+    translatorFailing,
     miningMode: statusMiningMode,
     mode: statusMode,
     activePoolIndex,
@@ -410,7 +411,7 @@ export function ConfigurationTab() {
             <div className="flex min-w-0 items-center gap-3">
               <StatusDot status={isRunning ? 'connected' : isDegraded ? 'degraded' : 'idle'} size="lg" />
               <div className="min-w-0">
-                <p className="font-medium">{isRunning ? 'Services Running' : isDegraded ? 'Translator Restarting' : 'Services Stopped'}</p>
+                <p className="font-medium">{isRunning ? 'Services Running' : isDegraded ? (translatorFailing ? 'Translator Keeps Stopping' : 'Translator Restarting') : 'Services Stopped'}</p>
                 <p className="text-sm text-muted-foreground">
                   {isSovereignSolo ? 'Sovereign Solo Mining' : isSoloMode ? 'Solo Mining' : 'Pool Mining'}
                   {isJdMode && !isSovereignSolo && ' (Job Declaration)'}

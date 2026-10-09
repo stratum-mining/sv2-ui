@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import type { HealthStatus } from '@sv2-ui/shared';
 import type { ContainerStatus } from './types.js';
-import { isOnlyTranslatorStopped, isStackRunning } from './stack-health.js';
+import { isDegraded, isOnlyTranslatorStopped, isStackRunning } from './stack-health.js';
 
 function container(name: string, status: HealthStatus): ContainerStatus {
   return { id: name, name, status, ports: {} };
@@ -39,4 +39,15 @@ test('a fully running stack and no-JD mode never take the Translator-only path',
   assert.equal(isOnlyTranslatorStopped('jd', up), false);
   assert.equal(isOnlyTranslatorStopped('no-jd', { translator: container('sv2-translator', 'stopped'), jdc: null }), false);
   assert.equal(isOnlyTranslatorStopped(null, { translator: null, jdc: up.jdc }), false);
+});
+
+test('a restarted Translator keeps the stack degraded until recovery confirms it', () => {
+  assert.equal(isDegraded('jd', up, false), false);
+  assert.equal(isDegraded('jd', up, true), true);
+  assert.equal(isDegraded('jd', { ...up, translator: null }, false), true);
+});
+
+test('a stopped JDC or no-JD mode is never degraded', () => {
+  assert.equal(isDegraded('jd', { translator: null, jdc: container('sv2-jdc', 'stopped') }, true), false);
+  assert.equal(isDegraded('no-jd', { translator: null, jdc: null }, true), false);
 });

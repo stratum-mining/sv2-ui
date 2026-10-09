@@ -9,6 +9,8 @@ export interface ConnectionStatus {
   activePoolPort: number | null;
   activePoolAuthorityPublicKey: string | null;
   uptime: number;
+  /** The Translator has stayed down for a minute while JDC was connected upstream. */
+  translatorFailing: boolean;
 }
 
 type ResolveConnectionStatusOptions = {
@@ -18,6 +20,8 @@ type ResolveConnectionStatusOptions = {
   translatorOnlyDown: boolean;
   isOrchestrated: boolean;
   isRunning: boolean;
+  /** Server-side: JDC is up while the Translator is down or restarting. */
+  isDegraded: boolean;
   isSovereignSolo: boolean;
   activePoolIndex: number | null;
 };
@@ -28,11 +32,12 @@ export function resolveConnectionStatus({
   translatorOnlyDown,
   isOrchestrated,
   isRunning,
+  isDegraded,
   isSovereignSolo,
   activePoolIndex,
 }: ResolveConnectionStatusOptions): ConnectionStatus['status'] {
   const hasConfirmedPool = !isOrchestrated || isSovereignSolo || activePoolIndex !== null;
-  const isAwaitingPool = isOrchestrated && (isRunning || translatorOnlyDown) && !isSovereignSolo && activePoolIndex === null;
+  const isAwaitingPool = isOrchestrated && (isRunning || isDegraded) && !isSovereignSolo && activePoolIndex === null;
 
   if (isHealthLoading || isAwaitingPool) return 'connecting';
   if (!hasConfirmedPool) return 'disconnected';
@@ -50,6 +55,8 @@ export function useConnectionStatus(): ConnectionStatus {
   const {
     isOrchestrated,
     isRunning,
+    isDegraded,
+    translatorFailing,
     miningMode,
     mode: templateMode,
     poolName,
@@ -57,6 +64,7 @@ export function useConnectionStatus(): ConnectionStatus {
     activePoolAddress,
     activePoolPort,
     activePoolAuthorityPublicKey,
+    containers,
   } = useSetupStatus();
   const { isJdMode, global: poolGlobal } = usePoolData(templateMode);
 
@@ -69,14 +77,20 @@ export function useConnectionStatus(): ConnectionStatus {
   const jdcHealthy        = jdcOk === true && !jdcHealthError;
   const isHealthLoading   = translatorHealthLoading || (isJdMode && jdcHealthLoading);
   const isSovereignSolo   = miningMode === 'solo' && templateMode === 'jd';
-  const servicesHealthy   = isJdMode ? (translatorHealthy && jdcHealthy) : translatorHealthy;
-  const translatorOnlyDown = isJdMode && jdcHealthy && !translatorHealthy;
+  // JD mode: the status poll can see the Translator container stop before
+  // its health check fails, e.g. on the same poll that reports JDC's new pool.
+  const translatorStopped = isDegraded &&
+    containers.translator?.status !== 'healthy' && containers.translator?.status !== 'starting';
+  const translatorUp      = translatorHealthy && !translatorStopped;
+  const servicesHealthy   = isJdMode ? (translatorUp && jdcHealthy) : translatorHealthy;
+  const translatorOnlyDown = isJdMode && jdcHealthy && !translatorUp;
   const status = resolveConnectionStatus({
     isHealthLoading,
     servicesHealthy,
     translatorOnlyDown,
     isOrchestrated,
     isRunning,
+    isDegraded,
     isSovereignSolo,
     activePoolIndex,
   });
@@ -91,5 +105,6 @@ export function useConnectionStatus(): ConnectionStatus {
     activePoolPort: hasUpstream ? activePoolPort : null,
     activePoolAuthorityPublicKey: hasUpstream ? activePoolAuthorityPublicKey : null,
     uptime:   hasUpstream ? (poolGlobal?.uptime_secs ?? 0) : 0,
+    translatorFailing: status === 'degraded' && translatorFailing,
   };
 }

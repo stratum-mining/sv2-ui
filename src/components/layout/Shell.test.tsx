@@ -77,3 +77,23 @@ test('keeps the pool and explains SV1 reconnecting while the stack is degraded',
   assert.match(html, /SV1 reconnecting/);
   assert.doesNotMatch(html, /Disconnected/);
 });
+
+test('says SV1 is offline once the Translator keeps failing', () => {
+  const queryClient = new QueryClient();
+  const html = renderToStaticMarkup(
+    <QueryClientProvider client={queryClient}>
+      <Router ssrPath="/">
+        <Shell
+          connectionStatus="degraded"
+          connectionLabel="Sovereign Solo"
+          translatorFailing
+        >
+          <div>dashboard</div>
+        </Shell>
+      </Router>
+    </QueryClientProvider>,
+  );
+
+  assert.match(html, /SV1 offline/);
+  assert.doesNotMatch(html, /SV1 reconnecting/);
+});

@@ -28,3 +28,8 @@ npm-debug.log*
 
 # Generated config files
 data/config/
+
+# Playwright artifacts
+.playwright/
+playwright-report/
+test-results/

@@ -82,8 +82,8 @@ export function OnboardingLayout({ onBack, progress, stepKey, children }: Onboar
         <ThemeToggle isDark={isDark} toggle={toggle} />
       </div>
 
-      {/* Step content */}
-      <div className="flex-1 flex flex-col overflow-y-auto">
+      {/* Step content. No overflow here: the page itself must scroll for sticky step actions to stay in view. */}
+      <div className="flex-1 flex flex-col">
         <div className="flex-1 flex flex-col items-center justify-center px-6 py-10">
           <div key={stepKey} className="w-full max-w-xl animate-fade-in-up">
             {children}

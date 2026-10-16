@@ -98,6 +98,13 @@ export interface LogDiagnosticsResponse {
   generatedAt: string;
   streams: LogStreamDefinition[];
   diagnostics: LogDiagnostic[];
+  /**
+   * True when some containers in the stream could not be read — for example
+   * while one is removed and recreated by a restart — so `diagnostics` was
+   * produced from an incomplete set of logs. Clients hold their previous
+   * snapshot rather than reading it as proof that a diagnostic has cleared.
+   */
+  partial: boolean;
 }
 
 export interface ContainerLogsResponse {

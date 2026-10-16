@@ -42,6 +42,34 @@ test('skips missing containers while collecting diagnostics', async () => {
   assert.equal(response.streams.length, 1);
   assert.deepEqual(response.streams[0]?.containers, ['translator', 'jdc']);
   assert.deepEqual(response.diagnostics, []);
+  assert.equal(response.partial, true);
+});
+
+test('does not report a fully stopped stack as partial', async () => {
+  const response = await getLogDiagnostics(
+    'no-jd',
+    true,
+    async () => {
+      throw createMissingContainerError('sv2-translator');
+    }
+  );
+
+  assert.equal(response.partial, false, 'every container missing is complete knowledge');
+  assert.deepEqual(response.diagnostics, []);
+});
+
+test('reports a read of every container as not partial', async () => {
+  const response = await getLogDiagnostics('jd', true, async () => [SAMPLE_JDC_LINE]);
+
+  assert.equal(response.partial, false);
+  assert.deepEqual(response.diagnostics, []);
+});
+
+test('reports an unconfigured stack as not partial', async () => {
+  const response = await getLogDiagnostics(null, false, async () => []);
+
+  assert.equal(response.partial, false);
+  assert.deepEqual(response.diagnostics, []);
 });
 
 test('rethrows non-missing-container log failures', async () => {

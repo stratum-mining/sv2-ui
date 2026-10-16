@@ -6,9 +6,12 @@ import {
   jdcBitcoinCoreDisconnectedParser,
   jdcBitcoinCoreInitialBlockDownloadParser,
   jdcBitcoinCoreUnsupportedMiningInterfaceParser,
+  evaluateDiagnosisPolicy,
+  getAutoRetryPolicy,
+  logParsers,
 } from './parsers.js';
 import { collectDiagnostics } from './parsers.js';
-import type { ContainerLogLine } from './types.js';
+import type { AutoRetryPolicy, ContainerLogLine } from './types.js';
 
 function createLogLine(
   container: 'translator' | 'jdc',
@@ -409,6 +412,65 @@ test('invalidCertificateParser: detects InvalidCertificate in translator', () =>
   assert.ok(diagnostics[0]?.containers.includes('translator'));
 });
 
+const SETUP_SUCCESS = 'INFO translator_sv2::sv2::upstream::common_message_handler: Received: SetupConnectionSuccess(used_version: 2, flags: 0x00000000)';
+const CHANNEL_OPENED = 'INFO translator_sv2::sv2::channel_manager: Received: OpenStandardMiningChannelSuccess(request_id: 1, channel_id: 1, target: [0u8; 32], nominal_hash_rate: 4.0, max_target: [7u8; 32], min_extranonce_size: 0)';
+const SOCKET_CLOSED = 'ERROR translator_sv2::io_task: Reader error error=SocketClosed';
+
+test('upstreamClosedBeforeChannelParser: detects a handshake closed without a channel', () => {
+  const lines = [
+    SAMPLE_TRANSLATOR_LINE('INFO translator_sv2: Starting Translator Proxy...'),
+    SAMPLE_TRANSLATOR_LINE(SETUP_SUCCESS),
+    SAMPLE_TRANSLATOR_LINE(SOCKET_CLOSED),
+    SAMPLE_TRANSLATOR_LINE('ERROR translator_sv2::translator_runtime: All upstreams failed after 3 retries each'),
+  ];
+
+  const diagnostic = collectDiagnostics(lines)[0];
+
+  assert.equal(diagnostic?.code, 'upstream-closed-before-channel');
+  assert.equal(diagnostic?.severity, 'error');
+  assert.equal(diagnostic?.containers[0], 'translator');
+  assert.equal(diagnostic?.detectedAt, '2026-04-22T18:40:21.344598Z');
+  assert.equal(diagnostic?.evidence.length, 2);
+  assert.ok(diagnostic?.evidence[0]?.line.includes('SetupConnectionSuccess'));
+  assert.ok(diagnostic?.evidence[1]?.line.includes('SocketClosed'));
+});
+
+test('upstreamClosedBeforeChannelParser: clears when the next attempt opens a channel', () => {
+  const lines = [
+    SAMPLE_TRANSLATOR_LINE(SETUP_SUCCESS),
+    SAMPLE_TRANSLATOR_LINE(SOCKET_CLOSED),
+    SAMPLE_TRANSLATOR_LINE(SETUP_SUCCESS),
+    SAMPLE_TRANSLATOR_LINE(CHANNEL_OPENED),
+  ];
+
+  assert.equal(collectDiagnostics(lines).length, 0);
+});
+
+test('upstreamClosedBeforeChannelParser: ignores a close after a channel was opened', () => {
+  const lines = [
+    SAMPLE_TRANSLATOR_LINE(SETUP_SUCCESS),
+    SAMPLE_TRANSLATOR_LINE(CHANNEL_OPENED),
+    SAMPLE_TRANSLATOR_LINE(SOCKET_CLOSED),
+  ];
+
+  assert.equal(collectDiagnostics(lines).length, 0);
+});
+
+test('upstreamClosedBeforeChannelParser: ignores a socket close with no handshake before it', () => {
+  const lines = [SAMPLE_TRANSLATOR_LINE(SOCKET_CLOSED)];
+
+  assert.equal(collectDiagnostics(lines).length, 0);
+});
+
+test('upstreamClosedBeforeChannelParser: ignores matching lines from other containers', () => {
+  const lines = [
+    SAMPLE_JDC_LINE(SETUP_SUCCESS),
+    SAMPLE_JDC_LINE(SOCKET_CLOSED),
+  ];
+
+  assert.equal(collectDiagnostics(lines).length, 0);
+});
+
 test('invalidCertificateParser: detects InvalidCertificate in jd container', () => {
   const lines = [
     SAMPLE_JDC_LINE(
@@ -446,4 +508,130 @@ test('invalidCertificateParser: returns evidence with line data', () => {
   assert.equal(diagnostics[0]?.evidence.length, 1);
   assert.equal(diagnostics[0]?.evidence[0]?.container, 'translator');
   assert.equal(diagnostics[0]?.evidence[0]?.stream, 'stderr');
+});
+
+test('getAutoRetryPolicy: fatal config-bound scenarios never auto-restart', () => {
+  assert.equal(getAutoRetryPolicy('unknown-user'), 'never');
+  assert.equal(getAutoRetryPolicy('jdc-bitcoin-core-unsupported-mining-interface'), 'never');
+});
+
+test('getAutoRetryPolicy: scenarios with an external precondition use the probe', () => {
+  assert.equal(getAutoRetryPolicy('jdc-bitcoin-core-disconnected'), 'probe');
+});
+
+test('getAutoRetryPolicy: self-healing scenarios retry slowly', () => {
+  assert.equal(getAutoRetryPolicy('invalid-certificate'), 'slow');
+  assert.equal(getAutoRetryPolicy('jdc-bitcoin-core-initial-block-download'), 'slow');
+  // The pool closes a connection that opens no channel in time; a downstream
+  // miner connecting is what clears it.
+  assert.equal(getAutoRetryPolicy('upstream-closed-before-channel'), 'slow');
+});
+
+test('getAutoRetryPolicy: unknown codes have no policy', () => {
+  assert.equal(getAutoRetryPolicy('not-a-real-code'), null);
+});
+
+test('every registered parser declares an autoRetry policy', () => {
+  const policies: AutoRetryPolicy[] = ['never', 'probe', 'slow'];
+  for (const parser of logParsers) {
+    assert.ok(
+      policies.includes(parser.autoRetry),
+      `${parser.code} has invalid autoRetry: ${parser.autoRetry}`
+    );
+  }
+});
+
+test('evaluateDiagnosisPolicy: a clean log set proceeds without codes', () => {
+  assert.deepEqual(evaluateDiagnosisPolicy([SAMPLE_JDC_LINE('2026-05-14 00:00:00 UTC Starting')]), {
+    action: 'proceed',
+    codes: [],
+  });
+});
+
+test('evaluateDiagnosisPolicy: a never-policy diagnosis pauses with its codes', () => {
+  const lines = [
+    SAMPLE_TRANSLATOR_LINE(
+      'OpenMiningChannelError(request_id: 4521, error_code: unknown-user)'
+    ),
+  ];
+
+  assert.deepEqual(evaluateDiagnosisPolicy(lines), {
+    action: 'pause',
+    codes: ['unknown-user'],
+  });
+});
+
+test('evaluateDiagnosisPolicy: a slow diagnosis defers to the slow schedule', () => {
+  const lines = [
+    SAMPLE_TRANSLATOR_LINE(
+      'Failed Noise handshake with 75.119.150.111:3333: Invalid Certificate: SignatureNoiseMessage { version: 0, valid_from: 1776883236, not_valid_after: 1776886836, signature: ce3caec9 }. Retrying...'
+    ),
+  ];
+
+  assert.deepEqual(evaluateDiagnosisPolicy(lines), {
+    action: 'slow-retry',
+    codes: ['invalid-certificate'],
+  });
+});
+
+test('evaluateDiagnosisPolicy: a probe diagnosis proceeds so the caller can gate', () => {
+  const lines = [
+    SAMPLE_JDC_LINE(
+      'Failed to create BitcoinCoreToSv2: CapnpError(Error { kind: Disconnected, extra: "Peer disconnected" })'
+    ),
+  ];
+
+  assert.deepEqual(evaluateDiagnosisPolicy(lines), {
+    action: 'proceed',
+    codes: ['jdc-bitcoin-core-disconnected'],
+  });
+});
+
+test('evaluateDiagnosisPolicy: the most restrictive policy wins across codes', () => {
+  const lines = [
+    SAMPLE_TRANSLATOR_LINE('Connection refused, retrying'),
+    SAMPLE_JDC_LINE(
+      'Failed to create BitcoinCoreToSv2: CapnpError(Error { kind: Disconnected, extra: "Peer disconnected" })'
+    ),
+    SAMPLE_TRANSLATOR_LINE(
+      'OpenMiningChannelError(request_id: 1, error_code: unknown-user)'
+    ),
+  ];
+
+  assert.deepEqual(evaluateDiagnosisPolicy(lines), {
+    action: 'pause',
+    codes: ['jdc-bitcoin-core-disconnected', 'unknown-user'],
+  });
+});
+
+test('evaluateDiagnosisPolicy: an unregistered code pauses', () => {
+  const fakeParser = {
+    code: 'future-unknown-scenario',
+    autoRetry: 'never' as const,
+    match: (lines: ContainerLogLine[]) =>
+      lines.some((line) => line.message.includes('future failure'))
+        ? {
+            code: 'unregistered-code',
+            severity: 'error' as const,
+            title: 't',
+            message: 'm',
+            recommendation: 'r',
+            streamId: 'mining-services' as const,
+            containers: ['translator' as const],
+            detectedAt: null,
+            evidence: [],
+          }
+        : null,
+  };
+  logParsers.push(fakeParser);
+  try {
+    const lines = [SAMPLE_TRANSLATOR_LINE('future failure detected')];
+
+    assert.deepEqual(evaluateDiagnosisPolicy(lines), {
+      action: 'pause',
+      codes: ['unregistered-code'],
+    });
+  } finally {
+    logParsers.splice(logParsers.indexOf(fakeParser), 1);
+  }
 });

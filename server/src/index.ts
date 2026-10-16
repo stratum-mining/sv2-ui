@@ -47,8 +47,11 @@ import {
 import { createMergedLogWriter } from './logs/merge.js';
 import { CONTAINER_LOG_EXPORT_MAX_BYTES } from './logs/export.js';
 import { getLogDiagnostics, getLogStreams, readCollatedLogLines } from './logs/diagnostics.js';
+import { evaluateDiagnosisPolicy } from './logs/parsers.js';
+import type { DiagnosisRetryDecision } from './logs/parsers.js';
 import { ActivePoolTracker } from './active-pool.js';
 import { isDegraded, isOnlyTranslatorStopped, isStackRunning } from './stack-health.js';
+import { AutoStartReconciler } from './auto-start.js';
 import { TranslatorRecovery } from './translator-recovery.js';
 import {
   CredentialError,
@@ -86,16 +89,11 @@ const CREDENTIAL_FILE = path.join(CONFIG_DIR, 'credential.json');
 const sessions = new SessionStore();
 
 const AUTO_START_RETRY_INTERVAL_MS = 30_000;
-const AUTO_START_MIN_BACKOFF_MS = 60_000;
-const AUTO_START_MAX_BACKOFF_MS = 5 * 60_000;
 const TRANSLATOR_RECOVERY_INTERVAL_MS = 5_000;
 
 type StackBusyReason = 'auto-start' | 'manual' | 'translator-restart';
 
 let stackBusyReason: StackBusyReason | null = null;
-let autoStartFailureCount = 0;
-let nextAutoStartAttemptAt = 0;
-let autoStartSetupReviewLogged = false;
 const activePoolTracker = new ActivePoolTracker(readContainerLogs);
 const translatorRecovery = new TranslatorRecovery();
 let translatorRecoveryCheckRunning = false;
@@ -221,7 +219,7 @@ async function reconcileAndStartStack(prepared: Extract<PreparedServiceConfig, {
 
   await saveState(prepared.data, true);
   await startStack(prepared.data, CONFIG_DIR);
-  resetAutoStartRecoveryState();
+  autoStart.resetRecoveryState();
 }
 
 function beginStackOperation(reason: StackBusyReason): boolean {
@@ -245,27 +243,21 @@ function stackBusyResponse() {
   };
 }
 
-function resetAutoStartBackoff(): void {
-  autoStartFailureCount = 0;
-  nextAutoStartAttemptAt = 0;
-}
-
-function resetAutoStartRecoveryState(): void {
-  resetAutoStartBackoff();
-  autoStartSetupReviewLogged = false;
-}
-
-function recordAutoStartFailure(error: unknown): void {
-  autoStartFailureCount += 1;
-  const delayMs = Math.min(
-    AUTO_START_MIN_BACKOFF_MS * 2 ** (autoStartFailureCount - 1),
-    AUTO_START_MAX_BACKOFF_MS,
-  );
-  nextAutoStartAttemptAt = Date.now() + delayMs;
-
-  console.error('Auto-start failed:', error);
-  console.log(`Auto-start: retrying in ${Math.round(delayMs / 1000)}s.`);
-}
+const autoStart = new AutoStartReconciler({
+  loadState,
+  getStackStatus,
+  prepareServiceConfig,
+  getServiceConfigDrift,
+  reconcileServiceConfigFiles,
+  stopStack,
+  startStack,
+  saveState,
+  getBitcoinSocketStartupError,
+  readStackLogs: (mode) => readCollatedLogLines(mode),
+  tryAcquire: () => beginStackOperation('auto-start'),
+  release: () => finishStackOperation('auto-start'),
+  configDir: CONFIG_DIR,
+});
 
 /**
  * GET /api/auth/state - Whether a password exists and whether this client is
@@ -1086,83 +1078,9 @@ app.get('*', (_req, res) => {
   res.sendFile(path.join(UI_DIR, 'index.html'));
 });
 
-async function reconcileShouldBeRunning(): Promise<void> {
-  if (nextAutoStartAttemptAt > Date.now()) return;
-  if (!beginStackOperation('auto-start')) return;
-
-  try {
-    const state = await loadState();
-    if (!state.configured || !state.data || !state.shouldBeRunning) {
-      resetAutoStartRecoveryState();
-      return;
-    }
-
-    const containers = await getStackStatus(state.mode);
-    const prepared = prepareServiceConfig(state.data, { logFailure: !autoStartSetupReviewLogged });
-    const running = isStackRunning(state.mode, containers);
-
-    if (prepared.kind !== 'ready') {
-      autoStartSetupReviewLogged = true;
-      // A required setup choice is missing. Stop stale services and let the
-      // wizard reopen with saved fields prefilled.
-      if (running) {
-        console.log('Auto-start: setup review is required. Stopping the existing stack.');
-        await stopStack();
-      }
-      resetAutoStartBackoff();
-      return;
-    }
-    autoStartSetupReviewLogged = false;
-
-    // Check drift before considering a running stack healthy. This repairs an
-    // interrupted update and applies new generated configuration on boot.
-    const drift = await getServiceConfigDrift(prepared.files, CONFIG_DIR);
-    if (running && drift.length === 0) {
-      resetAutoStartRecoveryState();
-      return;
-    }
-
-    // recoverTranslator restarts the Translator on its own schedule. A full
-    // restart here would recreate JDC and send it back to the primary pool.
-    if (drift.length === 0 && isOnlyTranslatorStopped(state.mode, containers)) {
-      resetAutoStartRecoveryState();
-      return;
-    }
-
-    if (prepared.data.mode === 'jd') {
-      const socketError = await getBitcoinSocketStartupError(prepared.data);
-      if (socketError) {
-        recordAutoStartFailure(socketError);
-        return;
-      }
-    }
-
-    if (running) {
-      console.log(`Auto-start: generated configuration changed (${drift.join(', ')}). Restarting containers...`);
-    } else {
-      console.log('Auto-start: shouldBeRunning=true and stack is stopped. Starting containers...');
-    }
-
-    await stopStack();
-    const changedFiles = await reconcileServiceConfigFiles(prepared.files, CONFIG_DIR);
-    if (changedFiles.length > 0) {
-      console.log(`Auto-start reconciled generated configuration: ${changedFiles.join(', ')}`);
-    }
-
-    await saveState(prepared.data, true);
-    await startStack(prepared.data, CONFIG_DIR);
-    resetAutoStartRecoveryState();
-    console.log('Auto-start: containers started successfully');
-  } catch (error) {
-    recordAutoStartFailure(error);
-  } finally {
-    finishStackOperation('auto-start');
-  }
-}
-
 /**
  * JD mode only: restart a Translator that stopped while JDC keeps running,
- * without touching JDC. Runs more often than reconcileShouldBeRunning so
+ * without touching JDC. Runs more often than the auto-start reconciler so
  * SV1 firmware reconnects within seconds after JDC switches pools, and only
  * takes the stack lock when it actually restarts the Translator.
  */
@@ -1183,7 +1101,7 @@ async function recoverTranslator(): Promise<void> {
       return;
     }
     if (!isOnlyTranslatorStopped('jd', containers)) {
-      // JDC is down too: reconcileShouldBeRunning restarts the whole stack.
+      // JDC is down too: the auto-start reconciler restarts the whole stack.
       translatorRecovery.observe({ kind: 'not-applicable' }, Date.now());
       return;
     }
@@ -1202,6 +1120,21 @@ async function recoverTranslator(): Promise<void> {
     if (prepared.kind !== 'ready') return;
     if ((await getServiceConfigDrift(prepared.files, CONFIG_DIR)).length > 0) return;
 
+    // The Translator's logs decide whether another restart helps: a diagnosed
+    // failure would exit again with the same error, and each attempt removes
+    // the container, so Docker deletes the logs that explain it — blinking
+    // the banner while the evidence disappears. Read failures are not a
+    // diagnosis; restarting on them matches the auto-start reconciler.
+    let decision: DiagnosisRetryDecision;
+    try {
+      decision = evaluateDiagnosisPolicy(await readCollatedLogLines('jd'));
+    } catch {
+      decision = { action: 'proceed', codes: [] };
+    }
+    const gate = translatorRecovery.gateRestart(decision, Date.now());
+    if (gate.message) console.log(gate.message);
+    if (!gate.allowed) return;
+
     if (!beginStackOperation('translator-restart')) return;
     try {
       // A manual stop or restart may have finished since the check above.
@@ -1217,7 +1150,7 @@ async function recoverTranslator(): Promise<void> {
       finishStackOperation('translator-restart');
     }
   } catch {
-    // Docker or saved-state problems are reported by reconcileShouldBeRunning.
+    // Docker or saved-state problems are reported by the auto-start reconciler.
   } finally {
     translatorRecoveryCheckRunning = false;
   }
@@ -1243,7 +1176,7 @@ app.listen(PORT, () => {
   }
 
   // Tighten the config directory on every boot. On an upgraded install whose
-  // stack is already running and drift-free, reconcileShouldBeRunning returns
+  // stack is already running and drift-free, the auto-start reconciler returns
   // before reaching any other ensureConfigDir call site, leaving an old
   // permissive directory in place until the next mining restart.
   void ensureConfigDir(CONFIG_DIR).catch((error) => {
@@ -1251,9 +1184,9 @@ app.listen(PORT, () => {
   });
 
   // Keep configured mining services running across app/system restarts.
-  void reconcileShouldBeRunning();
+  void autoStart.reconcile();
   setInterval(() => {
-    void reconcileShouldBeRunning();
+    void autoStart.reconcile();
   }, AUTO_START_RETRY_INTERVAL_MS);
   setInterval(() => {
     void recoverTranslator();

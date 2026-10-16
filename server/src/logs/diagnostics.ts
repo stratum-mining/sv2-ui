@@ -35,7 +35,7 @@ export type LogProvider = (
 // of by wrapping the provider.
 const inFlightSnapshots = new WeakMap<
   LogProvider,
-  Map<string, Promise<ContainerLogLine[]>>
+  Map<string, Promise<CollatedLogSnapshot>>
 >();
 
 function snapshotKey(mode: SetupMode | null, tail: number): string {
@@ -86,14 +86,24 @@ function sortLines(a: ContainerLogLine, b: ContainerLogLine): number {
   return a.raw.localeCompare(b.raw);
 }
 
-export async function readCollatedLogLines(
+/**
+ * One snapshot of a mode's containers: the collated, sorted lines plus the
+ * containers whose logs could not be read at all.
+ */
+type CollatedLogSnapshot = {
+  lines: ContainerLogLine[];
+  /** Containers that were missing (removed, or mid remove/create). */
+  missingContainers: LogContainerRole[];
+};
+
+async function readCollatedLogSnapshot(
   mode: SetupMode | null,
-  readLogs: LogProvider = readContainerLogs,
-  tail: number = RECENT_LOG_TAIL
-): Promise<ContainerLogLine[]> {
+  readLogs: LogProvider,
+  tail: number
+): Promise<CollatedLogSnapshot> {
   const containers = getStreamContainers(mode);
   if (containers.length === 0) {
-    return [];
+    return { lines: [], missingContainers: [] };
   }
 
   let snapshots = inFlightSnapshots.get(readLogs);
@@ -111,18 +121,21 @@ export async function readCollatedLogLines(
   const snapshot = Promise.all(
     containers.map(async (container) => {
       try {
-        return await readLogs(container, { tail });
+        return { container, readable: true, lines: await readLogs(container, { tail }) };
       } catch (error) {
         // Diagnostics polling is best-effort. Missing containers are expected
         // while the stack is stopped or between remove/create during restart.
         if (isMissingContainerError(error)) {
-          return [];
+          return { container, readable: false, lines: [] as ContainerLogLine[] };
         }
 
         throw error;
       }
     })
-  ).then((logSets) => logSets.flat().sort(sortLines));
+  ).then((logSets) => ({
+    lines: logSets.flatMap((logSet) => logSet.lines).sort(sortLines),
+    missingContainers: logSets.filter((logSet) => !logSet.readable).map((logSet) => logSet.container),
+  }));
 
   snapshots.set(key, snapshot);
 
@@ -133,6 +146,15 @@ export async function readCollatedLogLines(
       snapshots.delete(key);
     }
   }
+}
+
+export async function readCollatedLogLines(
+  mode: SetupMode | null,
+  readLogs: LogProvider = readContainerLogs,
+  tail: number = RECENT_LOG_TAIL
+): Promise<ContainerLogLine[]> {
+  const snapshot = await readCollatedLogSnapshot(mode, readLogs, tail);
+  return snapshot.lines;
 }
 
 export async function getLogDiagnostics(
@@ -150,10 +172,17 @@ export async function getLogDiagnostics(
       generatedAt: new Date().toISOString(),
       streams,
       diagnostics: [],
+      partial: false,
     };
   }
 
-  const lines = await readCollatedLogLines(mode, readLogs, tail);
+  const { lines, missingContainers } = await readCollatedLogSnapshot(mode, readLogs, tail);
+  // A container missing while the rest of the stack is readable is the
+  // remove/create window of a restart: some logs are simply not there to
+  // read. Every container missing means the stack itself is down, which is
+  // complete knowledge, not partial.
+  const partial =
+    missingContainers.length > 0 && missingContainers.length < getStreamContainers(mode).length;
 
   return {
     configured,
@@ -161,5 +190,6 @@ export async function getLogDiagnostics(
     generatedAt: new Date().toISOString(),
     streams,
     diagnostics: collectDiagnostics(lines),
+    partial,
   };
 }

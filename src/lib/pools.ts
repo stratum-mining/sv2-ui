@@ -1,7 +1,7 @@
 /**
  * Shared pool preset definitions used by both the Setup Wizard and Settings.
  */
-import type { PoolConfig } from '@sv2-ui/shared';
+import type { PoolConfig, SetupData } from '@sv2-ui/shared';
 
 export interface KnownPool {
   id: string;
@@ -16,6 +16,15 @@ export interface KnownPool {
   monogram?: string;
   invertLogoInDarkMode?: boolean;
   logoScale?: number;
+  /**
+   * Endpoints this preset used before its current one. A setup saved with one
+   * of them is still this pool: it keeps the preset's name and logo and is
+   * offered the current endpoint. Each one is matched on address, port and
+   * key together, like the current endpoint. Leave out an endpoint whose key
+   * was retired because it leaked: setups still on it must not keep the
+   * preset's name and logo.
+   */
+  previousEndpoints?: Pick<PoolConfig, 'address' | 'port' | 'authority_public_key'>[];
 }
 
 export const POOL_MINING_NO_JD: KnownPool[] = [
@@ -83,6 +92,9 @@ export const SOLO_POOLS: KnownPool[] = [
     description: 'PublicPool',
     logoUrl: '/public-pool-logo.svg',
     logoScale: 1.15,
+    previousEndpoints: [
+      { address: 'public-pool.io', port: 3333, authority_public_key: '9c4zpyJ2ndm4e8sP2uNc1VNCGxYjqaxWS6wUCjk8zFj6njFquH6' },
+    ],
   },
   {
     id: 'pyblock',
@@ -193,8 +205,58 @@ export function isDuplicatePoolEndpoint(
   return hasSameEndpoint(a, b);
 }
 
-export function getKnownPoolForConfig(pool: Pick<PoolConfig, 'address' | 'port' | 'authority_public_key'> | null | undefined): KnownPool | null {
-  return ALL_KNOWN_POOLS.find((knownPool) => isSameTrustedPool(pool, knownPool)) ?? null;
+export function getKnownPoolForConfig(
+  pool: Pick<PoolConfig, 'address' | 'port' | 'authority_public_key'> | null | undefined,
+  presets: KnownPool[] = ALL_KNOWN_POOLS,
+): KnownPool | null {
+  return presets.find((preset) => isSameTrustedPool(pool, preset))
+    ?? presets.find((preset) => preset.previousEndpoints?.some((endpoint) => isSameTrustedPool(pool, endpoint)))
+    ?? null;
+}
+
+// The preset a pool was saved from, when that preset has since moved to a new
+// endpoint. Null for custom pools and pools already on the current endpoint.
+export function getMovedPreset(pool: PoolConfig, presets: KnownPool[] = ALL_KNOWN_POOLS): KnownPool | null {
+  const preset = getKnownPoolForConfig(pool, presets);
+  return preset && !isSameTrustedPool(pool, preset) ? preset : null;
+}
+
+// Sovereign solo mining uses no upstream pools, even when an older save still
+// holds a primary pool.
+function getUpstreamPools(config: SetupData): PoolConfig[] {
+  if (config.miningMode === 'solo' && config.mode === 'jd') return [];
+  return [config.pool, ...(config.fallbackPools ?? [])].filter((pool): pool is PoolConfig => Boolean(pool));
+}
+
+export function getMovedPresetPools(
+  config: SetupData | null | undefined,
+  presets: KnownPool[] = ALL_KNOWN_POOLS,
+): { pool: PoolConfig; preset: KnownPool }[] {
+  if (!config) return [];
+  return getUpstreamPools(config).flatMap((pool) => {
+    const preset = getMovedPreset(pool, presets);
+    return preset ? [{ pool, preset }] : [];
+  });
+}
+
+// Moves each saved pool on a moved preset's old endpoint to the current one,
+// keeping its identity and priority. If the current endpoint is also in the
+// list, only the higher-priority entry is kept: the backend would save the
+// duplicate, and the pool editors would then refuse to save the list.
+export function withCurrentPresetEndpoints(
+  config: SetupData,
+  presets: KnownPool[] = ALL_KNOWN_POOLS,
+): Pick<SetupData, 'pool' | 'fallbackPools'> {
+  const pools = getUpstreamPools(config).map((pool) => {
+    const preset = getMovedPreset(pool, presets);
+    return preset
+      ? { ...pool, address: preset.address, port: preset.port, authority_public_key: preset.authority_public_key }
+      : pool;
+  });
+  const [pool = null, ...fallbackPools] = pools.filter((pool, index) => (
+    !pools.slice(0, index).some((earlier) => hasSameEndpoint(earlier, pool))
+  ));
+  return { pool, fallbackPools };
 }
 
 // Indexes of all pools that share an address and port with another pool in the
@@ -214,4 +276,12 @@ export function getDuplicatePoolEndpointIndexes(
     });
   });
   return duplicates;
+}
+
+// Presets the pool editors still offer. A preset is taken when a pool is on its
+// endpoint, whatever the key, or is that preset on one of its old endpoints.
+export function getUnselectedPresets(presets: KnownPool[], pools: PoolConfig[]): KnownPool[] {
+  return presets.filter((preset) => !pools.some((pool) => (
+    isDuplicatePoolEndpoint(pool, preset) || getKnownPoolForConfig(pool, presets) === preset
+  )));
 }

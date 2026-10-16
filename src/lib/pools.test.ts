@@ -1,16 +1,24 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
+import type { PoolConfig, SetupData } from '@sv2-ui/shared';
 import {
+  ALL_KNOWN_POOLS,
+  POOL_MINING_JD,
+  POOL_MINING_NO_JD,
   SOLO_POOLS,
   knownPoolToConfig,
   getKnownPoolForConfig,
+  getMovedPresetPools,
+  getUnselectedPresets,
+  withCurrentPresetEndpoints,
   isSameTrustedPool,
   hasSameEndpoint,
   isDuplicatePoolEndpoint,
   createEmptyCustomPool,
   getNextCustomPoolName,
   getDuplicatePoolEndpointIndexes,
+  type KnownPool,
 } from './pools';
 import { isValidPoolAuthorityPubkey } from './utils';
 
@@ -75,6 +83,108 @@ test('getKnownPoolForConfig returns the preset for a fully matching config', () 
 
   assert.equal(getKnownPoolForConfig(config)?.id, known.id,
     'a config with matching address, port and authority key resolves to the known pool');
+});
+
+// Every endpoint a preset has had since presets started keeping their previous
+// endpoints. Saved setups may hold any of them, so each must keep resolving to
+// its preset. When a preset moves, add its new endpoint here and keep the old
+// one. Remove an entry only together with its preset, or when its key leaked
+// (see previousEndpoints).
+const SHIPPED_PRESET_ENDPOINTS = [
+  { id: 'braiins', address: 'stratum.braiins.com', port: 3333, authority_public_key: '9awtMD5KQgvRUh2yFbjVeT7b6hjipWcAsQHd6wEhgtDT9soosna' },
+  { id: 'sri-solo', address: '75.119.150.111', port: 3333, authority_public_key: '9auqWEzQDVyd2oe1JVGFLMLHZtCo2FFqZwtKA5gd9xbuEu7PH72' },
+  { id: 'blitzpool', address: 'blitzpool.yourdevice.ch', port: 3333, authority_public_key: '9bCoFxTszKCuffyywH5uS5o6WcU4vsjTH2axxc7wE86y2HhvULU' },
+  { id: 'ckpool', address: 'stratum.ckpool.org', port: 3336, authority_public_key: '9anrRNhBh7869XtNnFcCuGBRZP51E635qGbu457J5kHdszhfRc3' },
+  { id: 'nexuspool', address: 'nexuspool.io', port: 3350, authority_public_key: '9amd6GUzTaGXASESCa75c9Rx3vWYihRyLUAE3Vrmqwgm3T9jtxN' },
+  { id: 'publicpool', address: 'public-pool.io', port: 3333, authority_public_key: '9c4zpyJ2ndm4e8sP2uNc1VNCGxYjqaxWS6wUCjk8zFj6njFquH6' },
+  { id: 'publicpool', address: 'public-pool.io', port: 23330, authority_public_key: '9c4zpyJ2ndm4e8sP2uNc1VNCGxYjqaxWS6wUCjk8zFj6njFquH6' },
+  { id: 'pyblock', address: 'pool.pyblock.xyz', port: 5555, authority_public_key: '9anZZb1uaJDqubvJhekPiNRHA2tuShcNaugDmFxtnTq54sDvTf5' },
+];
+
+// The editors look presets up in one of these lists, and the SRI pool is in two
+// of them, so each list has to recognize every endpoint its presets have had.
+const PRESET_LISTS = { POOL_MINING_NO_JD, POOL_MINING_JD, SOLO_POOLS };
+
+test('every shipped preset endpoint still resolves to its preset in each list', () => {
+  for (const [listName, presets] of Object.entries(PRESET_LISTS)) {
+    for (const { id, ...endpoint } of SHIPPED_PRESET_ENDPOINTS) {
+      if (!presets.some((preset) => preset.id === id)) continue;
+      assert.equal(getKnownPoolForConfig(endpoint, presets)?.id, id,
+        `setups saved with ${endpoint.address}:${endpoint.port} must still resolve to ${id} in ${listName}: ` +
+          'add it to that preset\'s previousEndpoints');
+    }
+  }
+});
+
+test('every current preset endpoint is listed as shipped', () => {
+  for (const preset of ALL_KNOWN_POOLS) {
+    assert.ok(
+      SHIPPED_PRESET_ENDPOINTS.some((endpoint) => endpoint.id === preset.id && isSameTrustedPool(endpoint, preset)),
+      `add ${preset.address}:${preset.port} to SHIPPED_PRESET_ENDPOINTS`,
+    );
+  }
+});
+
+const OLD_ENDPOINT = { address: 'old.pool.example', port: 3333, authority_public_key: 'OLD_KEY' };
+const MOVED_PRESET: KnownPool = { ...SOLO_POOLS[0], previousEndpoints: [OLD_ENDPOINT] };
+const OTHER_PRESET = SOLO_POOLS[1];
+
+function savedSetup(pools: PoolConfig[], mode: SetupData['mode'] = 'no-jd'): SetupData {
+  return {
+    miningMode: 'solo',
+    mode,
+    miner_telemetry_cidr: '',
+    pool: pools[0] ?? null,
+    fallbackPools: pools.slice(1),
+    bitcoin: null,
+    jdc: null,
+    translator: null,
+  };
+}
+
+test('a pool saved with a preset\'s previous endpoint is still that preset', () => {
+  assert.equal(getKnownPoolForConfig(OLD_ENDPOINT, [MOVED_PRESET]), MOVED_PRESET);
+  assert.equal(getKnownPoolForConfig({ ...OLD_ENDPOINT, authority_public_key: 'OTHER' }, [MOVED_PRESET]), null,
+    'a previous endpoint with a different authority key must not receive official branding');
+});
+
+test('a preset\'s current endpoint wins over another preset\'s previous one', () => {
+  const takenOver: KnownPool = { ...OTHER_PRESET, ...OLD_ENDPOINT };
+
+  assert.equal(getKnownPoolForConfig(OLD_ENDPOINT, [MOVED_PRESET, takenOver]), takenOver);
+});
+
+test('pools on a moved preset\'s old endpoint are offered the current one', () => {
+  const moved = { name: MOVED_PRESET.name, ...OLD_ENDPOINT, user_identity: 'bc1qexample' };
+  const custom = { ...createEmptyCustomPool('bc1qexample'), address: 'custom.pool.example' };
+  const config = savedSetup([custom, moved]);
+
+  assert.deepEqual(getMovedPresetPools(config, [MOVED_PRESET]), [{ pool: moved, preset: MOVED_PRESET }]);
+  assert.deepEqual(withCurrentPresetEndpoints(config, [MOVED_PRESET]), {
+    pool: custom,
+    fallbackPools: [knownPoolToConfig(MOVED_PRESET, 'bc1qexample')],
+  }, 'only the moved pool\'s endpoint changes; its identity and priority stay');
+  assert.deepEqual(getMovedPresetPools(savedSetup([moved], 'jd'), [MOVED_PRESET]), [],
+    'sovereign solo mining uses no pools, even when an older save still holds one');
+  assert.deepEqual(getMovedPresetPools(null, [MOVED_PRESET]), []);
+});
+
+test('moving a pool onto an endpoint already in the list keeps only the higher-priority entry', () => {
+  const moved = { name: MOVED_PRESET.name, ...OLD_ENDPOINT, user_identity: 'primary' };
+  const other = knownPoolToConfig(OTHER_PRESET, 'other');
+  const current = knownPoolToConfig(MOVED_PRESET, 'fallback');
+  const update = withCurrentPresetEndpoints(savedSetup([moved, other, current]), [MOVED_PRESET, OTHER_PRESET]);
+
+  assert.deepEqual(update, { pool: knownPoolToConfig(MOVED_PRESET, 'primary'), fallbackPools: [other] });
+});
+
+test('the pool editors do not offer a preset again for a pool on its old endpoint', () => {
+  const moved = { name: MOVED_PRESET.name, ...OLD_ENDPOINT, user_identity: '' };
+  const wrongKey = { ...knownPoolToConfig(OTHER_PRESET), authority_public_key: 'OTHER' };
+
+  assert.deepEqual(getUnselectedPresets([MOVED_PRESET, OTHER_PRESET], [moved]), [OTHER_PRESET]);
+  assert.deepEqual(getUnselectedPresets([MOVED_PRESET, OTHER_PRESET], [wrongKey]), [MOVED_PRESET],
+    'a wrong-key entry still occupies the preset\'s endpoint');
 });
 
 test('isSameTrustedPool requires address, port and authority key to all match', () => {

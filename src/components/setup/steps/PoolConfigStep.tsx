@@ -5,8 +5,8 @@ import { FallbackIdentitySection } from '@/components/pools/FallbackIdentitySect
 import { PoolIdentityFields } from '@/components/pools/PoolIdentityFields';
 import { PoolPriorityEditor } from '@/components/pools/PoolPriorityEditor';
 import {
+  getKnownPoolForConfig,
   getPoolsForMode,
-  isSameTrustedPool,
   type KnownPool,
 } from '@/lib/pools';
 import { normalizePoolPriorityIdentities } from '@/lib/miningIdentity';
@@ -17,12 +17,8 @@ import {
   isPoolFormValid,
 } from '@/lib/poolValidation';
 
-function poolMatchesPreset(pool: PoolConfig | null | undefined, preset: KnownPool): boolean {
-  return isSameTrustedPool(pool, preset);
-}
-
 function getSelectedPreset(pool: PoolConfig | null | undefined, pools: KnownPool[]): KnownPool | null {
-  return pools.find((preset) => poolMatchesPreset(pool, preset)) ?? null;
+  return getKnownPoolForConfig(pool, pools);
 }
 
 function getIdentityFieldLabel(miningMode: MiningMode | null): string {

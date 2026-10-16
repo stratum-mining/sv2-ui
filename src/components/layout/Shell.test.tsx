@@ -58,6 +58,26 @@ test('presents a recognized pool name when address, port, and authority key matc
   );
 });
 
+test('presents a recognized pool name on one of the preset\'s previous endpoints', () => {
+  const queryClient = new QueryClient();
+  const html = renderToStaticMarkup(
+    <QueryClientProvider client={queryClient}>
+      <Router ssrPath="/">
+        <Shell
+          connectionStatus="connected"
+          activePoolAddress="public-pool.io"
+          activePoolPort={3333}
+          activePoolAuthorityPublicKey="9c4zpyJ2ndm4e8sP2uNc1VNCGxYjqaxWS6wUCjk8zFj6njFquH6"
+        >
+          <div>dashboard</div>
+        </Shell>
+      </Router>
+    </QueryClientProvider>,
+  );
+
+  assert.match(html, /Connected to PublicPool</);
+});
+
 test('keeps the pool and explains SV1 reconnecting while the stack is degraded', () => {
   const queryClient = new QueryClient();
   const html = renderToStaticMarkup(

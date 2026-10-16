@@ -50,3 +50,12 @@ export function getMinerTelemetryCidrError(value: string | null | undefined): st
 export function isValidMinerTelemetryCidr(value: string | null | undefined): boolean {
   return getMinerTelemetryCidrError(value) === null;
 }
+
+export function minerTelemetryCidrForAddress(address: string | null | undefined): string {
+  const ip = address?.trim() ?? '';
+  if (!ip || getMinerTelemetryCidrError(`${ip}/32`) !== null) {
+    return '';
+  }
+
+  return `${ip.split('.').slice(0, 3).join('.')}.0/24`;
+}

@@ -23,6 +23,7 @@ import { DockerConnectionError, isMissingContainerError } from './docker-errors.
 import {
   TRANSLATOR_MONITORING_PORT,
   JDC_MONITORING_PORT,
+  minerTelemetryCidrForAddress,
 } from '@sv2-ui/shared';
 import {
   loadSavedState,
@@ -42,7 +43,8 @@ import {
   readContainerLogs,
   streamContainerLogText,
   probeBitcoinSocketWithDocker,
-  autoDiscoverBitcoinRpc
+  autoDiscoverBitcoinRpc,
+  detectHostLanAddress,
 } from './docker.js';
 import { createMergedLogWriter } from './logs/merge.js';
 import { CONTAINER_LOG_EXPORT_MAX_BYTES } from './logs/export.js';
@@ -637,6 +639,14 @@ app.get('/api/config', async (_req, res) => {
  */
 app.get('/api/env', (_req, res) => {
   res.json({ HOST_OS: process.env.HOST_OS || null, STRATUM_HOST: process.env.STRATUM_HOST || null });
+});
+
+/**
+ * GET /api/miner-telemetry/suggestion - LAN subnet to prefill for miner telemetry
+ */
+app.get('/api/miner-telemetry/suggestion', async (_req, res) => {
+  const address = await detectHostLanAddress();
+  res.json({ cidr: minerTelemetryCidrForAddress(address) || null });
 });
 
 /**

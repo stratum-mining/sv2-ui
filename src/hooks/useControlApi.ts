@@ -124,3 +124,17 @@ export async function getCurrentConfig(): Promise<SetupData | null> {
     return null;
   }
 }
+
+/**
+ * Get the LAN subnet the backend suggests for miner telemetry
+ */
+export async function getSuggestedMinerTelemetryCidr(): Promise<string | null> {
+  try {
+    const response = await fetch('/api/miner-telemetry/suggestion');
+    if (!response.ok) return null;
+    const data = await response.json();
+    return typeof data.cidr === 'string' ? data.cidr : null;
+  } catch {
+    return null;
+  }
+}

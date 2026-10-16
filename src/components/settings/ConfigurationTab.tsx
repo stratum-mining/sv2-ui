@@ -19,7 +19,7 @@ import { FallbackIdentitySection } from '@/components/pools/FallbackIdentitySect
 import { PoolIdentityFields } from '@/components/pools/PoolIdentityFields';
 import { PoolPriorityEditor } from '@/components/pools/PoolPriorityEditor';
 import { useSetupStatus } from '@/hooks/useSetupStatus';
-import { useControlApi, getCurrentConfig } from '@/hooks/useControlApi';
+import { useControlApi, getCurrentConfig, getSuggestedMinerTelemetryCidr } from '@/hooks/useControlApi';
 import {
   getKnownPoolForConfig,
   getPoolsForMode,
@@ -204,6 +204,11 @@ export function ConfigurationTab() {
   const startEditTelemetry = () => {
     setEditMinerTelemetryCidr(config?.miner_telemetry_cidr ?? '');
     setEditing('telemetry');
+    if (!config?.miner_telemetry_cidr) {
+      void getSuggestedMinerTelemetryCidr().then((cidr) => {
+        if (cidr) setEditMinerTelemetryCidr((current) => current || cidr);
+      });
+    }
   };
 
   const startEditAdvanced = () => {

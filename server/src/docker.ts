@@ -32,6 +32,7 @@ import { getImageSelectionForSetup } from '@sv2-ui/shared';
 import { bitcoinSocketValidatorScript } from './bitcoin-socket-validator.js';
 import { bitcoinSocketExistsScript } from './bitcoin-socket-exists.js';
 import { bitcoinRpcValidatorScript } from './bitcoin-rpc-validator.js';
+import { defaultRouteAddress, hostNetworkProbeScript, localHostLanAddress } from './host-lan-address.js';
 
 export const DOCKER_CALL_TIMEOUT_MS = 10000;
 
@@ -539,6 +540,57 @@ async function runBitcoinRpcProbeContainer({
       valid: false,
       error: message || `RPC validation failed for port ${rpcPort}`,
     };
+  } finally {
+    if (container) {
+      try {
+        await container.remove({ force: true });
+      } catch {
+        // cleanup failure is non-fatal
+      }
+    }
+  }
+}
+
+// Docker Desktop, OrbStack, Colima and Rancher Desktop run the engine in a VM,
+// where the host network is the VM's network rather than the miners' LAN.
+const VM_ENGINE_PATTERN = /docker desktop|orbstack|colima|rancher/i;
+
+/**
+ * Read the Docker host's LAN address from a short-lived container on the host
+ * network. Returns null when the address cannot be read.
+ */
+export async function detectHostLanAddress(): Promise<string | null> {
+  let container: Docker.Container | null = null;
+
+  try {
+    if (!isRunningInsideDocker()) return await localHostLanAddress();
+
+    const info = await docker.info();
+    if (VM_ENGINE_PATTERN.test(`${info.Name} ${info.OperatingSystem}`)) return null;
+
+    await pullImage(BITCOIN_PROBE_IMAGE);
+    container = await docker.createContainer({
+      Image: BITCOIN_PROBE_IMAGE,
+      Entrypoint: ['node'],
+      Cmd: ['-e', hostNetworkProbeScript],
+      HostConfig: {
+        NetworkMode: 'host',
+        RestartPolicy: { Name: 'no' },
+      },
+    });
+
+    await container.start();
+    const result = await container.wait();
+    if (result.StatusCode !== 0) return null;
+
+    const rawLogs = await container.logs({ stdout: true, stderr: false });
+    const output = demuxDockerLogBuffer(Buffer.isBuffer(rawLogs) ? rawLogs : Buffer.from(rawLogs))
+      .map((chunk) => chunk.payload)
+      .join('');
+    const { routes, interfaces } = JSON.parse(output);
+    return defaultRouteAddress(routes, interfaces);
+  } catch {
+    return null;
   } finally {
     if (container) {
       try {

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'wouter';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { AlertTriangle, Search, Play, Trash2 } from 'lucide-react';
 import { Alert, AlertTitle } from '@/components/ui/alert';
 import { ConnectionAlert } from '@/components/ui/connection-alert';
@@ -30,12 +30,13 @@ import {
   usePersistentShareStats,
 } from '@/hooks/usePersistentDashboardMetrics';
 import { shouldAggregateTranslatorChannels } from '@/components/setup/poolRules';
+import { getCurrentConfig, useControlApi } from '@/hooks/useControlApi';
 import { useSetupStatus } from '@/hooks/useSetupStatus';
 import { useConnectionStatus } from '@/hooks/useConnectionStatus';
 import { useLogDiagnostics } from '@/hooks/useLogDiagnostics';
 import { clearDashboardClientState } from '@/lib/dashboardState';
 import { tileMetricEntries } from '@/lib/dashboardTileMetrics';
-import { getKnownPoolForConfig } from '@/lib/pools';
+import { getKnownPoolForConfig, getMovedPresetPools, hasSameEndpoint, withCurrentPresetEndpoints } from '@/lib/pools';
 import { resolveMinerHashrate } from '@/lib/minerTelemetry';
 import { formatHashrate, formatDifficulty, formatNumber } from '@/lib/utils';
 import type { Sv1ClientInfo } from '@/types/api';
@@ -189,6 +190,12 @@ export function UnifiedDashboard() {
   const { data: logDiagnostics } = useLogDiagnostics();
   const diagnostics = logDiagnostics?.diagnostics ?? [];
 
+  // Saved pools whose preset has moved to a new endpoint. They keep the old
+  // one until the operator applies the new one, since that restarts mining.
+  const { data: savedConfig } = useQuery({ queryKey: ['saved-config'], queryFn: getCurrentConfig });
+  const { updateConfig, isUpdatingConfig, updateConfigError } = useControlApi();
+  const movedPresetPools = getMovedPresetPools(savedConfig);
+
   const [isStarting, setIsStarting] = useState(false);
   const [startError, setStartError] = useState<string | null>(null);
 
@@ -237,6 +244,17 @@ export function UnifiedDashboard() {
       }
       setIsStarting(false);
     }
+  };
+
+  const handleApplyMovedPresets = async () => {
+    // The update replaces the whole pool list, so build it from the saved setup
+    // as it is now: a copy from when the page loaded would undo pool changes
+    // saved since.
+    const config = await queryClient.fetchQuery({ queryKey: ['saved-config'], queryFn: getCurrentConfig, staleTime: 0 });
+    if (!config || getMovedPresetPools(config).length === 0) return;
+    updateConfig(withCurrentPresetEndpoints(config), {
+      onSuccess: () => queryClient.invalidateQueries({ queryKey: ['saved-config'] }),
+    });
   };
 
   const handleResetSetup = async () => {
@@ -709,6 +727,33 @@ export function UnifiedDashboard() {
             </div>
             <RestartMiningButton onClick={handleStartMining} isRestarting={isStarting}>
               Retry
+            </RestartMiningButton>
+          </div>
+        </Alert>
+      )}
+
+      {/* A preset the operator picked has moved to a new endpoint (both modes) */}
+      {!configurationIssue && movedPresetPools.length > 0 && (
+        <Alert variant="warning">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex flex-col gap-1">
+              <AlertTitle>Pool connection details changed</AlertTitle>
+              {movedPresetPools.map(({ pool, preset }, index) => {
+                const newKey = pool.authority_public_key !== preset.authority_public_key;
+                return (
+                  <span key={index}>
+                    {hasSameEndpoint(pool, preset)
+                      ? `${preset.name} has a new authority key`
+                      : `${preset.name} moved from ${pool.address}:${pool.port} to ${preset.address}:${preset.port}${newKey ? ' with a new authority key' : ''}`}
+                    {newKey ? <>: <span className="font-mono break-all">{preset.authority_public_key}</span></> : '.'}
+                  </span>
+                );
+              })}
+              <span>{configuredButStopped ? 'Updating starts mining.' : 'Updating restarts mining.'}</span>
+              {updateConfigError && <span className="text-red-500">{updateConfigError.message}</span>}
+            </div>
+            <RestartMiningButton onClick={handleApplyMovedPresets} isRestarting={isUpdatingConfig}>
+              Update
             </RestartMiningButton>
           </div>
         </Alert>

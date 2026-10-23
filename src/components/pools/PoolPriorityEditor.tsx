@@ -6,10 +6,10 @@ import { PoolIcon } from '@/components/ui/pool-icon';
 import {
   createEmptyCustomPool,
   getDuplicatePoolEndpointIndexes,
+  getKnownPoolForConfig,
   getNextCustomPoolName,
+  getUnselectedPresets,
   hasSameEndpoint,
-  isDuplicatePoolEndpoint,
-  isSameTrustedPool,
   knownPoolToConfig,
   type KnownPool,
 } from '@/lib/pools';
@@ -38,7 +38,7 @@ interface PoolPriorityEditorProps {
 }
 
 function getSelectedPreset(pool: PoolConfig, presets: KnownPool[]): KnownPool | null {
-  return presets.find((preset) => isSameTrustedPool(pool, preset)) ?? null;
+  return getKnownPoolForConfig(pool, presets);
 }
 
 export function PoolPriorityEditor({
@@ -58,9 +58,7 @@ export function PoolPriorityEditor({
   }
   const canAddPool = pools.length < MAX_SELECTED_POOLS;
   const duplicateEndpointIndexes = getDuplicatePoolEndpointIndexes(pools);
-  const unselectedPresets = presets.filter((preset) => (
-    !pools.some((selectedPool) => isDuplicatePoolEndpoint(selectedPool, preset))
-  ));
+  const unselectedPresets = getUnselectedPresets(presets, pools);
 
   const togglePreset = (preset: KnownPool) => {
     const selectedIndex = pools.findIndex((pool) => hasSameEndpoint(pool, preset));

@@ -1,6 +1,6 @@
 import type { BitcoinNetwork, MiningMode, PoolConfig } from '@sv2-ui/shared';
 import { PoolIcon } from '@/components/ui/pool-icon';
-import { isSameTrustedPool, type KnownPool } from '@/lib/pools';
+import { getKnownPoolForConfig, type KnownPool } from '@/lib/pools';
 import { getCompatiblePoolIdentity } from '@/lib/miningIdentity';
 import { PoolIdentityFields } from './PoolIdentityFields';
 
@@ -20,7 +20,7 @@ interface FallbackIdentitySectionProps {
 }
 
 function getSelectedPreset(pool: PoolConfig, presets: KnownPool[]): KnownPool | null {
-  return presets.find((preset) => isSameTrustedPool(pool, preset)) ?? null;
+  return getKnownPoolForConfig(pool, presets);
 }
 
 export function FallbackIdentitySection({

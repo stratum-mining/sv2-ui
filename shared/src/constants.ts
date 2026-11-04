@@ -44,6 +44,9 @@ export const DEFAULT_MIN_HASHRATE = 100_000_000_000_000;
 export const DEFAULT_POOL_PORT = 34254;
 // Max number of fallback pools, not counting the primary.
 export const MAX_FALLBACK_POOLS = 16;
+// Telegram status summary choices in minutes, 0 = off. Shared by the API, the
+// bot's /settings button and the settings page.
+export const TELEGRAM_SUMMARY_INTERVALS = [0, 15, 60, 6 * 60] as const;
 
 export function computeDefaultSocketPath(dataDir: string, network: BitcoinNetwork): string {
   return network === 'mainnet' ? `${dataDir}/node.sock` : `${dataDir}/${network}/node.sock`;

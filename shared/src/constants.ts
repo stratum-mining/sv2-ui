@@ -1,6 +1,6 @@
 import type { BitcoinCoreVersion, BitcoinNetwork, OperatingSystem } from './types.js';
 
-export const SUPPORTED_BITCOIN_CORE_VERSIONS: BitcoinCoreVersion[] = ['30', '31'];
+export const SUPPORTED_BITCOIN_CORE_VERSIONS: BitcoinCoreVersion[] = ['30', '31', '32'];
 
 export const SUPPORTED_NETWORKS: BitcoinNetwork[] = ['mainnet', 'testnet4'];
 

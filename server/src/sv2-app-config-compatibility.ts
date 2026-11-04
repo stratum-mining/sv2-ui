@@ -14,7 +14,12 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { promisify } from 'node:util';
-import { JDC_AUTHORITY_PUBLIC_KEY, SV2_APP_IMAGES } from '@sv2-ui/shared';
+import {
+  JDC_AUTHORITY_PUBLIC_KEY,
+  SUPPORTED_BITCOIN_CORE_VERSIONS,
+  SV2_APP_IMAGES,
+} from '@sv2-ui/shared';
+import type { BitcoinCoreVersion } from '@sv2-ui/shared';
 import { prepareServiceConfig } from './service-config.js';
 import type { SetupData } from './types.js';
 
@@ -252,6 +257,24 @@ function baseSetup(): SetupData {
   };
 }
 
+function jdSetup(coreVersion: BitcoinCoreVersion): SetupData {
+  return {
+    ...baseSetup(),
+    mode: 'jd',
+    bitcoin: {
+      core_version: coreVersion,
+      network: 'mainnet',
+      os: 'linux',
+      customDataDir: '',
+      socket_path: '/root/.bitcoin/node.sock',
+    },
+    jdc: {
+      jdc_signature: 'smoke-test',
+      coinbase_reward_address: '1BoatSLRHtKNngkdXEeobR76b53LETtpyT',
+    },
+  };
+}
+
 async function main(): Promise<void> {
   const configDir = await mkdtemp(path.join(os.tmpdir(), 'sv2-ui-image-config-'));
 
@@ -290,32 +313,13 @@ async function main(): Promise<void> {
       '/app/translator_sv2',
     );
 
-    const jdData: SetupData = {
-      ...baseSetup(),
-      mode: 'jd',
-      bitcoin: {
-        core_version: '30',
-        network: 'mainnet',
-        os: 'linux',
-        customDataDir: '',
-        socket_path: '/root/.bitcoin/node.sock',
-      },
-      jdc: {
-        jdc_signature: 'smoke-test',
-        coinbase_reward_address: '1BoatSLRHtKNngkdXEeobR76b53LETtpyT',
-      },
-    };
-    const jdPrepared = prepareServiceConfig(jdData);
+    const jdPrepared = prepareServiceConfig(jdSetup(SUPPORTED_BITCOIN_CORE_VERSIONS[0]));
     if (jdPrepared.kind !== 'ready') throw new Error('Could not prepare JD smoke-test configuration');
     const jdTranslatorConfig = jdPrepared.files.find((file) => file.filename === 'translator.toml');
     if (!jdTranslatorConfig) throw new Error('No JD Translator configuration was generated');
-    const jdcConfig = jdPrepared.files.find((file) => file.filename === 'jdc.toml');
-    if (!jdcConfig) throw new Error('No JDC configuration was generated');
 
     const jdTranslatorPath = path.join(configDir, `jd-${jdTranslatorConfig.filename}`);
-    const jdcPath = path.join(configDir, jdcConfig.filename);
     await writeFile(jdTranslatorPath, jdTranslatorConfig.contents);
-    await writeFile(jdcPath, jdcConfig.contents);
 
     await assertConfigErrorsAreRecognized(
       'JD Translator config',
@@ -341,13 +345,26 @@ async function main(): Promise<void> {
       '/app/jd_client_sv2',
     );
 
-    await checkGeneratedConfig(
-      'JDC config',
-      SV2_APP_IMAGES.jd.jdc,
-      jdcPath,
-      '/config/jdc.toml',
-      '/app/jd_client_sv2',
-    );
+    // Only the JDC config depends on the Bitcoin Core version.
+    for (const coreVersion of SUPPORTED_BITCOIN_CORE_VERSIONS) {
+      const prepared = prepareServiceConfig(jdSetup(coreVersion));
+      if (prepared.kind !== 'ready') {
+        throw new Error(`Could not prepare JD smoke-test configuration for Bitcoin Core ${coreVersion}`);
+      }
+      const jdcConfig = prepared.files.find((file) => file.filename === 'jdc.toml');
+      if (!jdcConfig) throw new Error('No JDC configuration was generated');
+
+      const jdcPath = path.join(configDir, `core-${coreVersion}-${jdcConfig.filename}`);
+      await writeFile(jdcPath, jdcConfig.contents);
+
+      await checkGeneratedConfig(
+        `JDC config for Bitcoin Core ${coreVersion}`,
+        SV2_APP_IMAGES.jd.jdc,
+        jdcPath,
+        '/config/jdc.toml',
+        '/app/jd_client_sv2',
+      );
+    }
   } finally {
     await rm(configDir, { recursive: true, force: true });
   }

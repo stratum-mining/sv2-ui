@@ -1,7 +1,11 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { generateJdcConfig, generateTranslatorConfig, normalizeSetupData } from './config-generator.js';
-import { BRAIINS_POOL_AUTHORITY_KEY } from '@sv2-ui/shared';
+import {
+  BRAIINS_POOL_AUTHORITY_KEY,
+  formatSupportedVersions,
+  rpcVersionToCoreVersion,
+} from '@sv2-ui/shared';
 import type { SetupData } from './types.js';
 
 const BASE_DATA_30: SetupData = {
@@ -382,11 +386,23 @@ test('jdc config uses a custom JD port and defaults fallbacks to 3334', () => {
 test('jdc config writes Bitcoin Core IPC version', () => {
   const config30 = generateJdcConfig(BASE_DATA_30);
   const config31 = generateJdcConfig(BASE_DATA_31);
+  const config32 = generateJdcConfig({
+    ...BASE_DATA_30,
+    bitcoin: { ...BASE_DATA_30.bitcoin!, core_version: '32' },
+  });
 
   assert.ok(config30);
   assert.ok(config31);
+  assert.ok(config32);
   assert.match(config30, /\[template_provider_type\.BitcoinCoreIpc\]\nversion = 30/);
   assert.match(config31, /\[template_provider_type\.BitcoinCoreIpc\]\nversion = 31/);
+  assert.match(config32, /\[template_provider_type\.BitcoinCoreIpc\]\nversion = 32/);
+});
+
+test('a node reporting Bitcoin Core 32.x over RPC is recognized as supported', () => {
+  assert.equal(rpcVersionToCoreVersion(320100), '32');
+  assert.equal(rpcVersionToCoreVersion(330000), null);
+  assert.equal(formatSupportedVersions(), '30.x, 31.x, or 32.x');
 });
 
 test('jdc config maps legacy Bitcoin Core point versions to IPC majors', () => {

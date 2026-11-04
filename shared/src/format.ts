@@ -1,6 +1,34 @@
 import { SUPPORTED_BITCOIN_CORE_VERSIONS, DEFAULT_BITCOIN_PATHS } from './constants.js';
 import type { BitcoinCoreVersion, OperatingSystem } from './types.js';
 
+/**
+ * Formats hashrate with appropriate unit (H/s, KH/s, MH/s, GH/s, TH/s, PH/s, EH/s).
+ */
+export function formatHashrate(hashrate: number | null): string {
+  if (hashrate === null || hashrate === 0) return '0 H/s';
+
+  const units = ['H/s', 'KH/s', 'MH/s', 'GH/s', 'TH/s', 'PH/s', 'EH/s'];
+  const k = 1000;
+  // Below 1 H/s the logarithm is negative, and there is no smaller unit.
+  const i = Math.max(Math.floor(Math.log(hashrate) / Math.log(k)), 0);
+  const index = Math.min(i, units.length - 1);
+
+  return `${(hashrate / Math.pow(k, index)).toFixed(2)} ${units[index]}`;
+}
+
+/**
+ * Formats difficulty as a human-readable string.
+ */
+export function formatDifficulty(diff: number): string {
+  if (diff === 0) return '0';
+  if (diff >= 1e15) return `${(diff / 1e15).toFixed(2)}P`;
+  if (diff >= 1e12) return `${(diff / 1e12).toFixed(2)}T`;
+  if (diff >= 1e9) return `${(diff / 1e9).toFixed(2)}G`;
+  if (diff >= 1e6) return `${(diff / 1e6).toFixed(2)}M`;
+  if (diff >= 1e3) return `${(diff / 1e3).toFixed(2)}K`;
+  return diff.toFixed(2);
+}
+
 export function formatBitcoinCoreVersion(version: BitcoinCoreVersion): string {
   return `${version}.x`;
 }

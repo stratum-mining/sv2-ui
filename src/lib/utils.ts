@@ -1,6 +1,8 @@
 import { type ClassValue, clsx } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import { 
+  formatDifficulty,
+  formatHashrate,
   getBitcoinAddressError,
   getBitcoinAddressPlaceholder,
   getIdentifierError,
@@ -13,6 +15,8 @@ import {
 } from '@sv2-ui/shared';
 
 export {
+  formatDifficulty,
+  formatHashrate,
   getBitcoinAddressError,
   getBitcoinAddressPlaceholder,
   getIdentifierError,
@@ -29,33 +33,6 @@ export {
  */
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
-}
-
-/**
- * Formats hashrate with appropriate unit (H/s, KH/s, MH/s, GH/s, TH/s, PH/s, EH/s).
- */
-export function formatHashrate(hashrate: number | null): string {
-  if (hashrate === null || hashrate === 0) return '0 H/s';
-
-  const units = ['H/s', 'KH/s', 'MH/s', 'GH/s', 'TH/s', 'PH/s', 'EH/s'];
-  const k = 1000;
-  const i = Math.floor(Math.log(hashrate) / Math.log(k));
-  const index = Math.min(i, units.length - 1);
-
-  return `${(hashrate / Math.pow(k, index)).toFixed(2)} ${units[index]}`;
-}
-
-/**
- * Formats difficulty as a human-readable string.
- */
-export function formatDifficulty(diff: number): string {
-  if (diff === 0) return '0';
-  if (diff >= 1e15) return `${(diff / 1e15).toFixed(2)}P`;
-  if (diff >= 1e12) return `${(diff / 1e12).toFixed(2)}T`;
-  if (diff >= 1e9) return `${(diff / 1e9).toFixed(2)}G`;
-  if (diff >= 1e6) return `${(diff / 1e6).toFixed(2)}M`;
-  if (diff >= 1e3) return `${(diff / 1e3).toFixed(2)}K`;
-  return diff.toFixed(2);
 }
 
 /**

@@ -64,6 +64,16 @@ test('reconciles a legacy JDC config with the required Bitcoin Core IPC version'
   }
 });
 
+test('setup accepts Bitcoin Core 32 and still rejects an unsupported version', () => {
+  const withVersion = (coreVersion: string) => ({
+    ...JD_DATA,
+    bitcoin: { ...JD_DATA.bitcoin!, core_version: coreVersion },
+  }) as SetupData;
+
+  assert.equal(getSetupValidationError(withVersion('32')), null);
+  assert.notEqual(getSetupValidationError(withVersion('33')), null);
+});
+
 test('does not rewrite generated config files that already match', async () => {
   const configDir = await mkdtemp(path.join(os.tmpdir(), 'sv2-ui-config-'));
   try {

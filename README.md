@@ -198,7 +198,7 @@ Release branches should pin all sv2-apps image tags in `shared/src/images.ts` be
 
 ## Bitcoin Core IPC Support
 
-JD mode supports Bitcoin Core 30.x and 31.x over IPC. During setup, `sv2-ui` stores `30` for Bitcoin Core 30.x or `31` for Bitcoin Core 31.x and writes that value to the generated JDC config.
+JD mode supports Bitcoin Core 30.x, 31.x and 32.x over IPC. During setup, `sv2-ui` stores the major version (`30`, `31` or `32`) and writes that value to the generated JDC config.
 
 ## Monitoring API Notes
 

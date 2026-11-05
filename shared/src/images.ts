@@ -3,13 +3,11 @@ import type { SetupData } from './types.js';
 export const BITCOIN_PROBE_IMAGE = 'node:24-alpine';
 
 export const SV2_APP_IMAGES = {
-  // Development branches track sv2-apps `main`. The matching release/vX
-  // branch replaces all of these with its approved sv2-apps `vX` release
-  // tags before sv2-ui is published.
-  translatorNoJd: 'stratumv2/translator_sv2:main',
+  // Pinned to the sv2-apps v0.9.1 release tags and their multi-arch index digests.
+  translatorNoJd: 'stratumv2/translator_sv2:v0.9.1@sha256:b29c48e242e4dca61daeea9c4d060f437ae7f9aef957199237ad4d2aba90b364',
   jd: {
-    jdc: 'stratumv2/jd_client_sv2:main',
-    translator: 'stratumv2/translator_sv2:main',
+    jdc: 'stratumv2/jd_client_sv2:v0.9.1@sha256:ce44754eac0ab66b4afd84d79b1de9579f8c32668b9aba876a4a5663b487148a',
+    translator: 'stratumv2/translator_sv2:v0.9.1@sha256:b29c48e242e4dca61daeea9c4d060f437ae7f9aef957199237ad4d2aba90b364',
   },
 } as const satisfies {
   translatorNoJd: string;

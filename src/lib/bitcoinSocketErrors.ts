@@ -5,6 +5,9 @@ const BITCOIN_SOCKET_ERROR_PATTERNS = [
   'Permission denied for',
   'is not a Unix socket',
   'Bitcoin Core version does not match',
+  // The version check at start, which the Bitcoin step can explain and retry.
+  "Mining can't start until",
+  'Bitcoin Core is still starting',
 ];
 
 function getErrorMessage(error?: string | Error | null): string {

@@ -21,10 +21,13 @@ import {
 } from './service-config.js';
 import { DockerConnectionError, isMissingContainerError } from './docker-errors.js';
 import {
+  DEFAULT_BITCOIN_PATHS,
   TRANSLATOR_MONITORING_PORT,
   JDC_MONITORING_PORT,
+  isValidBitcoinNetwork,
   minerTelemetryCidrForAddress,
 } from '@sv2-ui/shared';
+import type { OperatingSystem } from '@sv2-ui/shared';
 import {
   loadSavedState,
   saveSavedState,
@@ -43,9 +46,12 @@ import {
   readContainerLogs,
   streamContainerLogText,
   probeBitcoinSocketWithDocker,
+  probeBitcoinRpcWithDocker,
   autoDiscoverBitcoinRpc,
   detectHostLanAddress,
 } from './docker.js';
+import { checkBitcoinCoreVersion, toVersionCheckResponse } from './bitcoin-core-version.js';
+import type { BitcoinCoreVersionCheck } from './bitcoin-core-version.js';
 import { createMergedLogWriter } from './logs/merge.js';
 import { CONTAINER_LOG_EXPORT_MAX_BYTES } from './logs/export.js';
 import { getLogDiagnostics, getLogStreams, readCollatedLogLines } from './logs/diagnostics.js';
@@ -289,6 +295,7 @@ const autoStart = new AutoStartReconciler({
   startStack,
   saveState,
   getBitcoinSocketStartupError,
+  checkBitcoinCoreVersion: checkNodeBitcoinCoreVersion,
   readStackLogs: (mode) => readCollatedLogLines(mode),
   tryAcquire: () => beginStackOperation('auto-start'),
   release: () => finishStackOperation('auto-start'),
@@ -541,9 +548,12 @@ async function getCurrentStatus(): Promise<StatusResponse> {
   const recovery = translatorRecovery.status(Date.now());
   const degraded = isDegraded(state.mode, containers, recovery.recovering);
   const prepared = state.configured ? prepareServiceConfig(state.data) : null;
+  const bitcoinCoreVersionIssue = state.mode === 'jd' && state.shouldBeRunning
+    ? autoStart.bitcoinCoreVersionIssue()
+    : null;
   const configurationIssues = prepared?.kind === 'needs-setup-review'
     ? prepared.issues
-    : [];
+    : bitcoinCoreVersionIssue ? [bitcoinCoreVersionIssue] : [];
   const isSovereignSolo = state.data?.miningMode === 'solo' && state.data?.mode === 'jd';
   const pools = state.data && !isSovereignSolo ? configuredPools(state.data) : [];
 
@@ -780,6 +790,41 @@ app.get('/api/validate/bitcoin-rpc', async (_req, res) => {
   return res.json(results);
 });
 
+/**
+ * POST /api/validate/bitcoin-version - Read a node's version for the wizard,
+ * through the same check every start runs, so the two can't disagree. Discovery
+ * above only looks in the default data directories, which isn't enough here.
+ */
+app.post('/api/validate/bitcoin-version', async (req, res) => {
+  const { os, network, customDataDir, socket_path } = isJsonObject(req.body) ? req.body : {} as Record<string, unknown>;
+
+  if (
+    typeof os !== 'string' || !Object.hasOwn(DEFAULT_BITCOIN_PATHS, os) ||
+    !isValidBitcoinNetwork(network) ||
+    typeof socket_path !== 'string' || socket_path.length === 0 ||
+    (customDataDir !== undefined && typeof customDataDir !== 'string')
+  ) {
+    return res.status(400).json({ error: 'os, network and socket_path are required' });
+  }
+
+  const check = await checkNodeBitcoinCoreVersion({
+    mode: 'jd',
+    bitcoin: {
+      core_version: null,
+      os: os as OperatingSystem,
+      network,
+      customDataDir: customDataDir ?? '',
+      socket_path,
+    },
+  } as SetupData);
+
+  if (check.kind === 'refused') {
+    console.warn(check.detail);
+  }
+
+  return res.json(toVersionCheckResponse(check));
+});
+
 async function getBitcoinSocketStartupError(data: SetupData): Promise<string | null> {
   if (data.mode !== 'jd' || !data.bitcoin) {
     return null;
@@ -788,6 +833,48 @@ async function getBitcoinSocketStartupError(data: SetupData): Promise<string | n
   const resolved = expandHomePath(data.bitcoin.socket_path);
   const result = await probeBitcoinSocketWithDocker(resolved);
   return result.valid ? null : result.error;
+}
+
+function checkNodeBitcoinCoreVersion(data: SetupData): Promise<BitcoinCoreVersionCheck> {
+  return checkBitcoinCoreVersion(data, {
+    readNodeVersion: (dataDir, network) => probeBitcoinRpcWithDocker(expandHomePath(dataDir), network),
+    getSocketError: getBitcoinSocketStartupError,
+  });
+}
+
+type ReadyServiceConfig = Extract<PreparedServiceConfig, { kind: 'ready' }>;
+
+/**
+ * Apply the node's Bitcoin Core version to a manual start, or say why mining
+ * cannot start. Generated files are built from the saved version, so a
+ * corrected version has to be prepared again before the stack starts.
+ */
+async function applyNodeBitcoinCoreVersion(
+  prepared: ReadyServiceConfig,
+): Promise<{ kind: 'ready'; prepared: ReadyServiceConfig } | { kind: 'refused'; error: string }> {
+  const check = await checkNodeBitcoinCoreVersion(prepared.data);
+
+  switch (check.kind) {
+    case 'confirmed':
+      return { kind: 'ready', prepared };
+    case 'corrected': {
+      console.log(`Bitcoin Core version changed from ${check.from ?? 'unset'} to ${check.to}.`);
+      const corrected = prepareServiceConfig(check.data, { logFailure: true });
+      return corrected.kind === 'ready'
+        ? { kind: 'ready', prepared: corrected }
+        : {
+          kind: 'refused',
+          error: corrected.issues[0]?.message ?? 'Review your setup before starting mining.',
+        };
+    }
+    case 'node-starting':
+      return { kind: 'refused', error: 'Bitcoin Core is still starting. Try again in a moment.' };
+    case 'node-unavailable':
+      return { kind: 'refused', error: check.error };
+    case 'refused':
+      console.warn(check.detail);
+      return { kind: 'refused', error: check.issue.message };
+  }
 }
 
 /**
@@ -842,7 +929,12 @@ app.put('/api/config', async (req, res) => {
       return res.status(400).json({ success: false, error: bitcoinSocketError });
     }
 
-    await reconcileAndStartStack(prepared);
+    const versioned = await applyNodeBitcoinCoreVersion(prepared);
+    if (versioned.kind !== 'ready') {
+      return res.status(400).json({ success: false, error: versioned.error });
+    }
+
+    await reconcileAndStartStack(versioned.prepared);
 
     const response: SetupResponse = { success: true };
     res.json(response);
@@ -1018,7 +1110,12 @@ app.post('/api/setup', async (req, res) => {
       return res.status(400).json({ success: false, error: bitcoinSocketError });
     }
 
-    await reconcileAndStartStack(prepared);
+    const versioned = await applyNodeBitcoinCoreVersion(prepared);
+    if (versioned.kind !== 'ready') {
+      return res.status(400).json({ success: false, error: versioned.error });
+    }
+
+    await reconcileAndStartStack(versioned.prepared);
 
     const response: SetupResponse = { success: true };
     res.json(response);
@@ -1100,7 +1197,12 @@ app.post('/api/restart', async (_req, res) => {
       return res.status(400).json({ success: false, error: bitcoinSocketError });
     }
 
-    await reconcileAndStartStack(prepared);
+    const versioned = await applyNodeBitcoinCoreVersion(prepared);
+    if (versioned.kind !== 'ready') {
+      return res.status(400).json({ success: false, error: versioned.error });
+    }
+
+    await reconcileAndStartStack(versioned.prepared);
 
     res.json({ success: true });
   } catch (error) {

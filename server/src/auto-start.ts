@@ -26,6 +26,11 @@
  *   is only declared when a later tick observes the stack running, not
  *   when startStack returns.
  *
+ * The node's Bitcoin Core version is also confirmed before any JDC start (see
+ * bitcoin-core-version.ts). It comes before the two guards above, because a
+ * corrected version is exactly what a diagnosed version mismatch is waiting
+ * for, and a paused stack would otherwise never get the chance to recover.
+ *
  * It is deliberately extracted from index.ts with injected dependencies so
  * the decision logic is unit-testable. The stack-operation lock (which is
  * shared with the manual start/stop endpoints and surfaced as
@@ -40,6 +45,9 @@ import type { ContainerLogLine } from './logs/types.js';
 import { evaluateDiagnosisPolicy } from './logs/parsers.js';
 import type { DiagnosisRetryDecision } from './logs/parsers.js';
 import { isOnlyTranslatorStopped, isStackRunning } from './stack-health.js';
+import type { BitcoinCoreVersionCheck, BitcoinCoreVersionIssue } from './bitcoin-core-version.js';
+
+const VERSION_MISMATCH_DIAGNOSIS = 'jdc-bitcoin-core-unsupported-mining-interface';
 
 export const AUTO_START_MIN_BACKOFF_MS = 60_000;
 export const AUTO_START_MAX_BACKOFF_MS = 5 * 60_000;
@@ -52,6 +60,16 @@ export const AUTO_START_MAX_BACKOFF_MS = 5 * 60_000;
 export const QUICK_EXIT_WINDOW_MS = 90_000;
 
 type StackContainers = StatusResponse['containers'];
+
+type ReadyServiceConfig = Extract<PreparedServiceConfig, { kind: 'ready' }>;
+
+type VersionReconciliation = {
+  prepared: ReadyServiceConfig;
+  /** The saved version was wrong, so the stack has to restart on the new one. */
+  corrected: boolean;
+  /** The node's version was read on this tick. */
+  confirmed: boolean;
+};
 
 export type AutoStartDeps = {
   loadState: () => Promise<SavedState>;
@@ -66,6 +84,7 @@ export type AutoStartDeps = {
   startStack: (data: SetupData, configDir: string) => Promise<void>;
   saveState: (data: SetupData, shouldBeRunning: boolean) => Promise<void>;
   getBitcoinSocketStartupError: (data: SetupData) => Promise<string | null>;
+  checkBitcoinCoreVersion: (data: SetupData) => Promise<BitcoinCoreVersionCheck>;
   /** Recent log lines of the mining containers for the current mode. */
   readStackLogs: (mode: SavedState['mode']) => Promise<ContainerLogLine[]>;
   /** Take the shared stack-operation lock, or return false when busy. */
@@ -85,8 +104,17 @@ export class AutoStartReconciler {
   private autoStartedAt: number | null = null;
   /** The paused-diagnosis code already logged, to log the pause only once. */
   private pauseLoggedFor: string | null = null;
+  /** Whether the node's version has been read since this server booted. */
+  private versionConfirmed = false;
+  /** Why the node's version is keeping mining stopped; null when it isn't. */
+  private versionIssue: BitcoinCoreVersionIssue | null = null;
+  private nodeStartingLogged = false;
 
   constructor(private readonly deps: AutoStartDeps) {}
+
+  bitcoinCoreVersionIssue(): BitcoinCoreVersionIssue | null {
+    return this.versionIssue;
+  }
 
   /**
    * Clear the failure backoff and one-shot logs so the next failure is
@@ -98,6 +126,7 @@ export class AutoStartReconciler {
     this.setupReviewLogged = false;
     this.autoStartedAt = null;
     this.pauseLoggedFor = null;
+    this.versionIssue = null;
   }
 
   async reconcile(): Promise<void> {
@@ -112,12 +141,12 @@ export class AutoStartReconciler {
       }
 
       const containers = await this.deps.getStackStatus(state.mode);
-      const prepared = this.deps.prepareServiceConfig(state.data, {
+      const savedConfig = this.deps.prepareServiceConfig(state.data, {
         logFailure: !this.setupReviewLogged,
       });
       const running = isStackRunning(state.mode, containers);
 
-      if (prepared.kind !== 'ready') {
+      if (savedConfig.kind !== 'ready') {
         this.setupReviewLogged = true;
         // A required setup choice is missing. Stop stale services and let the
         // wizard reopen with saved fields prefilled.
@@ -130,10 +159,17 @@ export class AutoStartReconciler {
       }
       this.setupReviewLogged = false;
 
+      const version = await this.reconcileBitcoinCoreVersion(
+        savedConfig,
+        running || isOnlyTranslatorStopped(state.mode, containers),
+      );
+      if (version === null) return;
+      const { prepared, corrected, confirmed } = version;
+
       // Check drift before considering a running stack healthy. This repairs an
       // interrupted update and applies new generated configuration on boot.
       const drift = await this.deps.getServiceConfigDrift(prepared.files, this.deps.configDir);
-      if (running && drift.length === 0) {
+      if (running && drift.length === 0 && !corrected) {
         // The stack is up and matches the desired config: this is the only
         // place success is declared. A start that returns but stops again
         // must reach the quick-exit check below instead of clearing the
@@ -144,7 +180,7 @@ export class AutoStartReconciler {
 
       // recoverTranslator restarts the Translator on its own schedule. A full
       // restart here would recreate JDC and send it back to the primary pool.
-      if (drift.length === 0 && isOnlyTranslatorStopped(state.mode, containers)) {
+      if (drift.length === 0 && !corrected && isOnlyTranslatorStopped(state.mode, containers)) {
         this.resetRecoveryState();
         return;
       }
@@ -154,13 +190,14 @@ export class AutoStartReconciler {
         // container's logs when it is removed. Decide from the failure's
         // retry policy first so a user-actionable diagnosis keeps its
         // evidence (and its steady banner) on screen.
-        const pause = await this.evaluateStoppedStackDiagnostics(state);
+        const pause = await this.evaluateStoppedStackDiagnostics(state, confirmed);
         if (pause !== null) return;
 
         // A stack that stopped again right after we started it is
         // crash-looping: count it as a failed start so the backoff
-        // applies, instead of recreating (and log-wiping) every tick.
-        if (this.autoStartedAt !== null &&
+        // applies, instead of recreating (and log-wiping) every tick. A
+        // corrected version is a new attempt, not the same one crashing.
+        if (!corrected && this.autoStartedAt !== null &&
           this.now() - this.autoStartedAt < QUICK_EXIT_WINDOW_MS) {
           this.autoStartedAt = null;
           this.recordFailure(
@@ -192,6 +229,10 @@ export class AutoStartReconciler {
 
       await this.deps.saveState(prepared.data, true);
       await this.deps.startStack(prepared.data, this.deps.configDir);
+      // Only now is JDC on this version. Remembering a correction any earlier
+      // would skip the next check if anything above failed, and an old JDC
+      // that is still up would count as healthy on the wrong version.
+      if (confirmed) this.versionConfirmed = true;
       this.autoStartedAt = this.now();
       this.log().log('Auto-start: containers started successfully');
     } catch (error) {
@@ -202,14 +243,81 @@ export class AutoStartReconciler {
   }
 
   /**
+   * Read the node's version and apply it to the generated configuration, or
+   * return null when mining must not start on this tick.
+   *
+   * Changing a node's version restarts it, and that stops JDC. So a JDC that
+   * is still up runs the version last confirmed, and only the first tick after
+   * this server boots needs to ask, in case the stack outlived a crash of it.
+   */
+  private async reconcileBitcoinCoreVersion(
+    prepared: ReadyServiceConfig,
+    jdcUp: boolean,
+  ): Promise<VersionReconciliation | null> {
+    const unchecked = { prepared, corrected: false, confirmed: false };
+    if (prepared.data.mode !== 'jd' || (jdcUp && this.versionConfirmed)) return unchecked;
+
+    const check = await this.deps.checkBitcoinCoreVersion(prepared.data);
+    const wasStarting = this.nodeStartingLogged;
+    this.nodeStartingLogged = check.kind === 'node-starting';
+
+    switch (check.kind) {
+      case 'confirmed':
+        this.versionConfirmed = true;
+        this.versionIssue = null;
+        return { prepared, corrected: false, confirmed: true };
+
+      case 'corrected': {
+        const correctedConfig = this.deps.prepareServiceConfig(check.data, { logFailure: true });
+        if (correctedConfig.kind !== 'ready') {
+          throw new Error(`Could not prepare the configuration for Bitcoin Core ${check.to}.`);
+        }
+        this.log().log(`Auto-start: Bitcoin Core version changed from ${check.from ?? 'unset'} to ${check.to}.`);
+        this.versionIssue = null;
+        return { prepared: correctedConfig, corrected: true, confirmed: true };
+      }
+
+      case 'node-starting':
+        // Not a failure: this resolves by itself in seconds or minutes, so no
+        // backoff, which could leave a ready node idle for several minutes.
+        if (!wasStarting) {
+          this.log().log('Auto-start: Bitcoin Core is still starting. Waiting for it.');
+        }
+        return null;
+
+      case 'node-unavailable':
+        // The socket check below reports this, and more precisely.
+        this.versionIssue = null;
+        return unchecked;
+
+      case 'refused':
+        this.versionIssue = check.issue;
+        // JDC may be on the wrong version, where it would lose any block it
+        // finds, so it must not keep mining on an unconfirmed version.
+        if (jdcUp) {
+          this.log().log('Auto-start: could not confirm the Bitcoin Core version. Stopping the existing stack.');
+          await this.deps.stopStack();
+        }
+        this.recordFailure(check.detail);
+        return null;
+    }
+  }
+
+  /**
    * Consult the diagnostics in the stopped containers' logs and return a
    * pause reason when auto-start must not restart, or null when it may.
    *
    * The decision itself comes from the shared evaluateDiagnosisPolicy so
    * this loop and translator recovery cannot drift apart; the log-once
    * state stays here.
+   *
+   * A version mismatch in those logs is out of date once the node's version
+   * has been read, because the next start uses that version.
    */
-  private async evaluateStoppedStackDiagnostics(state: SavedState): Promise<string | null> {
+  private async evaluateStoppedStackDiagnostics(
+    state: SavedState,
+    versionConfirmed: boolean,
+  ): Promise<string | null> {
     let decision: DiagnosisRetryDecision;
     try {
       decision = evaluateDiagnosisPolicy(await this.deps.readStackLogs(state.mode), state.mode);
@@ -219,8 +327,12 @@ export class AutoStartReconciler {
       return null;
     }
 
-    if (decision.action === 'pause') {
-      const key = decision.codes.join(', ');
+    const pausingCodes = decision.action !== 'pause'
+      ? []
+      : decision.codes.filter((code) => !versionConfirmed || code !== VERSION_MISMATCH_DIAGNOSIS);
+
+    if (pausingCodes.length > 0) {
+      const key = pausingCodes.join(', ');
       if (this.pauseLoggedFor !== key) {
         this.pauseLoggedFor = key;
         this.log().log(

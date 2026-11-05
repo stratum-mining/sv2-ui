@@ -26,6 +26,12 @@ export interface BitcoinConfig {
   socket_path: string;
 }
 
+/** What the setup wizard learns from POST /api/validate/bitcoin-version. */
+export type BitcoinCoreVersionCheckResponse =
+  | { status: 'ready'; version: BitcoinCoreVersion }
+  | { status: 'starting' }
+  | { status: 'failed'; title: string; message: string };
+
 export interface JdcConfig {
   jdc_signature: string;
   coinbase_reward_address: string;

@@ -1,21 +1,17 @@
 import { useState, useEffect, useRef } from 'react';
 import {
   DEFAULT_BITCOIN_PATHS,
-  SUPPORTED_BITCOIN_CORE_VERSIONS,
   computeDefaultSocketPath,
-  rpcVersionToCoreVersion,
-  rpcVersionToDisplayVersion,
-  normalizeBitcoinCoreVersion,
   formatBitcoinCoreVersion,
   inferOsFromDataDir,
 } from '@sv2-ui/shared';
-import type { BitcoinCoreVersion, OperatingSystem, BitcoinNetwork } from '@sv2-ui/shared';
+import type { OperatingSystem, BitcoinNetwork } from '@sv2-ui/shared';
 import { BITCOIN_MESSAGES } from '@/lib/messages';
 import { StepProps, BitcoinConfig } from '../types';
 import { Apple, Terminal, Pencil, Check, Loader2, RotateCw } from 'lucide-react';
 import { Alert } from '@/components/ui/alert';
-import { FieldError } from '@/components/ui/field-error';
 import { UmbrelIcon } from '../icons/UmbrelIcon';
+import { useBitcoinCoreVersionCheck, usableCoreVersion } from '@/hooks/useBitcoinCoreVersionCheck';
 import { useBitcoinSocketValidation } from '@/hooks/useBitcoinSocketValidation';
 import type { BitcoinRpcDiscoveryResult } from '@/hooks/useBitcoinRpcDiscovery';
 import { BitcoinNetworkSelector } from '../BitcoinNetworkSelector';
@@ -26,10 +22,25 @@ interface BitcoinSetupProps extends StepProps {
   discoveredNodes?: BitcoinRpcDiscoveryResult[];
 }
 
-export function BitcoinSetup({ data, updateData, onNext, notice, onDismissNotice, discoveredNodes }: BitcoinSetupProps) {
-  const [coreVersion, setCoreVersion] = useState<BitcoinCoreVersion | null>(
-    normalizeBitcoinCoreVersion(data.bitcoin?.core_version)
+function RetryCheckButton({ onClick, isRefreshing }: { onClick: () => void; isRefreshing: boolean }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={isRefreshing}
+      className="inline-flex h-8 items-center gap-2 rounded-md border border-red-500/30 bg-background px-3 text-xs font-medium text-red-600 dark:text-red-500 transition-colors hover:bg-red-500/[0.06] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500/30 disabled:cursor-not-allowed disabled:opacity-60"
+    >
+      {isRefreshing ? (
+        <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
+      ) : (
+        <RotateCw className="h-3.5 w-3.5" aria-hidden="true" />
+      )}
+      {isRefreshing ? 'Checking...' : 'Retry'}
+    </button>
   );
+}
+
+export function BitcoinSetup({ data, updateData, onNext, notice, onDismissNotice, discoveredNodes }: BitcoinSetupProps) {
   const [os, setOs] = useState<OperatingSystem>(data.bitcoin?.os || 'linux');
   const [network, setNetwork] = useState<BitcoinNetwork>(data.bitcoin?.network || 'mainnet');
   const [customDataDir, setCustomDataDir] = useState(data.bitcoin?.customDataDir || '');
@@ -41,29 +52,35 @@ export function BitcoinSetup({ data, updateData, onNext, notice, onDismissNotice
   const dataDir = customDataDir.trim() || DEFAULT_BITCOIN_PATHS[os];
   const computedSocketPath = computeDefaultSocketPath(dataDir, network);
   const socketPath = manualSocketPath || computedSocketPath;
-  const detectedRpcVersion = discoveredNodes?.find(n => n.network === network)?.version ?? discoveredNodes?.[0]?.version;
-  const detectedVersion = detectedRpcVersion ? rpcVersionToCoreVersion(detectedRpcVersion) : null;
-  const detectedVersionLabel = detectedVersion
-    ? formatBitcoinCoreVersion(detectedVersion)
-    : detectedRpcVersion
-      ? rpcVersionToDisplayVersion(detectedRpcVersion)
-      : 'Unknown';
 
   useEffect(() => {
     if (discoveredNodes && discoveredNodes.length > 0 && !discoveryApplied) {
       const primary = discoveredNodes.find(n => n.network === 'mainnet') ?? discoveredNodes[0];
-      const detectedVersion = rpcVersionToCoreVersion(primary.version);
 
       if (!osPrefilled.current) {
         setOs(inferOsFromDataDir(primary.dataDir));
       }
       setNetwork(primary.network);
-      if (detectedVersion) {
-        setCoreVersion(detectedVersion);
-      }
       setDiscoveryApplied(true);
     }
   }, [discoveredNodes, discoveryApplied]);
+
+  const {
+    isChecking,
+    isRefreshing,
+    isValid,
+    error: socketError,
+    isRetryable,
+    skipped: socketCheckUnanswered,
+    retry: retrySocketValidation,
+  } = useBitcoinSocketValidation(socketPath, network);
+
+  const socketIsUp = isValid && !isChecking;
+  const versionCheck = useBitcoinCoreVersionCheck(
+    { os, network, customDataDir, socketPath },
+    socketIsUp,
+  );
+  const coreVersion = usableCoreVersion(versionCheck.state, socketIsUp);
 
   useEffect(() => {
     updateData({
@@ -77,14 +94,9 @@ export function BitcoinSetup({ data, updateData, onNext, notice, onDismissNotice
     });
   }, [coreVersion, os, network, customDataDir, socketPath, updateData, discoveryApplied, discoveredNodes]);
 
-  const {
-    isChecking,
-    isRefreshing,
-    isValid,
-    error: socketError,
-    isRetryable,
-    retry: retrySocketValidation,
-  } = useBitcoinSocketValidation(socketPath, network, coreVersion);
+  useEffect(() => {
+    if (coreVersion) onDismissNotice?.();
+  }, [coreVersion, onDismissNotice]);
 
   const resetPath = () => { setManualSocketPath(''); setIsEditingPath(false); };
 
@@ -111,7 +123,7 @@ export function BitcoinSetup({ data, updateData, onNext, notice, onDismissNotice
           <div>
             <span className="font-medium">Pre-filled from detected node</span>
             <p className="text-xs mt-1 opacity-80">
-              Network: {network} • Version: {detectedVersionLabel}
+              Network: {network}
             </p>
           </div>
         </Alert>
@@ -175,39 +187,13 @@ export function BitcoinSetup({ data, updateData, onNext, notice, onDismissNotice
         )}
       </div>
 
-      <div>
-        <label htmlFor="core-version" className="block text-sm font-medium mb-3">
-          {BITCOIN_MESSAGES.versionLabel}
-        </label>
-        {notice && (
-          <Alert variant="destructive" className="mb-3">
-            <span>{notice}</span>
-          </Alert>
-        )}
-        <select
-          id="core-version"
-          value={coreVersion ?? ''}
-          onChange={(e) => {
-            setCoreVersion(e.target.value ? (e.target.value as BitcoinCoreVersion) : null);
-            onDismissNotice?.();
-          }}
-          className="w-full h-10 px-3 rounded-lg border border-input bg-background text-sm focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/15 outline-none transition-all"
-        >
-          <option value="" disabled>{BITCOIN_MESSAGES.selectPlaceholder}</option>
-          {SUPPORTED_BITCOIN_CORE_VERSIONS.map((version) => (
-            <option key={version} value={version}>
-              Bitcoin Core {formatBitcoinCoreVersion(version)}
-            </option>
-          ))}
-        </select>
-        <p className="text-xs text-muted-foreground mt-2">
-          {BITCOIN_MESSAGES.genericUpgrade}
-        </p>
-        {!coreVersion && (
-          <FieldError message={BITCOIN_MESSAGES.selectVersionPrompt} />
-        )}
-      </div>
-      {os === 'umbrel' && coreVersion && !isChecking && socketError && (
+      {notice && (
+        <Alert variant="warning">
+          <span>{notice}</span>
+        </Alert>
+      )}
+
+      {os === 'umbrel' && !isChecking && socketError && (
         <Alert variant="warning">
           <div className="space-y-1">
             <p className="font-medium">Umbrel Setup Instructions</p>
@@ -290,27 +276,54 @@ export function BitcoinSetup({ data, updateData, onNext, notice, onDismissNotice
           <Alert variant="destructive" className="mt-3">
             <div className="flex-1 min-w-0 space-y-3">
               <span className="block">{socketError}</span>
-              <button
-                type="button"
-                onClick={() => retrySocketValidation()}
-                disabled={isRefreshing}
-                className="inline-flex h-8 items-center gap-2 rounded-md border border-red-500/30 bg-background px-3 text-xs font-medium text-red-600 dark:text-red-500 transition-colors hover:bg-red-500/[0.06] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500/30 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {isRefreshing ? (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
-                ) : (
-                  <RotateCw className="h-3.5 w-3.5" aria-hidden="true" />
-                )}
-                {isRefreshing ? 'Checking...' : 'Retry'}
-              </button>
+              <RetryCheckButton onClick={() => retrySocketValidation()} isRefreshing={isRefreshing} />
               {isRetryable && (
                 <p className="text-xs text-red-600/80 dark:text-red-500/80">Rechecking automatically while Bitcoin Core starts.</p>
               )}
             </div>
           </Alert>
         )}
+        {!isChecking && socketCheckUnanswered && (
+          <Alert variant="destructive" className="mt-3">
+            <div className="flex-1 min-w-0 space-y-3">
+              <span className="block">{BITCOIN_MESSAGES.socketCheckUnanswered}</span>
+              <RetryCheckButton onClick={() => retrySocketValidation()} isRefreshing={isRefreshing} />
+            </div>
+          </Alert>
+        )}
       </div>
 
+      {socketIsUp && (
+        <div>
+          <p className="block text-sm font-medium mb-3">{BITCOIN_MESSAGES.versionLabel}</p>
+          {versionCheck.state.phase === 'checking' && (
+            <Alert variant="neutral" className="items-center" icon={<Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />}>
+              <span>{BITCOIN_MESSAGES.versionChecking}</span>
+            </Alert>
+          )}
+          {versionCheck.state.phase === 'ready' && (
+            <Alert variant="success" className="items-center">
+              <span>Bitcoin Core {formatBitcoinCoreVersion(versionCheck.state.version)}</span>
+            </Alert>
+          )}
+          {versionCheck.state.phase === 'starting' && (
+            <Alert variant="neutral" className="items-center" icon={<Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />}>
+              <span>{BITCOIN_MESSAGES.versionNodeStarting}</span>
+            </Alert>
+          )}
+          {versionCheck.state.phase === 'failed' && (
+            <Alert variant="destructive">
+              <div className="flex-1 min-w-0 space-y-3">
+                <div className="space-y-1">
+                  <span className="block font-medium">{versionCheck.state.title}</span>
+                  <span className="block">{versionCheck.state.message}</span>
+                </div>
+                <RetryCheckButton onClick={() => versionCheck.retry()} isRefreshing={versionCheck.isRefreshing} />
+              </div>
+            </Alert>
+          )}
+        </div>
+      )}
 
       <div className="flex justify-center">
         <button

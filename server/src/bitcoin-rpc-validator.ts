@@ -5,9 +5,9 @@ const MAX_RPC_RESPONSE_BYTES = 1024 * 1024;
 const dataDir = process.argv[1];
 const network = process.argv[2] || 'mainnet';
 const host = process.argv[3] || 'localhost';
-const port = Number(process.argv[4]);
+const defaultPort = Number(process.argv[4]);
 
-if (!dataDir || !port) {
+if (!dataDir || !defaultPort) {
   console.error('Usage: node script.js <data-dir> <network> <host> <port>');
   process.exit(1);
 }
@@ -67,6 +67,70 @@ function parseBitcoinConf(filePath, targetNetwork) {
 
   return null;
 }
+
+function validPort(value) {
+  const port = Number(value);
+  return Number.isInteger(port) && port >= 1 && port <= 65535 ? port : null;
+}
+
+// Mirrors how Bitcoin Core picks its RPC port from bitcoin.conf, so the probe asks
+// the port the node really listens on. For rpcport, the network's own setting
+// beats a global one wherever it sits in the file, and the first value of each
+// wins. A global one counts on mainnet only: Core refuses to start on another
+// network with it. A port in rpcbind beats rpcport, but Core ignores rpcbind unless
+// rpcallowip applies to this network too, and it binds every address listed, so
+// this prefers one the probe can reach.
+function readRpcPort(filePath, targetNetwork) {
+  let content;
+  try {
+    content = fs.readFileSync(filePath, 'utf8');
+  } catch {
+    return null;
+  }
+
+  const networkSectionName = targetNetwork === 'mainnet' ? 'main' : targetNetwork;
+  let currentSection = 'global';
+  let globalPort = null;
+  let networkPort = null;
+  let hasAllowIp = false;
+  const binds = [];
+
+  for (const line of content.split('\\n')) {
+    const trimmed = line.split('#')[0].trim();
+    if (!trimmed) continue;
+
+    const sectionMatch = trimmed.match(/^\\[(.+)\\]$/);
+    if (sectionMatch) {
+      currentSection = sectionMatch[1];
+      continue;
+    }
+
+    const option = trimmed.match(/^(?:([^.=\\s]+)\\.)?(rpcport|rpcbind|rpcallowip)\\s*=\\s*(\\S+)$/);
+    if (!option) continue;
+
+    const section = option[1] || currentSection;
+    if (section !== networkSectionName && section !== 'global') continue;
+
+    if (option[2] === 'rpcallowip') {
+      hasAllowIp = true;
+    } else if (option[2] === 'rpcbind') {
+      binds.push(option[3]);
+    } else if (section === 'global') {
+      globalPort = globalPort ?? validPort(option[3]);
+    } else {
+      networkPort = networkPort ?? validPort(option[3]);
+    }
+  }
+
+  const rpcPort = networkPort ?? (targetNetwork === 'mainnet' ? globalPort : null);
+  if (!hasAllowIp || binds.length === 0) return rpcPort;
+
+  const bind = binds.find((value) => /^(127\\.0\\.0\\.1|localhost|0\\.0\\.0\\.0)(:|$)/.test(value)) ?? binds[0];
+  const bindPort = bind.match(/^(?:\\[[^\\]]*\\]|[^:]*):(\\d+)$/);
+  return (bindPort && validPort(bindPort[1])) ?? rpcPort;
+}
+
+const port = readRpcPort(dataDir + '/bitcoin.conf', network) ?? defaultPort;
 
 let authValue = null;
 

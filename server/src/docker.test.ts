@@ -710,11 +710,35 @@ test('keeps missing-container errors recognizable through the stream wrapper', a
   assert.match(error.message, /Failed to open log stream for translator container/);
 });
 
+// As dockerode reports a container that doesn't exist, checked against a real daemon.
+function missingContainerError(): Error {
+  return Object.assign(new Error('(HTTP code 404) no such container - No such container: sv2-jdc '), {
+    statusCode: 404,
+    reason: 'no such container',
+    json: { message: 'No such container: sv2-jdc' },
+  });
+}
+
+test('starting over a container it could not stop fails instead of carrying on', async (t) => {
+  let created = 0;
+  t.mock.method(Docker.prototype, 'getContainer', () => ({
+    inspect: async () => ({ State: { Running: true } }),
+    stop: async () => { throw new Error('(HTTP code 500) server error - cannot stop container'); },
+    remove: async () => undefined,
+  }));
+  t.mock.method(Docker.prototype, 'createContainer', (() => {
+    created += 1;
+    return Promise.resolve({ start: async () => undefined });
+  }) as never);
+
+  await assert.rejects(startJdc('/tmp/jdc.toml', '/tmp/node.sock', 'mainnet', 'image:jdc'), /cannot stop container/);
+  assert.equal(created, 0);
+});
+
 test('mining containers are created with bounded json-file log rotation', async (t) => {
   const created: Array<Record<string, unknown>> = [];
-  // removeContainer only needs the failure to surface; it is tolerated.
   t.mock.method(Docker.prototype, 'getContainer', () => {
-    throw new Error('no such container');
+    throw missingContainerError();
   });
   t.mock.method(Docker.prototype, 'info', (async () => ({
     LoggingDriver: 'json-file',
@@ -739,7 +763,7 @@ test('mining containers are created with bounded json-file log rotation', async 
 test('mining containers keep the operator log driver when it is not json-file', async (t) => {
   const created: Array<Record<string, unknown>> = [];
   t.mock.method(Docker.prototype, 'getContainer', () => {
-    throw new Error('no such container');
+    throw missingContainerError();
   });
   // A journald host: naming json-file here would silently move the mining
   // containers out of the operator's log pipeline and apply rotation options
@@ -765,7 +789,7 @@ test('restartTranslator recreates only the Translator and leaves JDC running', a
   t.mock.method(Docker.prototype, 'getImage', (() => ({ inspect: async () => ({}) })) as never);
   t.mock.method(Docker.prototype, 'getContainer', (name: string) => {
     touched.push(name);
-    throw new Error('no such container');
+    throw missingContainerError();
   });
   t.mock.method(Docker.prototype, 'info', (async () => ({
     LoggingDriver: 'json-file',

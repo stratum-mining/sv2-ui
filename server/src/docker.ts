@@ -1168,8 +1168,11 @@ async function removeContainer(name: string): Promise<void> {
     }
     await container.remove();
     console.log(`Removed container ${name}`);
-  } catch {
-    // Container doesn't exist, that's fine
+  } catch (error) {
+    // Only a missing container means there is nothing left to stop. Any other
+    // failure can leave it running, and a caller that believes a JDC stopped
+    // may leave it mining on a Bitcoin Core version that loses its blocks.
+    if (!isMissingContainerError(error)) throw error;
   }
 }
 

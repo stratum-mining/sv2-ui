@@ -18,9 +18,9 @@ export const BITCOIN_MESSAGES = {
   connectionHeading: 'Bitcoin Core Connection',
   connectionPrompt: 'Tell us how to connect to your running Bitcoin node',
   versionLabel: 'Bitcoin Core Version',
-  selectPlaceholder: 'Select a supported version',
-  genericUpgrade: 'If your node runs another Bitcoin Core version, upgrade to a supported release to get all SV2 features.',
-  selectVersionPrompt: 'Select your Bitcoin Core version to continue.',
-  versionMismatchNotice: 'Bitcoin Core version mismatch detected. Select the version your running node is actually using.',
+  socketCheckUnanswered: 'SV2 UI did not answer while checking this socket. Try again in a moment.',
+  versionChecking: "Reading your node's Bitcoin Core version...",
+  versionNodeStarting: 'Bitcoin Core is still starting. This will continue by itself once it is ready.',
+  bitcoinSetupNotice: 'Check the connection to your Bitcoin Core node below. SV2 UI reads its version from the node, so there is nothing to select.',
   windowsOmitted: 'Windows is intentionally omitted here because Bitcoin Core IPC support is still in progress.',
 } as const;

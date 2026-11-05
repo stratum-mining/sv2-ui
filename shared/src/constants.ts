@@ -4,6 +4,9 @@ export const SUPPORTED_BITCOIN_CORE_VERSIONS: BitcoinCoreVersion[] = ['30', '31'
 
 export const SUPPORTED_NETWORKS: BitcoinNetwork[] = ['mainnet', 'testnet4'];
 
+export const BITCOIN_CORE_VERSION_UNCONFIRMED_ISSUE = 'bitcoin-core-version-unconfirmed';
+export const BITCOIN_CORE_VERSION_UNSUPPORTED_ISSUE = 'bitcoin-core-version-unsupported';
+
 export const DEFAULT_BITCOIN_PATHS: Record<OperatingSystem, string> = {
   linux: '~/.bitcoin',
   macos: '~/Library/Application Support/Bitcoin',

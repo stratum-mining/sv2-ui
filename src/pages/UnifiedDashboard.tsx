@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'wouter';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { AlertTriangle, Search, Play, Trash2 } from 'lucide-react';
+import { BITCOIN_CORE_VERSION_UNSUPPORTED_ISSUE } from '@sv2-ui/shared';
 import { Alert, AlertTitle } from '@/components/ui/alert';
 import { ConnectionAlert } from '@/components/ui/connection-alert';
 import { InfoPopover } from '@/components/ui/info-popover';
@@ -183,7 +184,9 @@ export function UnifiedDashboard() {
   const showTranslatorRestarting = translatorOutage && !headerTranslatorFailing &&
     (degradedForSecs ?? 0) >= TRANSLATOR_BANNER_DELAY_SECS;
   const configurationIssue = configurationIssues[0] ?? null;
-  const canReviewConfiguration = configurationIssue?.code !== 'saved-setup-unavailable';
+  const canReviewConfiguration = configurationIssue?.code !== 'saved-setup-unavailable' &&
+    // Setup can't change the version the node runs, so it can't resolve this.
+    configurationIssue?.code !== BITCOIN_CORE_VERSION_UNSUPPORTED_ISSUE;
   const canResetConfiguration = configurationIssue?.code === 'saved-setup-unavailable';
 
   // log-derived diagnostics from the API

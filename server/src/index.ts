@@ -43,9 +43,12 @@ import {
   readContainerLogs,
   streamContainerLogText,
   probeBitcoinSocketWithDocker,
+  probeBitcoinRpcWithDocker,
   autoDiscoverBitcoinRpc,
   detectHostLanAddress,
 } from './docker.js';
+import { checkBitcoinCoreVersion } from './bitcoin-core-version.js';
+import type { BitcoinCoreVersionCheck } from './bitcoin-core-version.js';
 import { createMergedLogWriter } from './logs/merge.js';
 import { CONTAINER_LOG_EXPORT_MAX_BYTES } from './logs/export.js';
 import { getLogDiagnostics, getLogStreams, readCollatedLogLines } from './logs/diagnostics.js';
@@ -790,6 +793,48 @@ async function getBitcoinSocketStartupError(data: SetupData): Promise<string | n
   return result.valid ? null : result.error;
 }
 
+function checkNodeBitcoinCoreVersion(data: SetupData): Promise<BitcoinCoreVersionCheck> {
+  return checkBitcoinCoreVersion(data, {
+    readNodeVersion: (dataDir, network) => probeBitcoinRpcWithDocker(expandHomePath(dataDir), network),
+    getSocketError: getBitcoinSocketStartupError,
+  });
+}
+
+type ReadyServiceConfig = Extract<PreparedServiceConfig, { kind: 'ready' }>;
+
+/**
+ * Apply the node's Bitcoin Core version to a manual start, or say why mining
+ * cannot start. Generated files are built from the saved version, so a
+ * corrected version has to be prepared again before the stack starts.
+ */
+async function applyNodeBitcoinCoreVersion(
+  prepared: ReadyServiceConfig,
+): Promise<{ kind: 'ready'; prepared: ReadyServiceConfig } | { kind: 'refused'; error: string }> {
+  const check = await checkNodeBitcoinCoreVersion(prepared.data);
+
+  switch (check.kind) {
+    case 'confirmed':
+      return { kind: 'ready', prepared };
+    case 'corrected': {
+      console.log(`Bitcoin Core version changed from ${check.from ?? 'unset'} to ${check.to}.`);
+      const corrected = prepareServiceConfig(check.data, { logFailure: true });
+      return corrected.kind === 'ready'
+        ? { kind: 'ready', prepared: corrected }
+        : {
+          kind: 'refused',
+          error: corrected.issues[0]?.message ?? 'Review your setup before starting mining.',
+        };
+    }
+    case 'node-starting':
+      return { kind: 'refused', error: 'Bitcoin Core is still starting. Try again in a moment.' };
+    case 'node-unavailable':
+      return { kind: 'refused', error: check.error };
+    case 'refused':
+      console.warn(check.detail);
+      return { kind: 'refused', error: check.issue.message };
+  }
+}
+
 /**
  * PUT /api/config - Update configuration and restart with new values
  */
@@ -842,7 +887,12 @@ app.put('/api/config', async (req, res) => {
       return res.status(400).json({ success: false, error: bitcoinSocketError });
     }
 
-    await reconcileAndStartStack(prepared);
+    const versioned = await applyNodeBitcoinCoreVersion(prepared);
+    if (versioned.kind !== 'ready') {
+      return res.status(400).json({ success: false, error: versioned.error });
+    }
+
+    await reconcileAndStartStack(versioned.prepared);
 
     const response: SetupResponse = { success: true };
     res.json(response);
@@ -1018,7 +1068,12 @@ app.post('/api/setup', async (req, res) => {
       return res.status(400).json({ success: false, error: bitcoinSocketError });
     }
 
-    await reconcileAndStartStack(prepared);
+    const versioned = await applyNodeBitcoinCoreVersion(prepared);
+    if (versioned.kind !== 'ready') {
+      return res.status(400).json({ success: false, error: versioned.error });
+    }
+
+    await reconcileAndStartStack(versioned.prepared);
 
     const response: SetupResponse = { success: true };
     res.json(response);
@@ -1100,7 +1155,12 @@ app.post('/api/restart', async (_req, res) => {
       return res.status(400).json({ success: false, error: bitcoinSocketError });
     }
 
-    await reconcileAndStartStack(prepared);
+    const versioned = await applyNodeBitcoinCoreVersion(prepared);
+    if (versioned.kind !== 'ready') {
+      return res.status(400).json({ success: false, error: versioned.error });
+    }
+
+    await reconcileAndStartStack(versioned.prepared);
 
     res.json({ success: true });
   } catch (error) {

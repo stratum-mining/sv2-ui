@@ -292,6 +292,7 @@ const autoStart = new AutoStartReconciler({
   startStack,
   saveState,
   getBitcoinSocketStartupError,
+  checkBitcoinCoreVersion: checkNodeBitcoinCoreVersion,
   readStackLogs: (mode) => readCollatedLogLines(mode),
   tryAcquire: () => beginStackOperation('auto-start'),
   release: () => finishStackOperation('auto-start'),
@@ -544,9 +545,12 @@ async function getCurrentStatus(): Promise<StatusResponse> {
   const recovery = translatorRecovery.status(Date.now());
   const degraded = isDegraded(state.mode, containers, recovery.recovering);
   const prepared = state.configured ? prepareServiceConfig(state.data) : null;
+  const bitcoinCoreVersionIssue = state.mode === 'jd' && state.shouldBeRunning
+    ? autoStart.bitcoinCoreVersionIssue()
+    : null;
   const configurationIssues = prepared?.kind === 'needs-setup-review'
     ? prepared.issues
-    : [];
+    : bitcoinCoreVersionIssue ? [bitcoinCoreVersionIssue] : [];
   const isSovereignSolo = state.data?.miningMode === 'solo' && state.data?.mode === 'jd';
   const pools = state.data && !isSovereignSolo ? configuredPools(state.data) : [];
 

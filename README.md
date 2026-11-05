@@ -198,7 +198,9 @@ Release branches should pin all sv2-apps image tags in `shared/src/images.ts` be
 
 ## Bitcoin Core IPC Support
 
-JD mode supports Bitcoin Core 30.x, 31.x and 32.x over IPC. During setup, `sv2-ui` stores the major version (`30`, `31` or `32`) and writes that value to the generated JDC config.
+JD mode supports Bitcoin Core 30.x, 31.x and 32.x over IPC. `sv2-ui` reads the node's major version over RPC before every start, stores it, and writes it to the generated JDC config, so a node that changes version is picked up on its next start.
+
+Mining does not start if the version cannot be read, because a JDC configured for the wrong version can lose the blocks it finds. The version is read through the data directory that holds the IPC socket, which ties the answer to the node JDC will use. So the socket has to stay in that directory, the RPC server has to be on, Bitcoin Core has to use its default RPC port or set `rpcport` or `rpcbind` in that directory's `bitcoin.conf`, and `sv2-ui` has to be able to read its cookie file, or `rpcuser` and `rpcpassword` in that `bitcoin.conf`. Settings passed on the command line, or kept in a file named by `-conf` or `includeconf`, are not picked up, and neither is a cookie moved with `-rpccookiefile`.
 
 ## Monitoring API Notes
 

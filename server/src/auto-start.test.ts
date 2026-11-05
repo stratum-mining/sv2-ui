@@ -1,8 +1,9 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { AutoStartReconciler, QUICK_EXIT_WINDOW_MS } from './auto-start.js';
+import { AUTO_START_MIN_BACKOFF_MS, AutoStartReconciler, QUICK_EXIT_WINDOW_MS } from './auto-start.js';
 import type { AutoStartDeps } from './auto-start.js';
+import type { BitcoinCoreVersionCheck } from './bitcoin-core-version.js';
 import type { SavedState } from './state.js';
 import type { SetupData } from './types.js';
 import type { PreparedServiceConfig, ServiceConfigFile } from './service-config.js';
@@ -98,6 +99,7 @@ function makeReconciler(overrides: DepOverrides = {}) {
     startStack: rec.startStack,
     saveState: rec.saveState,
     getBitcoinSocketStartupError: async () => null,
+    checkBitcoinCoreVersion: async (data) => ({ kind: 'confirmed', data }),
     readStackLogs: async () => logs ?? [],
     tryAcquire: () => true,
     release: () => { rec.calls.push('release'); },
@@ -499,4 +501,369 @@ test('does not read logs when the stack is running', async () => {
   await reconciler.reconcile(); // healthy: no log read needed
   assert.equal(logReads, 1, 'running stack skips the diagnostics read');
   assert.deepEqual(calls, ['release', 'release']);
+});
+
+// As JDC v0.9.0 logs it when configured for Core 30 on a Core 31 node.
+const VERSION_MISMATCH_LOGS = [
+  logLine(
+    'jdc',
+    'jd_client_sv2::template_receiver::bitcoin_core: Failed to create BitcoinCoreToSv2: Initialization { version: V30X, protocol: TDP, details: "CapnpError(Error { kind: Failed, extra: \\"remote exception: std::exception: Old mining interface (@2) not supported. Please update your client!\\" })" }',
+  ),
+];
+
+const CORRECTED_DATA = {
+  mode: 'jd',
+  miningMode: 'pool',
+  bitcoin: { core_version: '32' },
+} as unknown as SetupData;
+
+const CORRECTED_FILE: ServiceConfigFile = { filename: 'jdc.toml', contents: 'version = 32' };
+
+const CORRECTED: BitcoinCoreVersionCheck = {
+  kind: 'corrected',
+  data: CORRECTED_DATA,
+  from: '31',
+  to: '32',
+};
+
+const REFUSED: BitcoinCoreVersionCheck = {
+  kind: 'refused',
+  issue: { code: 'bitcoin-core-version-unconfirmed', title: 'Could not confirm', message: 'm' },
+  detail: 'connect ECONNREFUSED',
+};
+
+const prepareFromData: AutoStartDeps['prepareServiceConfig'] = (data) =>
+  data === CORRECTED_DATA
+    ? { kind: 'ready', data, files: [CORRECTED_FILE] }
+    : { kind: 'ready', data, files: [FILE] };
+
+function checkReturning(...checks: BitcoinCoreVersionCheck[]) {
+  const counter = { count: 0 };
+  const checkBitcoinCoreVersion = async (data: SetupData): Promise<BitcoinCoreVersionCheck> => {
+    const check = checks[Math.min(counter.count, checks.length - 1)];
+    counter.count += 1;
+    return check ?? { kind: 'confirmed', data };
+  };
+  return { counter, checkBitcoinCoreVersion };
+}
+
+test('asks the node only once per boot while the stack stays up', async () => {
+  clock.now = START_TIME;
+  const { counter, checkBitcoinCoreVersion } = checkReturning();
+  const { reconciler, calls } = makeReconciler({ checkBitcoinCoreVersion });
+
+  await reconciler.reconcile();
+  await reconciler.reconcile();
+
+  assert.equal(counter.count, 1);
+  assert.deepEqual(calls, ['release', 'release']);
+});
+
+test('asks the node before every start of a stopped stack', async () => {
+  clock.now = START_TIME;
+  const { counter, checkBitcoinCoreVersion } = checkReturning();
+  const { reconciler } = makeReconciler({
+    checkBitcoinCoreVersion,
+    containers: { translator: DOWN, jdc: DOWN },
+  });
+
+  await reconciler.reconcile();
+  clock.now += QUICK_EXIT_WINDOW_MS + 1;
+  await reconciler.reconcile();
+
+  assert.equal(counter.count, 2);
+});
+
+test('does not keep asking while Translator recovery has JDC up', async () => {
+  clock.now = START_TIME;
+  const { counter, checkBitcoinCoreVersion } = checkReturning();
+  const { reconciler, calls } = makeReconciler({
+    checkBitcoinCoreVersion,
+    containers: { translator: DOWN, jdc: UP },
+  });
+
+  await reconciler.reconcile();
+  await reconciler.reconcile();
+
+  assert.equal(counter.count, 1);
+  assert.deepEqual(calls, ['release', 'release']);
+});
+
+test('does not ask for a setup without JDC', async () => {
+  clock.now = START_TIME;
+  const noJd = { mode: 'no-jd', miningMode: 'pool' } as unknown as SetupData;
+  const { counter, checkBitcoinCoreVersion } = checkReturning();
+  const { reconciler } = makeReconciler({
+    checkBitcoinCoreVersion,
+    savedState: state({ mode: 'no-jd', data: noJd }),
+    prepared: { kind: 'ready', data: noJd, files: [FILE] },
+    containers: { translator: DOWN, jdc: DOWN },
+  });
+
+  await reconciler.reconcile();
+
+  assert.equal(counter.count, 0);
+});
+
+test('restarts a healthy stack on the corrected version and saves it', async () => {
+  clock.now = START_TIME;
+  const started: SetupData[] = [];
+  const saved: SetupData[] = [];
+  const reconciledFiles: string[] = [];
+  const { reconciler } = makeReconciler({
+    ...checkReturning(CORRECTED),
+    prepareServiceConfig: prepareFromData,
+    startStack: async (data) => { started.push(data); },
+    saveState: async (data) => { saved.push(data); },
+    reconcileServiceConfigFiles: async (files) => {
+      reconciledFiles.push(...files.map((file) => file.contents));
+      return [];
+    },
+  });
+
+  await reconciler.reconcile();
+
+  assert.deepEqual(started, [CORRECTED_DATA]);
+  assert.deepEqual(saved, [CORRECTED_DATA]);
+  assert.deepEqual(reconciledFiles, ['version = 32']);
+});
+
+test('a stack paused on a version mismatch recovers once the version is corrected', async () => {
+  clock.now = START_TIME;
+  const started: SetupData[] = [];
+  const { reconciler } = makeReconciler({
+    ...checkReturning(CORRECTED),
+    prepareServiceConfig: prepareFromData,
+    containers: { translator: DOWN, jdc: DOWN },
+    logs: VERSION_MISMATCH_LOGS,
+    startStack: async (data) => { started.push(data); },
+  });
+
+  await reconciler.reconcile();
+
+  assert.deepEqual(started, [CORRECTED_DATA]);
+});
+
+test('a stack paused on a version mismatch recovers once the node matches again', async () => {
+  clock.now = START_TIME;
+  const { reconciler, calls } = makeReconciler({
+    containers: { translator: DOWN, jdc: DOWN },
+    logs: VERSION_MISMATCH_LOGS,
+  });
+
+  await reconciler.reconcile();
+
+  assert.ok(calls.includes('startStack'));
+});
+
+test('a confirmed version does not override another diagnosed failure', async () => {
+  clock.now = START_TIME;
+  const { reconciler, calls } = makeReconciler({
+    containers: { translator: DOWN, jdc: DOWN },
+    logs: [...VERSION_MISMATCH_LOGS, ...UNKNOWN_USER_LOGS],
+  });
+
+  await reconciler.reconcile();
+
+  assert.deepEqual(calls, ['release']);
+});
+
+test('keeps pausing on a version mismatch when the node could not be asked', async () => {
+  clock.now = START_TIME;
+  const { reconciler, calls } = makeReconciler({
+    ...checkReturning({ kind: 'node-unavailable', error: 'Socket not found' }),
+    containers: { translator: DOWN, jdc: DOWN },
+    logs: VERSION_MISMATCH_LOGS,
+  });
+
+  await reconciler.reconcile();
+
+  assert.deepEqual(calls, ['release']);
+});
+
+test('a corrected version is not counted as a crash of the previous start', async () => {
+  clock.now = START_TIME;
+  let startCount = 0;
+  const { reconciler } = makeReconciler({
+    ...checkReturning({ kind: 'confirmed', data: SETUP_DATA }, CORRECTED),
+    prepareServiceConfig: prepareFromData,
+    containers: { translator: DOWN, jdc: DOWN },
+    startStack: async () => { startCount += 1; },
+  });
+
+  await reconciler.reconcile();
+  clock.now += 1_000;
+  await reconciler.reconcile();
+
+  assert.equal(startCount, 2);
+});
+
+test('a correction that fails before the restart is checked again', async () => {
+  clock.now = START_TIME;
+  const started: SetupData[] = [];
+  const { counter, checkBitcoinCoreVersion } = checkReturning(CORRECTED);
+  const socketErrors = ['Socket did not respond', null];
+  const { reconciler } = makeReconciler({
+    checkBitcoinCoreVersion,
+    prepareServiceConfig: prepareFromData,
+    getBitcoinSocketStartupError: async () => socketErrors.shift() ?? null,
+    startStack: async (data) => { started.push(data); },
+  });
+
+  await reconciler.reconcile();
+  assert.deepEqual(started, []);
+
+  clock.now += AUTO_START_MIN_BACKOFF_MS + 1;
+  await reconciler.reconcile();
+
+  assert.equal(counter.count, 2, 'the old JDC is still up, so it must not pass as confirmed');
+  assert.deepEqual(started, [CORRECTED_DATA]);
+});
+
+test('a stop that fails keeps the correction from being saved or started', async () => {
+  clock.now = START_TIME;
+  const { counter, checkBitcoinCoreVersion } = checkReturning(CORRECTED);
+  const { reconciler, calls } = makeReconciler({
+    checkBitcoinCoreVersion,
+    prepareServiceConfig: prepareFromData,
+    stopStack: async () => { throw new Error('cannot stop container'); },
+  });
+
+  await reconciler.reconcile();
+  assert.deepEqual(calls, ['release']);
+
+  clock.now += AUTO_START_MIN_BACKOFF_MS + 1;
+  await reconciler.reconcile();
+  assert.equal(counter.count, 2);
+});
+
+test('a correction is remembered once the stack has started on it', async () => {
+  clock.now = START_TIME;
+  const { counter, checkBitcoinCoreVersion } = checkReturning(CORRECTED);
+  const { reconciler } = makeReconciler({
+    checkBitcoinCoreVersion,
+    prepareServiceConfig: prepareFromData,
+  });
+
+  await reconciler.reconcile();
+  await reconciler.reconcile();
+
+  assert.equal(counter.count, 1);
+});
+
+test('a stop that fails on a refusal still says why and backs off', async () => {
+  clock.now = START_TIME;
+  const { counter, checkBitcoinCoreVersion } = checkReturning(REFUSED);
+  const { reconciler, calls } = makeReconciler({
+    checkBitcoinCoreVersion,
+    stopStack: async () => { throw new Error('cannot stop container'); },
+  });
+
+  await reconciler.reconcile();
+  assert.equal(reconciler.bitcoinCoreVersionIssue()?.code, 'bitcoin-core-version-unconfirmed');
+  assert.deepEqual(calls, ['release']);
+
+  await reconciler.reconcile();
+  assert.equal(counter.count, 1, 'within the backoff');
+
+  clock.now += AUTO_START_MIN_BACKOFF_MS + 1;
+  await reconciler.reconcile();
+  assert.equal(counter.count, 2, 'and it keeps trying to stop that JDC');
+});
+
+test('does not start when the version cannot be confirmed, and says why', async () => {
+  clock.now = START_TIME;
+  const { reconciler, calls } = makeReconciler({
+    ...checkReturning(REFUSED),
+    containers: { translator: DOWN, jdc: DOWN },
+  });
+
+  await reconciler.reconcile();
+
+  assert.deepEqual(calls, ['release']);
+  assert.equal(reconciler.bitcoinCoreVersionIssue()?.code, 'bitcoin-core-version-unconfirmed');
+});
+
+test('stops a stack it cannot confirm, even one that looks healthy', async () => {
+  clock.now = START_TIME;
+  const { reconciler, calls } = makeReconciler({ ...checkReturning(REFUSED) });
+
+  await reconciler.reconcile();
+
+  assert.deepEqual(calls, ['stopStack', 'release']);
+});
+
+test('stops JDC it cannot confirm while Translator recovery is running', async () => {
+  clock.now = START_TIME;
+  const { reconciler, calls } = makeReconciler({
+    ...checkReturning(REFUSED),
+    containers: { translator: DOWN, jdc: UP },
+  });
+
+  await reconciler.reconcile();
+
+  assert.deepEqual(calls, ['stopStack', 'release']);
+});
+
+test('backs off while the version cannot be confirmed, then recovers and clears the issue', async () => {
+  clock.now = START_TIME;
+  const { counter, checkBitcoinCoreVersion } = checkReturning(REFUSED, {
+    kind: 'confirmed',
+    data: SETUP_DATA,
+  });
+  const { reconciler, calls } = makeReconciler({
+    checkBitcoinCoreVersion,
+    containers: { translator: DOWN, jdc: DOWN },
+  });
+
+  await reconciler.reconcile();
+  await reconciler.reconcile(); // within the backoff: not even attempted
+  assert.equal(counter.count, 1);
+
+  clock.now += AUTO_START_MIN_BACKOFF_MS + 1;
+  await reconciler.reconcile();
+
+  assert.equal(reconciler.bitcoinCoreVersionIssue(), null);
+  assert.ok(calls.includes('startStack'));
+});
+
+test('waits for a node that is still starting without touching the stack or backing off', async () => {
+  clock.now = START_TIME;
+  const { counter, checkBitcoinCoreVersion } = checkReturning(
+    { kind: 'node-starting' },
+    { kind: 'node-starting' },
+    { kind: 'confirmed', data: SETUP_DATA },
+  );
+  const { reconciler, calls } = makeReconciler({
+    checkBitcoinCoreVersion,
+    containers: { translator: DOWN, jdc: DOWN },
+  });
+
+  await reconciler.reconcile();
+  await reconciler.reconcile();
+  assert.deepEqual(calls, ['release', 'release']);
+  assert.equal(reconciler.bitcoinCoreVersionIssue(), null);
+
+  await reconciler.reconcile();
+  assert.equal(counter.count, 3, 'each tick asks again: no backoff');
+  assert.ok(calls.includes('startStack'));
+});
+
+test('leaves a node that is down to the socket check', async () => {
+  clock.now = START_TIME;
+  let socketChecks = 0;
+  const { reconciler, calls } = makeReconciler({
+    ...checkReturning({ kind: 'node-unavailable', error: 'Socket not found' }),
+    containers: { translator: DOWN, jdc: DOWN },
+    getBitcoinSocketStartupError: async () => {
+      socketChecks += 1;
+      return 'Socket not found';
+    },
+  });
+
+  await reconciler.reconcile();
+
+  assert.equal(socketChecks, 1);
+  assert.deepEqual(calls, ['release']);
+  assert.equal(reconciler.bitcoinCoreVersionIssue(), null, 'a down node is not a version problem');
 });

@@ -28,7 +28,11 @@ import {
   rpcVersionToCoreVersion,
   rpcVersionToDisplayVersion,
 } from '@sv2-ui/shared';
-import type { BitcoinCoreVersion, BitcoinNetwork } from '@sv2-ui/shared';
+import type {
+  BitcoinCoreVersion,
+  BitcoinCoreVersionCheckResponse,
+  BitcoinNetwork,
+} from '@sv2-ui/shared';
 import type { SetupData, StatusResponse } from './types.js';
 
 export type BitcoinCoreVersionIssue = StatusResponse['configurationIssues'][number];
@@ -170,4 +174,33 @@ export async function checkBitcoinCoreVersion(
     from: savedVersion,
     to: nodeVersion,
   };
+}
+
+/**
+ * The same check, as the setup wizard needs it. `detail` stays in the logs: it
+ * can quote the probe's output, which is not meant for an API response.
+ */
+export function toVersionCheckResponse(
+  check: BitcoinCoreVersionCheck,
+): BitcoinCoreVersionCheckResponse {
+  switch (check.kind) {
+    case 'corrected':
+      return { status: 'ready', version: check.to };
+    case 'confirmed': {
+      const version = normalizeBitcoinCoreVersion(check.data.bitcoin?.core_version);
+      return version
+        ? { status: 'ready', version }
+        : { status: 'failed', ...unconfirmedIssue() };
+    }
+    case 'node-starting':
+      return { status: 'starting' };
+    case 'node-unavailable':
+      return {
+        status: 'failed',
+        title: 'Could not reach your Bitcoin Core node',
+        message: check.error,
+      };
+    case 'refused':
+      return { status: 'failed', title: check.issue.title, message: check.issue.message };
+  }
 }

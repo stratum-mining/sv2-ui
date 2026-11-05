@@ -5,7 +5,7 @@ import {
   BITCOIN_CORE_VERSION_UNCONFIRMED_ISSUE,
   BITCOIN_CORE_VERSION_UNSUPPORTED_ISSUE,
 } from '@sv2-ui/shared';
-import { checkBitcoinCoreVersion } from './bitcoin-core-version.js';
+import { checkBitcoinCoreVersion, toVersionCheckResponse } from './bitcoin-core-version.js';
 import type { BitcoinCoreVersionCheckDeps, NodeVersionRead } from './bitcoin-core-version.js';
 import type { SetupData } from './types.js';
 
@@ -197,6 +197,54 @@ test('refuses a testnet4 socket it cannot tie to a testnet4 node', async () => {
     assert.equal(check.issue.code, BITCOIN_CORE_VERSION_UNCONFIRMED_ISSUE);
   }
   assert.equal(outside.reads.length, 0);
+});
+
+test('the wizard learns the version whatever was saved before', async () => {
+  const check = await checkBitcoinCoreVersion(jdSetup({ core_version: null }), deps(nodeAt(320100)));
+  assert.deepEqual(toVersionCheckResponse(check), { status: 'ready', version: '32' });
+
+  const data = jdSetup({ core_version: '31' });
+  assert.deepEqual(
+    toVersionCheckResponse({ kind: 'confirmed', data }),
+    { status: 'ready', version: '31' },
+  );
+});
+
+test('the wizard hears that a node is still starting', () => {
+  assert.deepEqual(toVersionCheckResponse({ kind: 'node-starting' }), { status: 'starting' });
+});
+
+test('the wizard gets the user-facing reason, never the probe output', async () => {
+  const check = await checkBitcoinCoreVersion(
+    jdSetup(),
+    deps({ valid: false, error: 'host: connect ECONNREFUSED 127.0.0.1:8332' }),
+  );
+  const response = toVersionCheckResponse(check);
+
+  assert.equal(response.status, 'failed');
+  if (response.status !== 'failed') return;
+  assert.match(response.title, /Could not confirm/);
+  assert.doesNotMatch(JSON.stringify(response), /ECONNREFUSED/);
+});
+
+test('the wizard hears why an unsupported node stops it', async () => {
+  const check = await checkBitcoinCoreVersion(jdSetup(), deps(nodeAt(330000)));
+  const response = toVersionCheckResponse(check);
+
+  assert.equal(response.status, 'failed');
+  if (response.status === 'failed') assert.match(response.message, /Bitcoin Core 33\.0/);
+});
+
+test('the wizard hears that the node is down', async () => {
+  const check = await checkBitcoinCoreVersion(
+    jdSetup(),
+    deps({ valid: false, error: 'connect ECONNREFUSED' }, 'Socket not found at /x'),
+  );
+  assert.deepEqual(toVersionCheckResponse(check), {
+    status: 'failed',
+    title: 'Could not reach your Bitcoin Core node',
+    message: 'Socket not found at /x',
+  });
 });
 
 test('does not ask a node for setups that do not use one', async () => {

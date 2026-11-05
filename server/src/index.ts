@@ -21,10 +21,13 @@ import {
 } from './service-config.js';
 import { DockerConnectionError, isMissingContainerError } from './docker-errors.js';
 import {
+  DEFAULT_BITCOIN_PATHS,
   TRANSLATOR_MONITORING_PORT,
   JDC_MONITORING_PORT,
+  isValidBitcoinNetwork,
   minerTelemetryCidrForAddress,
 } from '@sv2-ui/shared';
+import type { OperatingSystem } from '@sv2-ui/shared';
 import {
   loadSavedState,
   saveSavedState,
@@ -47,7 +50,7 @@ import {
   autoDiscoverBitcoinRpc,
   detectHostLanAddress,
 } from './docker.js';
-import { checkBitcoinCoreVersion } from './bitcoin-core-version.js';
+import { checkBitcoinCoreVersion, toVersionCheckResponse } from './bitcoin-core-version.js';
 import type { BitcoinCoreVersionCheck } from './bitcoin-core-version.js';
 import { createMergedLogWriter } from './logs/merge.js';
 import { CONTAINER_LOG_EXPORT_MAX_BYTES } from './logs/export.js';
@@ -785,6 +788,41 @@ app.post('/api/validate/bitcoin-socket', async (req, res) => {
 app.get('/api/validate/bitcoin-rpc', async (_req, res) => {
   const results = await autoDiscoverBitcoinRpc();
   return res.json(results);
+});
+
+/**
+ * POST /api/validate/bitcoin-version - Read a node's version for the wizard,
+ * through the same check every start runs, so the two can't disagree. Discovery
+ * above only looks in the default data directories, which isn't enough here.
+ */
+app.post('/api/validate/bitcoin-version', async (req, res) => {
+  const { os, network, customDataDir, socket_path } = isJsonObject(req.body) ? req.body : {} as Record<string, unknown>;
+
+  if (
+    typeof os !== 'string' || !Object.hasOwn(DEFAULT_BITCOIN_PATHS, os) ||
+    !isValidBitcoinNetwork(network) ||
+    typeof socket_path !== 'string' || socket_path.length === 0 ||
+    (customDataDir !== undefined && typeof customDataDir !== 'string')
+  ) {
+    return res.status(400).json({ error: 'os, network and socket_path are required' });
+  }
+
+  const check = await checkNodeBitcoinCoreVersion({
+    mode: 'jd',
+    bitcoin: {
+      core_version: null,
+      os: os as OperatingSystem,
+      network,
+      customDataDir: customDataDir ?? '',
+      socket_path,
+    },
+  } as SetupData);
+
+  if (check.kind === 'refused') {
+    console.warn(check.detail);
+  }
+
+  return res.json(toVersionCheckResponse(check));
 });
 
 async function getBitcoinSocketStartupError(data: SetupData): Promise<string | null> {

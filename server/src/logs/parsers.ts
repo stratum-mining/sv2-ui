@@ -203,9 +203,9 @@ export function jdcBitcoinCoreUnsupportedMiningInterfaceParser(
     severity: 'error' as DiagnosticSeverity,
     title: 'Bitcoin Core version does not match',
     message:
-      'The Bitcoin Core version selected in setup does not match the node that is running.',
+      'JDC is set up for a different Bitcoin Core version than the node that is running.',
     recommendation:
-      'Open setup and select your actual Bitcoin Core version.',
+      'Open Bitcoin setup, which reads the version from your node, and start mining again.',
     streamId: 'mining-services',
     containers: ['jdc'],
     detectedAt: matches[0].timestamp,

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { isRetryableBitcoinSocketError } from '@/lib/bitcoinSocketErrors';
-import type { BitcoinCoreVersion, BitcoinNetwork } from '@sv2-ui/shared';
+import type { BitcoinNetwork } from '@sv2-ui/shared';
 
 interface SocketValidationResult {
   valid: boolean;
@@ -11,7 +11,6 @@ interface SocketValidationResult {
 type BitcoinSocketValidationParams = {
   socketPath: string;
   network: BitcoinNetwork;
-  coreVersion: BitcoinCoreVersion | null;
 };
 
 // Returns null when the backend is not reachable (standalone mode — skip validation).
@@ -50,7 +49,6 @@ async function validateSocket({
 export function useBitcoinSocketValidation(
   socketPath: string,
   network: BitcoinNetwork,
-  coreVersion: BitcoinCoreVersion | null,
   debounceMs = 800
 ) {
   const [debouncedPath, setDebouncedPath] = useState(socketPath);
@@ -61,9 +59,9 @@ export function useBitcoinSocketValidation(
   }, [socketPath, debounceMs]);
 
   const { data, isFetching, refetch } = useQuery({
-    queryKey: ['bitcoin-socket-validation', debouncedPath, network, coreVersion],
-    queryFn: () => validateSocket({ socketPath: debouncedPath, network, coreVersion }),
-    enabled: !!debouncedPath && !!coreVersion,
+    queryKey: ['bitcoin-socket-validation', debouncedPath, network],
+    queryFn: () => validateSocket({ socketPath: debouncedPath, network }),
+    enabled: !!debouncedPath,
     staleTime: 0,
     retry: false,
     refetchOnMount: 'always',

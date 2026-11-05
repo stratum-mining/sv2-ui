@@ -49,7 +49,7 @@ function computeSteps(data: SetupData): SetupStep[] {
 
 const SETUP_TARGET_STEP_STORAGE_KEY = 'sv2-ui-setup-target-step';
 const SETUP_REVIEW_STORAGE_KEY = 'sv2-ui-setup-review';
-const BITCOIN_CORE_VERSION_MISMATCH_NOTICE = BITCOIN_MESSAGES.versionMismatchNotice;
+const BITCOIN_SETUP_NOTICE = BITCOIN_MESSAGES.bitcoinSetupNotice;
 
 export function SetupWizard() {
   const [, navigate] = useLocation();
@@ -84,7 +84,7 @@ export function SetupWizard() {
               core_version: null,
             },
           };
-          setBitcoinSetupNotice(BITCOIN_CORE_VERSION_MISMATCH_NOTICE);
+          setBitcoinSetupNotice(BITCOIN_SETUP_NOTICE);
         }
 
         setData(nextConfig);

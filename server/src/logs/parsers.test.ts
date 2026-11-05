@@ -350,7 +350,7 @@ test('jdcBitcoinCoreUnsupportedMiningInterfaceParser matches old mining interfac
   assert.equal(result?.title, 'Bitcoin Core version does not match');
   assert.deepEqual(result?.containers, ['jdc']);
   assert.equal(result?.evidence.length, 1);
-  assert.equal(result?.recommendation, 'Open setup and select your actual Bitcoin Core version.');
+  assert.equal(result?.recommendation, 'Open Bitcoin setup, which reads the version from your node, and start mining again.');
 });
 
 test('jdcBitcoinCoreUnsupportedMiningInterfaceParser matches old mining interface error in shorter log lines', () => {
@@ -409,7 +409,7 @@ test('collectDiagnostics includes Bitcoin Core version mismatch diagnostics', ()
 
   assert.equal(diagnostics.length, 1);
   assert.equal(diagnostics[0]?.code, 'jdc-bitcoin-core-unsupported-mining-interface');
-  assert.equal(diagnostics[0]?.message, 'The Bitcoin Core version selected in setup does not match the node that is running.');
+  assert.equal(diagnostics[0]?.message, 'JDC is set up for a different Bitcoin Core version than the node that is running.');
 });
 
 test('collectDiagnostics includes Bitcoin Core IBD diagnostics', () => {

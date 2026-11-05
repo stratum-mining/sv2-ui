@@ -6,6 +6,7 @@ import {
   jdcBitcoinCoreDisconnectedParser,
   jdcBitcoinCoreInitialBlockDownloadParser,
   jdcBitcoinCoreUnsupportedMiningInterfaceParser,
+  jdcBlockSubmissionFailedParser,
   evaluateDiagnosisPolicy,
   getAutoRetryPolicy,
   logParsers,
@@ -272,6 +273,65 @@ test('jdcBitcoinCoreInitialBlockDownloadParser returns null when wrong container
   const result = jdcBitcoinCoreInitialBlockDownloadParser(lines);
 
   assert.equal(result, null);
+});
+
+// As JDC v0.9.0 logs them: configured for 31 on Core 32.1, and configured for 32
+// on Core 31.0. It logs the inner line first, then the one the parser matches.
+for (const [label, inner, outer] of [
+  [
+    'a v31 client on Core 32',
+    'bitcoin_core_sv2::unix_capnp::v31x::template_distribution_protocol::handlers: Failed to submit solution: CapnpError(Error { kind: Failed, extra: "remote exception: std::exception: Old submitSolution (@7) not supported. Please update your client!" })',
+    'bitcoin_core_sv2::unix_capnp::v31x::template_distribution_protocol::monitors: Failed to handle submit solution: FailedToSubmitSolution',
+  ],
+  [
+    'a v32 client on Core 31',
+    'bitcoin_core_sv2::unix_capnp::v32x::template_distribution_protocol::handlers: Failed to submit solution: CapnpError(Error { kind: Unimplemented, extra: "remote exception: Method not implemented.; interfaceName = capnp/mining.capnp:BlockTemplate; typeId = 17971362354162759202; methodId = 10" })',
+    'bitcoin_core_sv2::unix_capnp::v32x::template_distribution_protocol::monitors: Failed to handle submit solution: FailedToSubmitSolution',
+  ],
+] as const) {
+  test(`jdcBlockSubmissionFailedParser reports ${label}, once`, () => {
+    const result = jdcBlockSubmissionFailedParser([
+      createLogLine('jdc', inner),
+      createLogLine('jdc', outer),
+    ]);
+
+    assert.equal(result?.code, 'jdc-block-submission-failed');
+    assert.equal(result?.severity, 'error');
+    assert.deepEqual(result?.containers, ['jdc']);
+    assert.equal(result?.evidence.length, 1);
+  });
+}
+
+// These return before JDC tries to submit, so there is no inner line. Built from
+// the sv2-apps v0.9.0 source, where the outer line prints the error by name.
+for (const error of ['TemplateNotFound', 'FailedToCreateSolutionDir']) {
+  test(`jdcBlockSubmissionFailedParser reports ${error}, which never reaches the node`, () => {
+    const result = jdcBlockSubmissionFailedParser([
+      createLogLine(
+        'jdc',
+        `bitcoin_core_sv2::unix_capnp::v32x::template_distribution_protocol::monitors: Failed to handle submit solution: ${error}`,
+      ),
+    ]);
+
+    assert.equal(result?.code, 'jdc-block-submission-failed');
+    assert.doesNotMatch(result?.message ?? '', /did not accept|refused|rejected/);
+  });
+}
+
+test('jdcBlockSubmissionFailedParser ignores a healthy JDC', () => {
+  assert.equal(
+    jdcBlockSubmissionFailedParser([
+      createLogLine(
+        'jdc',
+        'jd_client_sv2::channel_manager::downstream_message_handler: SubmitSharesExtended on downstream channel: 💰 Block Found!!! 💰0000014cb772946e12f',
+      ),
+    ]),
+    null,
+  );
+});
+
+test('a failed block submission does not pause auto-start', () => {
+  assert.equal(getAutoRetryPolicy('jdc-block-submission-failed'), 'retry');
 });
 
 test('jdcBitcoinCoreUnsupportedMiningInterfaceParser matches old mining interface error', () => {

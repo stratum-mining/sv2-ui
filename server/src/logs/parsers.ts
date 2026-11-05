@@ -26,6 +26,8 @@ const JDC_BITCOIN_CORE_IBD_RECOVERY_REGEX =
 const JDC_BITCOIN_CORE_UNSUPPORTED_MINING_INTERFACE_REGEX =
   /(Old mining interface \(@[^)]+\) not supported\. Please update your client!|Failed to create BitcoinCoreToSv2:.*CapnpError\(Error \{ kind: Unimplemented,.*interfaceName = capnp\/init\.capnp:Init)/;
 
+const JDC_BLOCK_SUBMISSION_FAILED_REGEX = /Failed to handle submit solution:/;
+
 const INVALID_CERTIFICATE_REGEX =
   /(InvalidCertificate|Invalid Certificate).*SignatureNoiseMessage \{ version: \d+, valid_from: (\d+), not_valid_after: (\d+),/;
 
@@ -211,6 +213,49 @@ export function jdcBitcoinCoreUnsupportedMiningInterfaceParser(
   };
 }
 
+/**
+ * JDC keeps running after it fails to submit a solved block, and the miner still
+ * reports the share as accepted, so this log line is the only sign that a block
+ * may not have reached the network. JDC logs it once for every failure, including
+ * those that never reach the node, such as a template it no longer holds, which
+ * is why the message can't claim that the node refused the block.
+ */
+export function jdcBlockSubmissionFailedParser(
+  lines: ContainerLogLine[]
+): LogDiagnostic | null {
+  const matches = lines.filter(
+    ({ container, message }) =>
+      container === 'jdc' && JDC_BLOCK_SUBMISSION_FAILED_REGEX.test(message)
+  );
+
+  if (matches.length === 0) {
+    return null;
+  }
+
+  const evidence: DiagnosticEvidence[] = matches.map(
+    ({ container, stream, timestamp, raw }) => ({
+      container,
+      stream,
+      timestamp,
+      line: raw,
+    })
+  );
+
+  return {
+    code: 'jdc-block-submission-failed',
+    severity: 'error' as DiagnosticSeverity,
+    title: 'A block you found may not have been published',
+    message:
+      'JDC found a block but could not submit it to your Bitcoin Core node, so the block may be lost.',
+    recommendation:
+      'Download the logs and check the lines around "Failed to handle submit solution" for the reason.',
+    streamId: 'mining-services',
+    containers: ['jdc'],
+    detectedAt: matches[0].timestamp,
+    evidence,
+  };
+}
+
 function invalidCertificateParser(lines: ContainerLogLine[]): LogDiagnostic | null {
   const matches = lines.filter(
     ({ container, message }) =>
@@ -344,6 +389,8 @@ export function upstreamClosedBeforeChannelParser(
 // - upstream-closed-before-channel: only reachable in no-JD mode. It is
 //   caused by no downstream miner connecting in time, which resolves when
 //   one does, so retry.
+// - block-submission-failed: JDC keeps running after it, and restarting a
+//   stopped stack is what checks the node's version again, so retry.
 export const logParsers: LogParser[] = [
   { code: 'unknown-user', match: unknownUserParser, autoRetry: 'never' },
   {
@@ -360,6 +407,11 @@ export const logParsers: LogParser[] = [
     code: 'jdc-bitcoin-core-unsupported-mining-interface',
     match: jdcBitcoinCoreUnsupportedMiningInterfaceParser,
     autoRetry: 'never',
+  },
+  {
+    code: 'jdc-block-submission-failed',
+    match: jdcBlockSubmissionFailedParser,
+    autoRetry: 'retry',
   },
   { code: 'invalid-certificate', match: invalidCertificateParser, autoRetry: 'retry' },
   {

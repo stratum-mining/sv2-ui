@@ -91,7 +91,8 @@ SRI maintainers triage findings from the private Loupe audit repository `project
   - `area:docker`, Docker orchestration and generated configs: the Docker connection, container lifecycle, generated TOML and Noise keys, and the config compatibility check;
   - `area:logs`, logs, diagnostics and active-pool detection: container log reads and downloads, diagnostics, and pool detection from logs;
   - `area:dashboard`, dashboard metrics: monitoring API reads, aggregation, persisted metrics, and charts;
-  - `area:setup`, setup and settings flows: the setup wizard, settings editing, pool and identity forms, and uploads.
+  - `area:setup`, setup and settings flows: the setup wizard, settings editing, pool and identity forms, and uploads;
+  - `area:telegram`, Telegram notifications: the bot connection, chat pairing, commands from the paired chat, and the alerts and summaries sent to it.
 - Look trackers up by the `tracker` label rather than by issue number. If none of them covers the defect, or the one it belongs to does not exist on GitHub, stop and tell the maintainer instead of stretching another tracker's scope or leaving the issue without a tracker. Propose the tracker it needs: title, area label, the code it covers, and the open issues that would move under it. The maintainer creates trackers and labels, and a new tracker comes with a PR that adds it to the list above, so the list keeps matching GitHub.
 - Leave PR grouping to whoever picks the issue up. If two issues should land together, say why under "Related issues and PRs".
 - Record progress in dated comments rather than by editing the issue body.

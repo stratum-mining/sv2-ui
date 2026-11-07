@@ -74,3 +74,29 @@ test('case variations of protected routes must not leak API data', async () => {
     await rm(configDir, { recursive: true, force: true });
   }
 });
+
+test('the version endpoint requires a session', async () => {
+  const { base, configDir, stop } = await startServer();
+  try {
+    const setup = await fetch(`${base}/api/auth/setup-password`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password: 'sup3rsecret' }),
+    });
+    assert.equal(setup.status, 200);
+    const cookie = setup.headers.get('set-cookie')?.split(';', 1)[0];
+    assert.ok(cookie, 'password setup must start a session');
+
+    const anonymous = await fetch(`${base}/api/version`);
+    assert.equal(anonymous.status, 401);
+
+    const authed = await fetch(`${base}/api/version`, { headers: { Cookie: cookie } });
+    assert.equal(authed.status, 200);
+    const info = await authed.json();
+    assert.equal(typeof info.version, 'string');
+    assert.ok(Array.isArray(info.sv2AppsVersions) && info.sv2AppsVersions.length > 0);
+  } finally {
+    stop();
+    await rm(configDir, { recursive: true, force: true });
+  }
+});

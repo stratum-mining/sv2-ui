@@ -26,8 +26,9 @@ import {
   JDC_MONITORING_PORT,
   isValidBitcoinNetwork,
   minerTelemetryCidrForAddress,
+  getSv2AppsVersions,
 } from '@sv2-ui/shared';
-import type { OperatingSystem } from '@sv2-ui/shared';
+import type { OperatingSystem, VersionInfo } from '@sv2-ui/shared';
 import {
   loadSavedState,
   saveSavedState,
@@ -677,6 +678,20 @@ app.get('/api/config', async (_req, res) => {
  */
 app.get('/api/env', (_req, res) => {
   res.json({ HOST_OS: process.env.HOST_OS || null, STRATUM_HOST: process.env.STRATUM_HOST || null });
+});
+
+/**
+ * GET /api/version - The sv2-ui build and the sv2-apps images it runs.
+ * Kept behind the session: an exact version tells a scanner on the network
+ * which known issues apply.
+ */
+app.get('/api/version', (_req, res) => {
+  const info: VersionInfo = {
+    version: process.env.SV2_UI_VERSION || 'dev',
+    commit: process.env.SV2_UI_COMMIT || null,
+    sv2AppsVersions: getSv2AppsVersions(),
+  };
+  res.json(info);
 });
 
 function sendTelegramError(res: express.Response, error: unknown): void {

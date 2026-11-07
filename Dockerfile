@@ -55,6 +55,13 @@ ENV CONFIG_DIR=/app/data/config
 RUN apk add --no-cache tini
 ENTRYPOINT ["/sbin/tini", "--"]
 
+# Set by the release workflow from the git ref and commit. Declared after the
+# install steps so a new commit does not invalidate their cached layers.
+ARG SV2_UI_VERSION=
+ARG SV2_UI_COMMIT=
+ENV SV2_UI_VERSION=$SV2_UI_VERSION
+ENV SV2_UI_COMMIT=$SV2_UI_COMMIT
+
 EXPOSE 8080
 
 CMD ["node", "--import", "tsx", "dist/index.js"]

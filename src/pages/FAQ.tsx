@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Shell } from '@/components/layout/Shell';
 import { Card, CardContent } from '@/components/ui/card';
 import { useConnectionStatus } from '@/hooks/useConnectionStatus';
+import { formatVersionLine, useVersionInfo } from '@/hooks/useVersionInfo';
 import { faqData, type FaqItem } from '@/data/faq-data';
 import { ChevronDown, ChevronUp } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -38,6 +39,7 @@ function FaqAccordionItem({ item, isOpen, onToggle }: { item: FaqItem; isOpen: b
 export function FAQ() {
   const { status: connectionStatus, statusLabel: connectionLabel, activePoolAddress, activePoolPort, activePoolAuthorityPublicKey, activePoolIndex, uptime, translatorFailing: headerTranslatorFailing } = useConnectionStatus();
   const [openIndex, setOpenIndex] = useState<number | null>(null);
+  const versionInfo = useVersionInfo();
 
   const handleToggle = (index: number) => {
     setOpenIndex(openIndex === index ? null : index);
@@ -95,6 +97,14 @@ export function FAQ() {
             ))}
           </CardContent>
         </Card>
+
+        {versionInfo && (
+          <p className="pt-4 text-center text-xs text-muted-foreground">
+            <span className="font-mono">{formatVersionLine(versionInfo)}</span>
+            <br />
+            Include this line when reporting an issue.
+          </p>
+        )}
 
       </div>
     </Shell>

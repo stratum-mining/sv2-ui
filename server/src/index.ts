@@ -26,8 +26,9 @@ import {
   JDC_MONITORING_PORT,
   isValidBitcoinNetwork,
   minerTelemetryCidrForAddress,
+  getSv2AppsVersions,
 } from '@sv2-ui/shared';
-import type { OperatingSystem } from '@sv2-ui/shared';
+import type { OperatingSystem, VersionInfo } from '@sv2-ui/shared';
 import {
   loadSavedState,
   saveSavedState,
@@ -80,6 +81,7 @@ import {
   parseCookies,
 } from './sessions.js';
 import { readJsonWithLimit } from './bounded-json.js';
+import { readBuildInfo } from './build-info.js';
 import {
   MAX_MONITORING_ITEMS,
   collectPaginatedMonitoringItems,
@@ -152,6 +154,7 @@ app.use(express.json());
  */
 const PUBLIC_API_PATHS = new Set([
   '/api/health',
+  '/api/version',
   '/api/auth/state',
   '/api/auth/login',
   '/api/auth/setup-password',
@@ -677,6 +680,24 @@ app.get('/api/config', async (_req, res) => {
  */
 app.get('/api/env', (_req, res) => {
   res.json({ HOST_OS: process.env.HOST_OS || null, STRATUM_HOST: process.env.STRATUM_HOST || null });
+});
+
+// Read once at startup: /api/version is public, so it must not start a git
+// process per request.
+const BUILD_INFO = readBuildInfo(process.env, __dirname);
+
+/**
+ * GET /api/version - The sv2-ui build and the sv2-apps images it selects.
+ * Public, so an operator who cannot log in can still report the version. The
+ * public index.html names the content-hashed bundle, which identifies the
+ * build without a session anyway.
+ */
+app.get('/api/version', (_req, res) => {
+  const info: VersionInfo = {
+    ...BUILD_INFO,
+    sv2AppsVersions: getSv2AppsVersions(),
+  };
+  res.json(info);
 });
 
 function sendTelegramError(res: express.Response, error: unknown): void {

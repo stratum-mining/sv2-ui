@@ -74,3 +74,26 @@ test('case variations of protected routes must not leak API data', async () => {
     await rm(configDir, { recursive: true, force: true });
   }
 });
+
+test('the version endpoint answers without a session', async () => {
+  const { base, configDir, stop } = await startServer();
+  try {
+    // Set a password so auth is enforced.
+    const setup = await fetch(`${base}/api/auth/setup-password`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password: 'sup3rsecret' }),
+    });
+    assert.equal(setup.status, 200);
+
+    // An operator locked out of the UI still needs the version for a support request.
+    const anonymous = await fetch(`${base}/api/version`);
+    assert.equal(anonymous.status, 200);
+    const info = await anonymous.json();
+    assert.equal(typeof info.version, 'string');
+    assert.ok(Array.isArray(info.sv2AppsVersions) && info.sv2AppsVersions.length > 0);
+  } finally {
+    stop();
+    await rm(configDir, { recursive: true, force: true });
+  }
+});

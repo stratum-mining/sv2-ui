@@ -120,3 +120,16 @@ export interface ContainerLogsResponse {
   streams: LogStreamDefinition[];
   lines: ContainerLogLine[];
 }
+
+export interface VersionInfo {
+  /**
+   * The sv2-ui release tag the image was built from, `main` for development
+   * images, the checked-out branch under `npm run dev`, or `dev` for an image
+   * built without the build args.
+   */
+  version: string;
+  /** The git commit the build comes from, or null when it is unknown. */
+  commit: string | null;
+  /** The distinct tags of the sv2-apps images this build selects. */
+  sv2AppsVersions: string[];
+}

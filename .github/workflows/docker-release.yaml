@@ -65,3 +65,6 @@ jobs:
             linux/amd64
             linux/arm64
           tags: ${{ steps.tags.outputs.tags }}
+          build-args: |
+            SV2_UI_VERSION=${{ github.ref_name }}
+            SV2_UI_COMMIT=${{ github.sha }}

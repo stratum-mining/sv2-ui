@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { getImageSelectionForSetup, SV2_APP_IMAGES } from '@sv2-ui/shared';
+import { getImageSelectionForSetup, getImageTag, getSv2AppsVersions, SV2_APP_IMAGES } from '@sv2-ui/shared';
 import type { SetupData } from './types.js';
 
 const BASE_SETUP_DATA: SetupData = {
@@ -65,4 +65,23 @@ test('JD setup selects the current JD image set without Bitcoin Core image branc
   assert.equal(bitcoinCore31.mode, 'jd');
   assert.equal(bitcoinCore31.jdc, SV2_APP_IMAGES.jd.jdc);
   assert.equal(bitcoinCore31.translator, SV2_APP_IMAGES.jd.translator);
+});
+
+test('getImageTag reads the tag of a pinned release image without its digest', () => {
+  assert.equal(
+    getImageTag('stratumv2/translator_sv2:v0.9.2@sha256:096eb6aa2e9d8d59feb347145e08a3a1a044491e013f0ed935f1044d8455b1ef'),
+    'v0.9.2',
+  );
+});
+
+test('getImageTag reads the tag of a development image', () => {
+  assert.equal(getImageTag('stratumv2/jd_client_sv2:main'), 'main');
+});
+
+test('getSv2AppsVersions reports the tag of every selected image, each once', () => {
+  const versions = getSv2AppsVersions();
+  assert.equal(new Set(versions).size, versions.length);
+  for (const image of [SV2_APP_IMAGES.translatorNoJd, SV2_APP_IMAGES.jd.jdc, SV2_APP_IMAGES.jd.translator]) {
+    assert.ok(versions.includes(getImageTag(image)), `missing the tag of ${image}`);
+  }
 });

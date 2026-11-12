@@ -14,7 +14,17 @@ import { MiningIdentityStep } from './steps/MiningIdentityStep';
 import { BitcoinPrereqStep } from './steps/BitcoinPrereqStep';
 import { ReviewStart } from './steps/ReviewStart';
 import { getCurrentConfig, getSuggestedMinerTelemetryCidr } from '@/hooks/useControlApi';
+import { takeDashboardClearOnSetup } from '@/lib/dashboardState';
 import { useBitcoinRpcDiscovery } from '@/hooks/useBitcoinRpcDiscovery';
+
+/**
+ * The wizard can be left without applying anything only when it edits a saved
+ * setup that no Start Mining submission may have changed yet. A first setup
+ * has nowhere to return to: App sends every route to /setup until one is saved.
+ */
+export function canCancelSetup(isReconfiguring: boolean, submitted: boolean): boolean {
+  return isReconfiguring && !submitted;
+}
 
 function computeSteps(data: SetupData): SetupStep[] {
   const isSoloMode = data.miningMode === 'solo';
@@ -57,6 +67,9 @@ export function SetupWizard() {
   const [data, setData] = useState<SetupData>(initialSetupData);
   const [isReconfiguring, setIsReconfiguring] = useState(false);
   const [isSetupReview, setIsSetupReview] = useState(false);
+  const [clearDashboardOnStart, setClearDashboardOnStart] = useState(false);
+  // Set while a Start Mining submission may have changed the running setup.
+  const [submitted, setSubmitted] = useState(false);
   const [loadingConfig, setLoadingConfig] = useState(true);
   const [bitcoinSetupNotice, setBitcoinSetupNotice] = useState<string | null>(null);
   const { results: discoveredNodes, isLoading: isDiscovering, retry: retryDiscovery } = useBitcoinRpcDiscovery();
@@ -65,8 +78,12 @@ export function SetupWizard() {
   dataRef.current = data;
 
   useEffect(() => {
+    // Only a true request is applied: under StrictMode this effect runs twice
+    // in development, and the second run finds the request already taken.
+    const clearDashboardRequested = takeDashboardClearOnSetup();
     getCurrentConfig().then(config => {
       if (config) {
+        if (clearDashboardRequested) setClearDashboardOnStart(true);
         let nextConfig = config;
         setIsReconfiguring(true);
 
@@ -136,6 +153,8 @@ export function SetupWizard() {
   }, [currentStep]);
 
   const handleComplete = useCallback(() => navigate('/'), [navigate]);
+  // Nothing is saved before Start Mining, so leaving discards the edits.
+  const handleCancel = canCancelSetup(isReconfiguring, submitted) ? handleComplete : undefined;
 
   const handleAutoAdvance = useCallback(() => {
     const steps = computeSteps(dataRef.current);
@@ -165,6 +184,7 @@ export function SetupWizard() {
   return (
     <OnboardingLayout
       onBack={currentStepIndex > 0 ? handleBack : undefined}
+      onCancel={handleCancel}
       progress={currentStepIndex > 0 ? { current: currentStepIndex - 1, total: steps.length - 1 } : undefined}
       stepKey={currentStep}
     >
@@ -201,6 +221,9 @@ export function SetupWizard() {
           {...stepProps}
           onComplete={handleComplete}
           onGoToStep={setCurrentStep}
+          onSubmit={() => setSubmitted(true)}
+          onSubmitRejected={() => setSubmitted(false)}
+          clearDashboardOnStart={clearDashboardOnStart}
         />
       )}
     </OnboardingLayout>

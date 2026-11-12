@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react';
-import { ArrowLeft, Sun, Moon } from 'lucide-react';
+import { ArrowLeft, Sun, Moon, X } from 'lucide-react';
 
 export function useTheme() {
   const [isDark, setIsDark] = useState(() => {
@@ -34,12 +34,14 @@ export function ThemeToggle({ isDark, toggle }: { isDark: boolean; toggle: () =>
 
 interface OnboardingLayoutProps {
   onBack?: () => void;
+  /** Leaves the flow without applying anything. Without it no cancel button shows. */
+  onCancel?: () => void;
   progress?: { current: number; total: number };
   stepKey?: string;
   children: ReactNode;
 }
 
-export function OnboardingLayout({ onBack, progress, stepKey, children }: OnboardingLayoutProps) {
+export function OnboardingLayout({ onBack, onCancel, progress, stepKey, children }: OnboardingLayoutProps) {
   const { isDark, toggle } = useTheme();
 
   return (
@@ -80,6 +82,17 @@ export function OnboardingLayout({ onBack, progress, stepKey, children }: Onboar
         </div>
 
         <ThemeToggle isDark={isDark} toggle={toggle} />
+        {onCancel && (
+          <button
+            type="button"
+            onClick={onCancel}
+            aria-label="Cancel setup"
+            title="Cancel setup"
+            className="ml-1 w-8 h-8 rounded-full hover:bg-accent flex items-center justify-center transition-colors text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 flex-shrink-0"
+          >
+            <X className="h-4 w-4" aria-hidden="true" />
+          </button>
+        )}
       </div>
 
       {/* Step content. No overflow here: the page itself must scroll for sticky step actions to stay in view. */}

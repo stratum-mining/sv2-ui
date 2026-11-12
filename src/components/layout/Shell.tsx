@@ -7,6 +7,7 @@ import type { AppMode, AppFeatures } from '@/types/api';
 import { getAppFeatures } from '@/types/api';
 import { useUiConfig } from '@/hooks/useUiConfig';
 import { useAuth } from '@/hooks/useAuth';
+import { isRouteAuthorized } from '@/lib/routeAuth';
 import { PoolIcon } from '@/components/ui/pool-icon';
 import { StatusDot } from '@/components/ui/status-dot';
 
@@ -78,12 +79,20 @@ export function Shell({
   uptime,
   translatorFailing = false,
 }: ShellProps) {
-  const [location] = useLocation();
+  const [location, navigate] = useLocation();
   const { isDark, toggle } = useTheme();
   const { config } = useUiConfig();
   const { logout } = useAuth();
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+
+  // LoginGate shows the login form on the route the operator logged out
+  // from. A public route renders outside LoginGate and stays visible without
+  // a session, so logging out there moves to '/', which LoginGate covers.
+  const handleLogout = () => {
+    if (isRouteAuthorized(location, null)) navigate('/');
+    logout.mutate();
+  };
 
   const features = getAppFeatures(appMode);
   const navItems = getNavItems(features, appMode);
@@ -167,7 +176,7 @@ export function Shell({
 
   const LogoutBtn = ({ size = 7 }: { size?: number }) => (
     <button
-      onClick={() => logout.mutate()}
+      onClick={handleLogout}
       aria-label="Log out"
       title="Log out"
       className={cn(
@@ -336,7 +345,7 @@ export function Shell({
               {isDark ? 'Light mode' : 'Dark mode'}
             </button>
             <button
-              onClick={() => logout.mutate()}
+              onClick={handleLogout}
               className="flex items-center w-full px-3 py-2.5 rounded-lg text-[14px] font-medium text-muted-foreground hover:text-foreground hover:bg-foreground/5 transition-all duration-150"
             >
               <LogOut className="h-4 w-4 mr-2" />

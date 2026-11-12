@@ -7,7 +7,7 @@ import { Alert } from '@/components/ui/alert';
 import { ConnectionAlert } from '@/components/ui/connection-alert';
 import { useSetupStatus } from '@/hooks/useSetupStatus';
 import { useControlApi, getCurrentConfig } from '@/hooks/useControlApi';
-import { clearDashboardClientState } from '@/lib/dashboardState';
+import { clearDashboardClientState, requestDashboardClearOnSetup } from '@/lib/dashboardState';
 import { isBitcoinSocketError } from '@/lib/bitcoinSocketErrors';
 import type { SetupData } from '@/components/setup/types';
 import {
@@ -74,7 +74,7 @@ export function ConfigurationTab() {
   }, [saveSuccess]);
 
   const handleReconfigure = () => {
-    clearDashboardClientState(queryClient);
+    requestDashboardClearOnSetup();
     navigate('/setup');
   };
 

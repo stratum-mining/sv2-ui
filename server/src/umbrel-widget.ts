@@ -109,7 +109,7 @@ export class UmbrelWidget {
       items: [
         { title: 'Hashrate', text: rate, subtext: unit },
         { title: 'Active Miners', text: activeWorkers == null ? '—' : String(activeWorkers) },
-        { title: 'Best Share', text: this.bestShare > 0 ? formatDifficulty(this.bestShare) : '—', subtext: 'All time' },
+        { title: 'Best Share', text: this.bestShare > 0 ? formatDifficulty(this.bestShare) : '—' },
         { title: 'Status', text: status },
       ],
     };

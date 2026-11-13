@@ -23,7 +23,7 @@ test('the Umbrel widget persists its fleet-wide best share across restarts', asy
     items: [
       { title: 'Hashrate', text: '2.50', subtext: 'TH/s' },
       { title: 'Active Miners', text: '2' },
-      { title: 'Best Share', text: '8.00G', subtext: 'All time' },
+      { title: 'Best Share', text: '8.00G' },
       { title: 'Status', text: 'Online' },
     ],
   });

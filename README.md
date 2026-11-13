@@ -202,6 +202,10 @@ JD mode supports Bitcoin Core 30.x, 31.x and 32.x over IPC. `sv2-ui` reads the n
 
 Mining does not start if the version cannot be read, because a JDC configured for the wrong version can lose the blocks it finds. The version is read through the data directory that holds the IPC socket, which ties the answer to the node JDC will use. So the socket has to stay in that directory, the RPC server has to be on, Bitcoin Core has to use its default RPC port or set `rpcport` or `rpcbind` in that directory's `bitcoin.conf`, and `sv2-ui` has to be able to read its cookie file, or `rpcuser` and `rpcpassword` in that `bitcoin.conf`. Settings passed on the command line, or kept in a file named by `-conf` or `includeconf`, are not picked up, and neither is a cookie moved with `-rpccookiefile`.
 
+## Umbrel Widget Design
+
+Open the [widget design preview](docs/umbrel-widget-design.html) in a browser to edit payloads and compare all seven Umbrel app widget shapes.
+
 ## Monitoring API Notes
 
 - [Monitoring API contract](docs/monitoring-api-compatibility.md) - How `sv2-ui` should handle JDC and Translator Proxy monitoring API changes.

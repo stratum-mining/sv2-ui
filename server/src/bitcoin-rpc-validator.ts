@@ -12,9 +12,9 @@ if (!dataDir || !defaultPort) {
   process.exit(1);
 }
 
-const cookiePath = network === 'testnet4'
-  ? dataDir + '/testnet4/.cookie'
-  : dataDir + '/.cookie';
+const cookiePath = network === 'mainnet'
+  ? dataDir + '/.cookie'
+  : dataDir + '/' + network + '/.cookie';
 
 function parseBitcoinConf(filePath, targetNetwork) {
   const content = fs.readFileSync(filePath, 'utf8');

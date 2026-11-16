@@ -101,6 +101,31 @@ Then open **http://localhost:5173**. On first run, you'll be guided through the 
 
 The backend auto-detects common local Docker sockets, including `/var/run/docker.sock` and `~/.docker/run/docker.sock`. To override detection, set `DOCKER_SOCKET_PATH` or `DOCKER_HOST` before starting the server.
 
+### Regtest (development only)
+
+Regtest is offered when the server runs outside production, or when
+`ENABLE_REGTEST=1` is set. The Docker image runs with `NODE_ENV=production`, so
+the option stays hidden there unless the flag is set explicitly. Set
+`ENABLE_REGTEST=0` to hide it in a development checkout.
+
+Start a regtest node with IPC in a separate terminal:
+
+```bash
+bitcoin -m node -regtest -ipcbind=unix
+```
+
+A fresh regtest node reports initial block download until it has a block. Mine
+one so the setup wizard can continue:
+
+```bash
+bitcoin-cli -regtest generatetoaddress 1 <bcrt1-address>
+```
+
+Choose **Regtest** in the setup wizard, point it at
+`~/.bitcoin/regtest/node.sock`, and use `bcrt1...` addresses for payouts. A
+saved regtest setup keeps working when the option is hidden again; the flag
+only controls discovery and what the wizard offers.
+
 ## What It Does
 
 1. **Setup Wizard** - Guides you through configuration

@@ -53,6 +53,7 @@ import {
 } from './docker.js';
 import { checkBitcoinCoreVersion, toVersionCheckResponse } from './bitcoin-core-version.js';
 import type { BitcoinCoreVersionCheck } from './bitcoin-core-version.js';
+import { isRegtestEnabled } from './networks.js';
 import { createMergedLogWriter } from './logs/merge.js';
 import { CONTAINER_LOG_EXPORT_MAX_BYTES } from './logs/export.js';
 import { getLogDiagnostics, getLogStreams, readCollatedLogLines } from './logs/diagnostics.js';
@@ -679,7 +680,11 @@ app.get('/api/config', async (_req, res) => {
  * GET /api/env - Host environment variables relevant to the UI
  */
 app.get('/api/env', (_req, res) => {
-  res.json({ HOST_OS: process.env.HOST_OS || null, STRATUM_HOST: process.env.STRATUM_HOST || null });
+  res.json({
+    HOST_OS: process.env.HOST_OS || null,
+    STRATUM_HOST: process.env.STRATUM_HOST || null,
+    ENABLE_REGTEST: isRegtestEnabled(),
+  });
 });
 
 // Read once at startup: /api/version is public, so it must not start a git

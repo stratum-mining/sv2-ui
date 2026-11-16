@@ -1,37 +1,46 @@
 import { useId } from 'react';
-import type { BitcoinNetwork } from '@sv2-ui/shared';
+import { SUPPORTED_NETWORKS, type BitcoinNetwork } from '@sv2-ui/shared';
 import { Bitcoin, Check } from 'lucide-react';
 
 interface BitcoinNetworkSelectorProps {
   value: BitcoinNetwork;
   onChange: (network: BitcoinNetwork) => void;
+  /** Networks the caller wants to offer. Regtest is added only where it is enabled. */
+  networks?: BitcoinNetwork[];
   className?: string;
 }
 
-const NETWORKS: Array<{
-  value: BitcoinNetwork;
+const NETWORK_OPTIONS: Record<BitcoinNetwork, {
   label: string;
   iconClassName: string;
-}> = [
-  { value: 'mainnet', label: 'Mainnet', iconClassName: 'text-orange-500' },
-  { value: 'testnet4', label: 'Testnet4', iconClassName: 'text-blue-500' },
-];
+}> = {
+  mainnet: { label: 'Mainnet', iconClassName: 'text-orange-500' },
+  testnet4: { label: 'Testnet4', iconClassName: 'text-blue-500' },
+  regtest: { label: 'Regtest', iconClassName: 'text-emerald-500' },
+};
 
-export function BitcoinNetworkSelector({ value, onChange, className = '' }: BitcoinNetworkSelectorProps) {
+export function BitcoinNetworkSelector({
+  value,
+  onChange,
+  networks = SUPPORTED_NETWORKS,
+  className = '',
+}: BitcoinNetworkSelectorProps) {
   const labelId = useId();
+  const gridClassName = networks.length > 2 ? 'grid-cols-1 sm:grid-cols-3' : 'grid-cols-2';
 
   return (
     <div className={className} role="group" aria-labelledby={labelId}>
       <p id={labelId} className="block text-sm font-medium mb-3">Bitcoin Network</p>
-      <div className="grid grid-cols-2 gap-3">
-        {NETWORKS.map((network) => {
-          const isSelected = value === network.value;
+      <div className={`grid ${gridClassName} gap-3`}>
+        {networks.map((network) => {
+          const isSelected = value === network;
+          const option = NETWORK_OPTIONS[network];
 
           return (
             <button
-              key={network.value}
+              key={network}
               type="button"
-              onClick={() => onChange(network.value)}
+              onClick={() => onChange(network)}
               aria-pressed={isSelected}
               className={`relative p-4 rounded-xl border transition-all flex flex-col items-center gap-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 ${
                 isSelected
@@ -48,9 +57,9 @@ export function BitcoinNetworkSelector({ value, onChange, className = '' }: Bitc
                 </span>
               )}
               <span className="flex items-center gap-2">
-                <Bitcoin className={`h-4 w-4 ${network.iconClassName}`} aria-hidden="true" />
+                <Bitcoin className={`h-4 w-4 ${option.iconClassName}`} aria-hidden="true" />
                 <span className={`font-medium text-sm ${isSelected ? 'text-primary' : ''}`}>
-                  {network.label}
+                  {option.label}
                 </span>
               </span>
             </button>

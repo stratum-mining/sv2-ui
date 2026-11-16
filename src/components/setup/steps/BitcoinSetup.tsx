@@ -4,6 +4,8 @@ import {
   computeDefaultSocketPath,
   formatBitcoinCoreVersion,
   inferOsFromDataDir,
+  ALL_NETWORKS,
+  SUPPORTED_NETWORKS,
 } from '@sv2-ui/shared';
 import type { OperatingSystem, BitcoinNetwork } from '@sv2-ui/shared';
 import { BITCOIN_MESSAGES } from '@/lib/messages';
@@ -13,6 +15,7 @@ import { Alert } from '@/components/ui/alert';
 import { UmbrelIcon } from '../icons/UmbrelIcon';
 import { useBitcoinCoreVersionCheck, usableCoreVersion } from '@/hooks/useBitcoinCoreVersionCheck';
 import { useBitcoinSocketValidation } from '@/hooks/useBitcoinSocketValidation';
+import { useHostEnv } from '@/hooks/useHostEnv';
 import type { BitcoinRpcDiscoveryResult } from '@/hooks/useBitcoinRpcDiscovery';
 import { BitcoinNetworkSelector } from '../BitcoinNetworkSelector';
 
@@ -41,6 +44,8 @@ function RetryCheckButton({ onClick, isRefreshing }: { onClick: () => void; isRe
 }
 
 export function BitcoinSetup({ data, updateData, onNext, notice, onDismissNotice, discoveredNodes }: BitcoinSetupProps) {
+  const { regtestEnabled } = useHostEnv();
+  const availableNetworks = regtestEnabled ? ALL_NETWORKS : SUPPORTED_NETWORKS;
   const [os, setOs] = useState<OperatingSystem>(data.bitcoin?.os || 'linux');
   const [network, setNetwork] = useState<BitcoinNetwork>(data.bitcoin?.network || 'mainnet');
   const [customDataDir, setCustomDataDir] = useState(data.bitcoin?.customDataDir || '');
@@ -48,6 +53,7 @@ export function BitcoinSetup({ data, updateData, onNext, notice, onDismissNotice
   const [isEditingPath, setIsEditingPath] = useState(false);
   const [discoveryApplied, setDiscoveryApplied] = useState(false);
   const osPrefilled = useRef(Boolean(data.bitcoin?.os));
+  const savedNetworkRef = useRef<BitcoinNetwork | null>(data.bitcoin?.network ?? null);
   const [showAllOsOptions, setShowAllOsOptions] = useState(false);
   const dataDir = customDataDir.trim() || DEFAULT_BITCOIN_PATHS[os];
   const computedSocketPath = computeDefaultSocketPath(dataDir, network);
@@ -55,7 +61,12 @@ export function BitcoinSetup({ data, updateData, onNext, notice, onDismissNotice
 
   useEffect(() => {
     if (discoveredNodes && discoveredNodes.length > 0 && !discoveryApplied) {
-      const primary = discoveredNodes.find(n => n.network === 'mainnet') ?? discoveredNodes[0];
+      const savedNetwork = savedNetworkRef.current;
+      const primary = (
+        savedNetwork
+          ? discoveredNodes.find(n => n.network === savedNetwork)
+          : undefined
+      ) ?? discoveredNodes.find(n => n.network === 'mainnet') ?? discoveredNodes[0];
 
       if (!osPrefilled.current) {
         setOs(inferOsFromDataDir(primary.dataDir));
@@ -212,6 +223,7 @@ export function BitcoinSetup({ data, updateData, onNext, notice, onDismissNotice
           setNetwork(nextNetwork);
           resetPath();
         }}
+        networks={availableNetworks}
       />
 
       <div>

@@ -19,7 +19,7 @@ import {
   SUPPORTED_BITCOIN_CORE_VERSIONS,
   SV2_APP_IMAGES,
 } from '@sv2-ui/shared';
-import type { BitcoinCoreVersion } from '@sv2-ui/shared';
+import type { BitcoinCoreVersion, BitcoinNetwork } from '@sv2-ui/shared';
 import { prepareServiceConfig } from './service-config.js';
 import type { SetupData } from './types.js';
 
@@ -257,20 +257,30 @@ function baseSetup(): SetupData {
   };
 }
 
-function jdSetup(coreVersion: BitcoinCoreVersion): SetupData {
+function jdSetup(
+  coreVersion: BitcoinCoreVersion,
+  network: BitcoinNetwork = 'mainnet',
+): SetupData {
+  const coinbaseRewardAddress = network === 'regtest'
+    ? 'bcrt1qw508d6qejxtdg4y5r3zarvary0c5xw7kygt080'
+    : '1BoatSLRHtKNngkdXEeobR76b53LETtpyT';
+  const socketPath = network === 'mainnet'
+    ? '/root/.bitcoin/node.sock'
+    : `/root/.bitcoin/${network}/node.sock`;
+
   return {
     ...baseSetup(),
     mode: 'jd',
     bitcoin: {
       core_version: coreVersion,
-      network: 'mainnet',
+      network,
       os: 'linux',
       customDataDir: '',
-      socket_path: '/root/.bitcoin/node.sock',
+      socket_path: socketPath,
     },
     jdc: {
       jdc_signature: 'smoke-test',
-      coinbase_reward_address: '1BoatSLRHtKNngkdXEeobR76b53LETtpyT',
+      coinbase_reward_address: coinbaseRewardAddress,
     },
   };
 }
@@ -365,6 +375,28 @@ async function main(): Promise<void> {
         '/app/jd_client_sv2',
       );
     }
+
+    // The network and the reward address are parsed together. A regtest
+    // address also proves the image accepts the regtest network name, which
+    // this repository offers only where regtest is enabled.
+    const regtestPrepared = prepareServiceConfig(
+      jdSetup(SUPPORTED_BITCOIN_CORE_VERSIONS[0], 'regtest'),
+    );
+    if (regtestPrepared.kind !== 'ready') {
+      throw new Error('Could not prepare the regtest JDC smoke-test configuration');
+    }
+    const regtestJdcConfig = regtestPrepared.files.find((file) => file.filename === 'jdc.toml');
+    if (!regtestJdcConfig) throw new Error('No regtest JDC configuration was generated');
+    const regtestJdcPath = path.join(configDir, `regtest-${regtestJdcConfig.filename}`);
+    await writeFile(regtestJdcPath, regtestJdcConfig.contents);
+
+    await checkGeneratedConfig(
+      'JDC regtest config',
+      SV2_APP_IMAGES.jd.jdc,
+      regtestJdcPath,
+      '/config/jdc.toml',
+      '/app/jd_client_sv2',
+    );
   } finally {
     await rm(configDir, { recursive: true, force: true });
   }

@@ -1,6 +1,10 @@
 import { useState } from 'react';
+import { Link } from 'wouter';
 import { Shell } from '@/components/layout/Shell';
+import { BrandSplash } from '@/components/auth/BrandSplash';
+import { OnboardingLayout } from '@/components/setup/OnboardingLayout';
 import { Card, CardContent } from '@/components/ui/card';
+import { useAuth } from '@/hooks/useAuth';
 import { useConnectionStatus } from '@/hooks/useConnectionStatus';
 import { formatVersionLine, useVersionInfo } from '@/hooks/useVersionInfo';
 import { faqData, type FaqItem } from '@/data/faq-data';
@@ -36,14 +40,23 @@ function FaqAccordionItem({ item, isOpen, onToggle }: { item: FaqItem; isOpen: b
   );
 }
 
+/**
+ * The Support page. It renders outside LoginGate so an operator who cannot
+ * log in still reaches it, and it shows the signed-in layout only with a
+ * session: the connection status in that layout polls protected endpoints.
+ */
 export function FAQ() {
-  const { status: connectionStatus, statusLabel: connectionLabel, activePoolAddress, activePoolPort, activePoolAuthorityPublicKey, activePoolIndex, uptime, translatorFailing: headerTranslatorFailing } = useConnectionStatus();
-  const [openIndex, setOpenIndex] = useState<number | null>(null);
-  const versionInfo = useVersionInfo();
+  const { isLoading, authenticated } = useAuth();
 
-  const handleToggle = (index: number) => {
-    setOpenIndex(openIndex === index ? null : index);
-  };
+  if (isLoading) {
+    return <BrandSplash message="Checking access..." />;
+  }
+
+  return authenticated ? <SignedInFaq /> : <PublicFaq />;
+}
+
+function SignedInFaq() {
+  const { status: connectionStatus, statusLabel: connectionLabel, activePoolAddress, activePoolPort, activePoolAuthorityPublicKey, activePoolIndex, uptime, translatorFailing: headerTranslatorFailing } = useConnectionStatus();
 
   return (
     <Shell
@@ -56,57 +69,84 @@ export function FAQ() {
       uptime={uptime}
       translatorFailing={headerTranslatorFailing}
     >
-        <div className="space-y-6 max-w-3xl">
-        <div>
-          <h2 className="text-2xl font-bold tracking-tight">Support & FAQ</h2>
-          <p className="text-muted-foreground">
-            Common questions about the SV2 UI.
-          </p>
-        </div>
-
-        <Card className="shadow-md bg-gradient-to-br from-[#5865F2]/10 to-[#5865F2]/5 border-[#5865F2]/30">
-          <CardContent className="pt-6">
-            <div className="flex flex-col sm:flex-row items-center gap-4">
-              <div className="flex-1 text-center sm:text-left">
-                <h3 className="font-semibold text-lg text-foreground">Join our Community</h3>
-                <p className="text-sm text-muted-foreground">
-                  Can't find your answer below? Connect with our community on Discord for real-time support.
-                </p>
-              </div>
-              <a
-                href="https://discord.com/invite/fsEW23wFYs"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center justify-center px-4 py-2 bg-[#5865F2] hover:bg-[#4752C4] text-white font-medium rounded-lg transition-colors whitespace-nowrap"
-              >
-                Join Discord
-              </a>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="glass-card shadow-md">
-          <CardContent className="pt-6 space-y-3">
-            {faqData.map((item, index) => (
-              <FaqAccordionItem
-                key={index}
-                item={item}
-                isOpen={openIndex === index}
-                onToggle={() => handleToggle(index)}
-              />
-            ))}
-          </CardContent>
-        </Card>
-
-        {versionInfo && (
-          <p className="pt-4 text-center text-xs text-muted-foreground">
-            <span className="font-mono">{formatVersionLine(versionInfo)}</span>
-            <br />
-            Include this line when reporting an issue.
-          </p>
-        )}
-
-      </div>
+      <FaqContent />
     </Shell>
+  );
+}
+
+function PublicFaq() {
+  return (
+    <OnboardingLayout>
+      <div className="space-y-6">
+        <FaqContent />
+        <div className="flex justify-center">
+          <Link href="/" className="text-sm text-muted-foreground underline-offset-4 hover:text-primary hover:underline">
+            Back to login
+          </Link>
+        </div>
+      </div>
+    </OnboardingLayout>
+  );
+}
+
+function FaqContent() {
+  const [openIndex, setOpenIndex] = useState<number | null>(null);
+  const versionInfo = useVersionInfo();
+
+  const handleToggle = (index: number) => {
+    setOpenIndex(openIndex === index ? null : index);
+  };
+
+  return (
+    <div className="space-y-6 max-w-3xl">
+      <div>
+        <h2 className="text-2xl font-bold tracking-tight">Support & FAQ</h2>
+        <p className="text-muted-foreground">
+          Common questions about the SV2 UI.
+        </p>
+      </div>
+
+      <Card className="shadow-md bg-gradient-to-br from-[#5865F2]/10 to-[#5865F2]/5 border-[#5865F2]/30">
+        <CardContent className="pt-6">
+          <div className="flex flex-col sm:flex-row items-center gap-4">
+            <div className="flex-1 text-center sm:text-left">
+              <h3 className="font-semibold text-lg text-foreground">Join our Community</h3>
+              <p className="text-sm text-muted-foreground">
+                Can't find your answer below? Connect with our community on Discord for real-time support.
+              </p>
+            </div>
+            <a
+              href="https://discord.com/invite/fsEW23wFYs"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center justify-center px-4 py-2 bg-[#5865F2] hover:bg-[#4752C4] text-white font-medium rounded-lg transition-colors whitespace-nowrap"
+            >
+              Join Discord
+            </a>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card className="glass-card shadow-md">
+        <CardContent className="pt-6 space-y-3">
+          {faqData.map((item, index) => (
+            <FaqAccordionItem
+              key={index}
+              item={item}
+              isOpen={openIndex === index}
+              onToggle={() => handleToggle(index)}
+            />
+          ))}
+        </CardContent>
+      </Card>
+
+      {versionInfo && (
+        <p className="pt-4 text-center text-xs text-muted-foreground">
+          <span className="font-mono">{formatVersionLine(versionInfo)}</span>
+          <br />
+          Include this line when reporting an issue.
+        </p>
+      )}
+    </div>
   );
 }

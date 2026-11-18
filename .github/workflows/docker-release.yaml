@@ -44,12 +44,18 @@ jobs:
           username: stratumv2
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
+      # `latest` is what users get by default, so only a final release moves it.
+      # A release candidate is published as a pre-release; its tag name is
+      # checked too, so that a candidate published without the pre-release box
+      # ticked leaves `latest` alone all the same.
       - name: Set image tags
         id: tags
+        env:
+          FINAL_RELEASE: ${{ github.event_name == 'release' && !github.event.release.prerelease && !contains(github.ref_name, '-rc') }}
         run: |
           TAGS="stratumv2/sv2-ui:${GITHUB_REF_NAME}"
 
-          if [ "${{ github.event_name }}" = "release" ]; then
+          if [ "$FINAL_RELEASE" = "true" ]; then
             TAGS="$TAGS,stratumv2/sv2-ui:latest"
           fi
 

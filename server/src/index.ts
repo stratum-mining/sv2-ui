@@ -82,6 +82,7 @@ import {
 } from './sessions.js';
 import { readJsonWithLimit } from './bounded-json.js';
 import { readBuildInfo } from './build-info.js';
+import { UmbrelWidget, UMBREL_WIDGET_INTERVAL_MS, UMBREL_WIDGET_PORT, widgetStatus } from './umbrel-widget.js';
 import {
   MAX_MONITORING_ITEMS,
   collectPaginatedMonitoringItems,
@@ -119,6 +120,10 @@ const CONFIG_DIR = process.env.CONFIG_DIR || path.join(__dirname, '../../data/co
 const STATE_FILE = path.join(CONFIG_DIR, 'state.json');
 const CREDENTIAL_FILE = path.join(CONFIG_DIR, 'credential.json');
 const sessions = new SessionStore();
+const umbrelWidget = process.env.HOST_OS === 'umbrel'
+  ? new UmbrelWidget(path.join(CONFIG_DIR, 'umbrel-best-share.json'))
+  : null;
+let umbrelWidgetTimer: ReturnType<typeof setInterval> | undefined;
 
 const AUTO_START_RETRY_INTERVAL_MS = 30_000;
 const TRANSLATOR_RECOVERY_INTERVAL_MS = 5_000;
@@ -1257,6 +1262,7 @@ app.post('/api/reset', async (_req, res) => {
       // The bot token and paired chat belong to whoever set this up. Left
       // behind, that chat would keep receiving alerts about the next setup.
       telegramService.disconnect(),
+      umbrelWidget?.reset(),
     ]);
 
     // The credential is gone, so every existing session is now unbacked.
@@ -1363,6 +1369,7 @@ async function fetchMonitoringJson<T>(
   try {
     const response = await fetch(url, {
       signal: AbortSignal.any([AbortSignal.timeout(5000), context.signal]),
+      redirect: 'error',
     });
     if (!response.ok) {
       await response.body?.cancel().catch(() => undefined);
@@ -1462,6 +1469,13 @@ async function getTelegramActivitySnapshot(): Promise<TelegramActivitySnapshot> 
     };
   }
 
+  return readMiningActivity(status, { includeShareCounters: true });
+}
+
+async function readMiningActivity(
+  status: StatusResponse,
+  { translatorDown = false, includeShareCounters = false } = {},
+): Promise<TelegramActivitySnapshot> {
   const isJdMode = status.mode === 'jd';
   const translatorUrl = `${getContainerUrl('sv2-translator', TRANSLATOR_MONITORING_PORT)}/api/v1`;
   const jdcUrl = `${getContainerUrl('sv2-jdc', JDC_MONITORING_PORT)}/api/v1`;
@@ -1480,13 +1494,13 @@ async function getTelegramActivitySnapshot(): Promise<TelegramActivitySnapshot> 
     jdcServerChannels,
     jdcClients,
   ] = await Promise.all([
-    fetchMonitoringJson<MonitoringGlobal>(`${translatorUrl}/global`, context),
-    fetchAllMonitoringChannels<MonitoringServerChannel>(`${translatorUrl}/server/channels`, context),
-    fetchAllMonitoringItems<MonitoringSv1Client>(`${translatorUrl}/sv1/clients`, context),
+    translatorDown ? null : fetchMonitoringJson<MonitoringGlobal>(`${translatorUrl}/global`, context),
+    translatorDown ? [] : fetchAllMonitoringChannels<MonitoringServerChannel>(`${translatorUrl}/server/channels`, context),
+    translatorDown ? [] : fetchAllMonitoringItems<MonitoringSv1Client>(`${translatorUrl}/sv1/clients`, context),
     isJdMode
       ? fetchMonitoringJson<MonitoringGlobal>(`${jdcUrl}/global`, context)
       : Promise.resolve(null),
-    isJdMode
+    isJdMode && includeShareCounters
       ? fetchAllMonitoringChannels<MonitoringServerChannel>(`${jdcUrl}/server/channels`, context)
       : Promise.resolve(null),
     isJdMode
@@ -1592,7 +1606,7 @@ async function getTelegramActivitySnapshot(): Promise<TelegramActivitySnapshot> 
 
   return {
     running: true,
-    mode: status.mode,
+    mode: status.mode ?? undefined,
     poolName: status.poolName,
     soloFallback: status.soloFallback,
     // Same key as the dashboard's Best Difficulty tile (mode + active pool).
@@ -1757,6 +1771,48 @@ async function pollTelegramNotifications(): Promise<void> {
   }
 }
 
+function startUmbrelWidget(widget: UmbrelWidget): void {
+  const widgetApp = express();
+  widgetApp.disable('x-powered-by');
+  widgetApp.get('/widgets/mining', (_req, res) => {
+    res.set('Cache-Control', 'no-store').json(widget.data());
+  });
+  // Umbreld connects directly to this port. The app proxy continues to forward
+  // only the main web server, where the session checks still apply.
+  widgetApp.listen(UMBREL_WIDGET_PORT, '0.0.0.0').on('error', (error) => {
+    console.error('Could not start the Umbrel widget listener:', error);
+  });
+
+  const poll = () => {
+    if (stackBusyReason === 'manual') return;
+    void widget.refresh(async () => {
+      try {
+        const status = await getCurrentStatus();
+        const activity = status.configured && (status.running || status.degraded)
+          ? await readMiningActivity(status, { translatorDown: isOnlyTranslatorStopped(status.mode, status.containers) })
+          : null;
+        const stopped = status.configured && !status.shouldBeRunning && !status.running && !status.degraded && !status.dockerError;
+        return {
+          status: widgetStatus(status, activity?.hashrate != null && activity.activeWorkers != null),
+          hashrate: stopped ? 0 : (activity?.hashrate ?? null),
+          activeWorkers: stopped ? 0 : (activity?.activeWorkers ?? null),
+          channels: activity?.channels ?? null,
+        };
+      } catch (error) {
+        if (!(error instanceof SavedStateError)) console.warn('Umbrel widget status unavailable:', error);
+        return {
+          status: error instanceof SavedStateError ? 'Review setup' : 'Unavailable',
+          hashrate: null,
+          activeWorkers: null,
+          channels: null,
+        };
+      }
+    }).catch((error) => console.warn('Could not save the Umbrel widget best share:', error));
+  };
+  poll();
+  umbrelWidgetTimer = setInterval(poll, UMBREL_WIDGET_INTERVAL_MS);
+}
+
 app.listen(PORT, () => {
   const dockerConnection = getDockerConnectionInfo();
 
@@ -1783,6 +1839,8 @@ app.listen(PORT, () => {
   void ensureConfigDir(CONFIG_DIR).catch((error) => {
     console.warn('Could not restrict config directory permissions:', error);
   });
+
+  if (umbrelWidget) startUmbrelWidget(umbrelWidget);
 
   // Keep configured mining services running across app/system restarts.
   void autoStart.reconcile();
@@ -1812,6 +1870,7 @@ async function shutdown(signal: string) {
     clearInterval(telegramMonitorTimer);
     telegramMonitorTimer = null;
   }
+  clearInterval(umbrelWidgetTimer);
 
   // Mining stops below. Tell Telegram first, but don't hold up the shutdown.
   await Promise.race([

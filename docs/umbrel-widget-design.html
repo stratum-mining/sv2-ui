@@ -1,0 +1,357 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Umbrel widget design · SV2 UI</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      font: 16px/1.5 'Inter', system-ui, sans-serif;
+      color: #f3f3f5;
+      background: #15151b;
+      --muted: #aeacba;
+      --border: #373640;
+      --surface: #1e1e26;
+      --accent: #f9a65b;
+      --widget: #343343;
+      --cell: #ffffff10;
+      --caption: #c6c2d1;
+      --radius: 18px;
+    }
+    *, *::before, *::after { box-sizing: border-box; }
+    body { margin: 0; }
+    main { max-width: 1330px; margin: auto; padding: clamp(20px, 4vw, 54px); }
+    h1, h2, p { margin: 0; }
+    h1 { font-size: clamp(26px, 4vw, 38px); letter-spacing: -.04em; }
+    h2 { font-size: 17px; }
+    header p, .hint { color: var(--muted); font-size: 13px; }
+    a { color: var(--accent); }
+    .workspace { display: grid; grid-template-columns: minmax(0, 1fr) minmax(320px, .65fr); gap: 24px; margin-top: 28px; align-items: start; }
+    .panel { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 20px; min-width: 0; }
+    .toolbar, .controls { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; }
+    .controls { justify-content: flex-start; }
+    [hidden] { display: none !important; }
+    label, button, select { font: inherit; font-size: 13px; }
+    select, button { color: inherit; background: #272730; border: 1px solid var(--border); border-radius: 7px; padding: 6px 10px; }
+    button, select { cursor: pointer; }
+    :focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+    .gallery { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 250px), 1fr)); gap: 12px; margin-top: 16px; }
+    .shape { display: grid; gap: 9px; justify-items: start; text-align: left; width: 100%; min-width: 0; padding: 12px; background: #24242d; }
+    .shape[aria-pressed="true"] { border-color: var(--accent); background: #302922; }
+    code, textarea { font-family: 'IBM Plex Mono', ui-monospace, monospace; }
+    code { font-size: 12px; overflow-wrap: anywhere; }
+    .editor { display: grid; gap: 12px; position: sticky; top: 20px; }
+    textarea { width: 100%; min-height: 430px; resize: vertical; padding: 12px; color: #f3f3f5; background: #17171e; border: 1px solid var(--border); border-radius: 8px; font-size: 13px; line-height: 1.5; tab-size: 2; }
+    textarea[aria-invalid="true"] { border-color: #ff9c92; }
+    .feedback { font-size: 13px; color: #ffb0a8; min-height: 1.5em; }
+    footer { margin-top: 20px; }
+
+    /* Widget scale and appearance. Umbrel renders the production cards. */
+    .card {
+      width: min(100%, 270px);
+      height: 150px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      padding: 14px;
+      overflow: hidden;
+      color: #fbfaff;
+      background: var(--widget);
+      border-radius: var(--radius);
+      box-shadow: inset 0 1px 0 #ffffff22;
+      font-size: 13px;
+    }
+    .compact .card { width: min(100%, 126px); height: 112px; padding: 9px; }
+    .caption, .value, .unit, .line { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .caption, .unit { color: var(--caption); font-size: 11px; }
+    .value { font-weight: 650; font-variant-numeric: tabular-nums; }
+    .unit { margin-left: .35em; font-weight: 500; }
+    .leading .value { font-size: 23px; }
+    .compact .leading .value { font-size: 16px; }
+    .compact .leading .unit { display: none; }
+    .fill { flex: 1; }
+    .stat { background: var(--cell); border-radius: 10px; padding: 6px 9px; min-width: 0; display: grid; align-content: center; }
+    .four-stats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: repeat(2, minmax(0, 1fr)); padding: 8px; }
+    .compact .four-stats { grid-template-columns: minmax(0, 1fr); }
+    .three-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); padding: 12px; text-align: center; }
+    .three-stats .stat { border-radius: 25px; padding-inline: 4px; }
+    .compact .three-stats { grid-template-columns: minmax(0, 1fr); }
+    .compact .three-stats .stat { border-radius: 10px; }
+    .compact .three-stats .caption { display: none; }
+    .two-stats-with-guage { flex-direction: row; align-items: center; justify-content: center; gap: 16px; }
+    .compact .two-stats-with-guage { flex-direction: column; gap: 4px; }
+    .gauge { display: grid; justify-items: center; text-align: center; min-width: 0; }
+    .ring { position: relative; width: 76px; aspect-ratio: 1; border-radius: 50%; background: conic-gradient(var(--accent) var(--progress), #ffffff18 0); display: grid; place-items: center; }
+    .ring::before { position: absolute; content: ''; inset: 5px; border-radius: 50%; background: var(--widget); }
+    .ring-content { position: relative; max-width: 80%; }
+    .compact .ring { width: 43px; }
+    .compact .ring::before { inset: 3px; }
+    .compact .ring .value { font-size: 10px; }
+    .compact .gauge .caption, .compact .gauge .unit { display: none; }
+    .gauge .unit { display: block; margin: 0; }
+    .actions { display: flex; gap: 5px; }
+    .action { display: flex; gap: 5px; align-items: center; justify-content: center; flex: 1; min-width: 0; padding: 5px; border-radius: 15px; background: var(--cell); }
+    .compact .action-label { display: none; }
+    .track { height: 7px; border-radius: 10px; background: #ffffff20; overflow: hidden; }
+    .track span { display: block; height: 100%; width: var(--progress); border-radius: inherit; background: var(--accent); }
+    .list { gap: 8px; }
+    .list-emoji .row { display: flex; align-items: center; gap: 6px; }
+    .count { align-self: end; color: var(--caption); opacity: .55; font-size: 25px; line-height: 1; }
+    .compact .count { font-size: 17px; }
+    @media (max-width: 880px) {
+      .workspace { grid-template-columns: minmax(0, 1fr); }
+      .editor { position: static; }
+    }
+    @media (max-width: 420px) {
+      .panel { padding: 12px; }
+      .gallery.compact { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+  </style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Umbrel widget design</h1>
+    <p>SV2 UI · Select a shape and edit its JSON to preview widget copy and field placement.</p>
+  </header>
+  <div class="workspace">
+    <section class="panel" aria-labelledby="gallery-title">
+      <div class="toolbar">
+        <h2 id="gallery-title">Widget shapes</h2>
+        <label for="layout">Preview width
+          <select id="layout">
+            <option value="regular">Regular</option>
+            <option value="compact">Compact</option>
+          </select>
+        </label>
+      </div>
+      <div id="gallery" class="gallery"></div>
+    </section>
+    <section class="panel editor" aria-labelledby="editor-title">
+      <h2 id="editor-title">Widget payload</h2>
+      <div class="controls" id="preset-controls">
+        <label for="preset">Status example</label>
+        <select id="preset">
+          <option>Online</option>
+          <option>Fallback pool</option>
+          <option>Solo fallback</option>
+          <option>Translator down</option>
+          <option>Review setup</option>
+          <option>Unavailable</option>
+          <option value="" disabled>Custom</option>
+        </select>
+      </div>
+      <textarea id="payload" aria-labelledby="editor-title" aria-describedby="feedback" spellcheck="false"></textarea>
+      <div class="controls">
+        <button type="button" id="copy">Copy JSON</button>
+        <button type="button" id="reset">Reset example</button>
+      </div>
+      <p id="feedback" class="feedback" role="status"></p>
+    </section>
+  </div>
+  <footer class="hint">Layout approximations for design review. Compact previews show the first frame of rotating stats. <a href="https://github.com/getumbrel/umbrel/tree/master/packages/ui/src/modules/widgets">Umbrel renderer source</a></footer>
+</main>
+<script>
+  // Shape names and fields follow Umbrel's app widget contract and the
+  // TunnelSats docs/widget-types.md reference. Edit these examples to change
+  // the saved defaults. Edits in the browser can be copied as JSON.
+  const examples = {
+    'four-stats': { items: [
+      { title: 'Hashrate', text: '24.50', subtext: 'TH/s' },
+      { title: 'Active Miners', text: '3' },
+      { title: 'Best Share', text: '8.00G' },
+      { title: 'Status', text: 'Online' },
+    ] },
+    'three-stats': { items: [
+      { subtext: 'Hashrate', text: '24.5 TH/s' },
+      { subtext: 'Miners', text: '3' },
+      { subtext: 'Best Share', text: '8.00G' },
+    ] },
+    'two-stats-with-guage': { items: [
+      { title: 'Hashrate', text: '24.50', subtext: 'TH/s', progress: 0.82 },
+      { title: 'Active Miners', text: '3/4', subtext: 'online', progress: 0.75 },
+    ] },
+    'text-with-progress': {
+      title: 'Share Acceptance', text: '98%', subtext: '49 of 50 shares', progressLabel: 'Accepted', progress: 0.98,
+    },
+    'text-with-buttons': {
+      title: 'Mining Status', text: 'Online', subtext: '3 miners', buttons: [
+        { text: 'Dashboard', icon: 'arrow-up-right', link: '/' },
+        { text: 'Settings', icon: 'settings', link: '/settings' },
+      ],
+    },
+    'list': { items: [
+      { text: 'Miner 01', subtext: '9.00 TH/s' },
+      { text: 'Miner 02', subtext: '8.00 TH/s' },
+      { text: 'Miner 03', subtext: '7.50 TH/s' },
+    ], noItemsText: 'No miners connected' },
+    'list-emoji': { count: '3', items: [
+      { emoji: '⚡', text: '24.50 TH/s' },
+      { emoji: '🟢', text: 'Mining online' },
+      { emoji: '🏆', text: '8.00G best share' },
+    ] },
+  };
+
+  const defaultPayload = (type) => ({ type, link: '', refresh: '5s', ...structuredClone(examples[type]) });
+  const stringify = (payload) => JSON.stringify(payload, null, 2);
+  const drafts = Object.fromEntries(Object.keys(examples).map((type) => [type, stringify(defaultPayload(type))]));
+  const previews = Object.fromEntries(Object.keys(examples).map((type) => [type, defaultPayload(type)]));
+  const query = (selector) => document.querySelector(selector);
+  const gallery = query('#gallery');
+  const layout = query('#layout');
+  const editor = query('#payload');
+  const preset = query('#preset');
+  const feedback = query('#feedback');
+  const shapeButtons = new Map();
+  let selected = 'four-stats';
+
+  function element(tag, className, ...children) {
+    const node = document.createElement(tag);
+    if (className) node.className = className;
+    node.append(...children.flat().filter((child) => child instanceof Node || ['string', 'number'].includes(typeof child)));
+    return node;
+  }
+
+  const caption = (text) => element('div', 'caption', text ?? '—');
+  const value = (text, unit) => element('div', 'value', text ?? '—', unit ? element('span', 'unit', unit) : null);
+  const fill = () => element('div', 'fill');
+  const percent = (progress) => typeof progress === 'number' ? `${Math.round(Math.min(1, Math.max(0, progress)) * 100)}%` : '0%';
+
+  function renderWidget(payload) {
+    const compact = layout.value === 'compact';
+    const items = Array.isArray(payload.items) ? payload.items : [];
+    const card = element('div', `card ${payload.type}`);
+    switch (payload.type) {
+      case 'four-stats':
+        for (const item of items.slice(0, compact ? 2 : 4)) {
+          card.append(element('div', 'stat', caption(item?.title), value(item?.text, item?.subtext)));
+        }
+        break;
+      case 'three-stats':
+        for (const item of items.slice(0, compact ? 2 : 3)) {
+          card.append(element('div', 'stat', caption(item?.subtext), value(item?.text)));
+        }
+        break;
+      case 'two-stats-with-guage':
+        for (const item of items.slice(0, 2)) {
+          const unit = item?.subtext ? element('div', 'unit', item.subtext) : null;
+          const ring = element('div', 'ring', element('div', 'ring-content', value(item?.text), unit));
+          ring.style.setProperty('--progress', percent(item?.progress));
+          card.append(element('div', 'gauge', ring, caption(item?.title)));
+        }
+        break;
+      case 'text-with-progress': {
+        const bar = element('span');
+        bar.style.setProperty('--progress', percent(payload.progress));
+        card.append(caption(payload.title), element('div', 'leading', value(payload.text, payload.subtext)), fill(),
+          caption(compact ? percent(payload.progress) : payload.progressLabel), element('div', 'track', bar));
+        break;
+      }
+      case 'text-with-buttons': {
+        const icons = { 'arrow-up-right': '↗', 'arrow-down-right': '↘', settings: '⚙' };
+        const buttons = Array.isArray(payload.buttons) ? payload.buttons : [];
+        const actions = buttons.slice(0, compact ? 2 : 3).map((button) => {
+          const label = button?.text ?? '—';
+          const icon = icons[button?.icon] ?? String(label).slice(0, 1);
+          return element('span', 'action', icon, element('span', 'line action-label', label));
+        });
+        card.append(caption(payload.title), element('div', 'leading', value(payload.text, payload.subtext)), fill(), element('div', 'actions', actions));
+        break;
+      }
+      case 'list':
+        for (const item of items.slice(0, compact ? 1 : 3)) {
+          card.append(element('div', '', element('div', 'line', item?.text ?? '—'), caption(item?.subtext)));
+        }
+        if (items.length === 0) card.append(caption(payload.noItemsText ?? 'No items'));
+        if (compact && items.length > 1) card.append(fill(), caption(`${items.length - 1} more`));
+        break;
+      case 'list-emoji':
+        for (const item of items.slice(0, 3)) {
+          card.append(element('div', 'row', element('span', '', item?.emoji), element('span', 'line', item?.text ?? '—')));
+        }
+        card.append(fill(), element('div', 'count', payload.count));
+        break;
+    }
+    return card;
+  }
+
+  function updatePreview(type) {
+    const button = shapeButtons.get(type);
+    const preview = renderWidget(previews[type]);
+    button.querySelector('.card')?.remove();
+    button.append(preview);
+  }
+
+  function parseEditor() {
+    try {
+      const payload = JSON.parse(editor.value);
+      if (payload?.type !== selected) throw new Error(`The type must be ${selected}.`);
+      previews[selected] = payload;
+      updatePreview(selected);
+      editor.removeAttribute('aria-invalid');
+      feedback.textContent = '';
+      return true;
+    } catch (error) {
+      editor.setAttribute('aria-invalid', 'true');
+      feedback.textContent = error instanceof SyntaxError ? 'Check the JSON syntax. The preview shows the last valid payload.' : error.message;
+      return false;
+    }
+  }
+
+  function choose(type) {
+    selected = type;
+    for (const [name, button] of shapeButtons) button.setAttribute('aria-pressed', String(name === type));
+    query('#preset-controls').hidden = type !== 'four-stats';
+    editor.value = drafts[type];
+    parseEditor();
+    if (type === 'four-stats') preset.value = previews[type]?.items?.[3]?.text ?? '';
+  }
+
+  for (const type of Object.keys(examples)) {
+    const button = element('button', 'shape', element('code', '', type));
+    button.type = 'button';
+    button.setAttribute('aria-label', type);
+    button.addEventListener('click', () => choose(type));
+    shapeButtons.set(type, button);
+    gallery.append(button);
+    updatePreview(type);
+  }
+  choose(selected);
+  layout.addEventListener('change', () => {
+    gallery.classList.toggle('compact', layout.value === 'compact');
+    for (const type of shapeButtons.keys()) updatePreview(type);
+  });
+  editor.addEventListener('input', () => {
+    drafts[selected] = editor.value;
+    if (selected === 'four-stats') preset.value = '';
+    parseEditor();
+  });
+  preset.addEventListener('change', () => {
+    const payload = defaultPayload('four-stats');
+    payload.items[3].text = preset.value;
+    if (['Review setup', 'Unavailable'].includes(preset.value)) {
+      payload.items[0] = { title: 'Hashrate', text: '—' };
+      payload.items[1].text = '—';
+    }
+    drafts[selected] = stringify(payload);
+    choose(selected);
+  });
+  query('#reset').addEventListener('click', () => {
+    drafts[selected] = stringify(defaultPayload(selected));
+    choose(selected);
+  });
+  query('#copy').addEventListener('click', async () => {
+    if (!parseEditor()) return;
+    try {
+      await navigator.clipboard.writeText(editor.value);
+      feedback.textContent = 'JSON copied.';
+    } catch {
+      editor.focus();
+      editor.select();
+      feedback.textContent = 'JSON selected. Use your browser’s copy shortcut.';
+    }
+  });
+</script>
+</body>
+</html>

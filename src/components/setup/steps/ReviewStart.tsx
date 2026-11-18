@@ -1,16 +1,37 @@
 import { useState, useEffect, useRef } from "react";
 import { SetupStep, StepProps } from "../types";
 import { Loader2 } from "lucide-react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { Alert } from "@/components/ui/alert";
 import { MinerConnectionInfo } from "../MinerConnectionInfo";
 import { ConfigurationEditor } from "@/components/settings/ConfigurationEditor";
 import { shouldAggregateTranslatorChannelsForPools } from "../poolRules";
 import { isBitcoinSocketError } from "@/lib/bitcoinSocketErrors";
+import { clearDashboardClientState } from "@/lib/dashboardState";
 
 interface ReviewStartProps extends StepProps {
   onComplete: () => void;
   onGoToStep: (step: SetupStep) => void;
+  /** Called when Start Mining submits the setup, before the server answers. */
+  onSubmit?: () => void;
+  /** Called when the server rejects the submitted setup without changing anything. */
+  onSubmitRejected?: () => void;
+  /** Clear the dashboard history once the submitted setup has started. */
+  clearDashboardOnStart?: boolean;
+}
+
+/**
+ * POST /api/setup answers 4xx only before it stops the running stack or saves
+ * anything; a 5xx can come after either.
+ */
+export function setupLeftUnchanged(status: number): boolean {
+  return status >= 400 && status < 500;
+}
+
+/** Records that the submitted setup has started. */
+export async function markSetupStarted(queryClient: QueryClient, clearDashboardOnStart: boolean): Promise<void> {
+  if (clearDashboardOnStart) clearDashboardClientState(queryClient);
+  await queryClient.invalidateQueries({ queryKey: ["setup-status"] });
 }
 
 async function confirmStackStarted(): Promise<boolean> {
@@ -30,7 +51,7 @@ async function confirmStackStarted(): Promise<boolean> {
   }
 }
 
-export function ReviewStart({ data, updateData, onComplete, onGoToStep }: ReviewStartProps) {
+export function ReviewStart({ data, updateData, onComplete, onGoToStep, onSubmit, onSubmitRejected, clearDashboardOnStart = false }: ReviewStartProps) {
   const queryClient = useQueryClient();
   const [isStarting, setIsStarting] = useState(false);
   const [started, setStarted] = useState(false);
@@ -53,6 +74,7 @@ export function ReviewStart({ data, updateData, onComplete, onGoToStep }: Review
   }, [error]);
 
   const handleStart = async () => {
+    onSubmit?.();
     setIsStarting(true);
     setError(null);
     try {
@@ -68,11 +90,12 @@ export function ReviewStart({ data, updateData, onComplete, onGoToStep }: Review
       clearTimeout(timeoutId);
 
       const errorData = await response.json().catch(() => ({}));
+      if (!response.ok && setupLeftUnchanged(response.status)) onSubmitRejected?.();
       if (!response.ok)
         throw new Error(
           errorData.error || errorData.message || `Failed (${response.status})`,
         );
-      await queryClient.invalidateQueries({ queryKey: ["setup-status"] });
+      await markSetupStarted(queryClient, clearDashboardOnStart);
       await new Promise((resolve) => setTimeout(resolve, 2000));
       setStarted(true);
       setIsStarting(false);
@@ -85,7 +108,7 @@ export function ReviewStart({ data, updateData, onComplete, onGoToStep }: Review
           err.message.includes("Network");
 
         if (mayHaveStarted && await confirmStackStarted()) {
-          await queryClient.invalidateQueries({ queryKey: ["setup-status"] });
+          await markSetupStarted(queryClient, clearDashboardOnStart);
           setStarted(true);
           setIsStarting(false);
           return;

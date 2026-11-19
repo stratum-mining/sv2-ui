@@ -760,6 +760,35 @@ test('mining containers are created with bounded json-file log rotation', async 
   }
 });
 
+test('JDC opens the regtest socket where its network setting points', async (t) => {
+  const created: Array<Record<string, unknown>> = [];
+  t.mock.method(Docker.prototype, 'getContainer', () => {
+    throw missingContainerError();
+  });
+  t.mock.method(Docker.prototype, 'info', (async () => ({
+    LoggingDriver: 'json-file',
+  })) as never);
+  t.mock.method(Docker.prototype, 'createContainer', ((options: Record<string, unknown>) => {
+    created.push(options);
+    return Promise.resolve({ start: async () => undefined });
+  }) as never);
+
+  await startJdc(
+    '/tmp/jdc.toml',
+    '/tmp/bitcoin/regtest/node.sock',
+    'regtest',
+    'image:jdc',
+  );
+
+  const hostConfig = created[0]?.HostConfig as { Binds?: string[] } | undefined;
+  assert.ok(
+    hostConfig?.Binds?.includes(
+      '/tmp/bitcoin/regtest/node.sock:/root/.bitcoin/regtest/node.sock:ro',
+    ),
+    'JDC resolves regtest to /root/.bitcoin/regtest/node.sock, so the mount must target it',
+  );
+});
+
 test('mining containers keep the operator log driver when it is not json-file', async (t) => {
   const created: Array<Record<string, unknown>> = [];
   t.mock.method(Docker.prototype, 'getContainer', () => {

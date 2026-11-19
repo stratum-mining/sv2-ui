@@ -61,6 +61,7 @@ export type BitcoinCoreVersionCheck =
 const RPC_CHAIN_BY_NETWORK: Record<BitcoinNetwork, string> = {
   mainnet: 'main',
   testnet4: 'testnet4',
+  regtest: 'regtest',
 };
 
 // RPC_IN_WARMUP: Bitcoin Core answers this while it loads its block index.

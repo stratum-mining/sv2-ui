@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
 import { bitcoinRpcValidatorScript } from './bitcoin-rpc-validator.js';
+import type { BitcoinNetwork } from '@sv2-ui/shared';
 
 test('rpc validator succeeds with valid RPC responses', async () => {
   const dataDir = mkdtempSync(path.join(tmpdir(), 'rpc-validator-success-'));
@@ -168,13 +169,13 @@ test('rpc validator enforces an absolute request deadline', async () => {
 
 async function probeWithConf(options: {
   conf?: string;
-  network?: 'mainnet' | 'testnet4';
+  network?: BitcoinNetwork;
   /** Whether the node listens on the port named in `conf`, or on the default. */
   listensOn: 'conf-port' | 'default-port';
 }): Promise<{ ok: boolean; output: string }> {
   const network = options.network ?? 'mainnet';
   const dataDir = mkdtempSync(path.join(tmpdir(), 'rpc-validator-port-'));
-  const cookieDir = network === 'testnet4' ? path.join(dataDir, 'testnet4') : dataDir;
+  const cookieDir = network === 'mainnet' ? dataDir : path.join(dataDir, network);
   mkdirSync(cookieDir, { recursive: true });
   writeFileSync(path.join(cookieDir, '.cookie'), 'rpcuser:rpcpassword\n');
 
@@ -240,6 +241,9 @@ for (const [label, conf, network] of [
   ['the rpcbind address it can reach', 'rpcbind=127.0.0.2:1\nrpcbind=127.0.0.1:PORT\nrpcallowip=127.0.0.1\n', 'mainnet'],
   ['rpcbind on all addresses', 'rpcbind=0.0.0.0:PORT\nrpcallowip=127.0.0.1\n', 'mainnet'],
   ['[testnet4] rpcbind with a global rpcallowip', 'rpcallowip=127.0.0.1\n[testnet4]\nrpcbind=127.0.0.1:PORT\n', 'testnet4'],
+  ['rpcport in [regtest]', '[regtest]\nrpcport=PORT\n', 'regtest'],
+  ['regtest.rpcport', 'regtest.rpcport=PORT\n', 'regtest'],
+  ['[regtest] rpcbind with a global rpcallowip', 'rpcallowip=127.0.0.1\n[regtest]\nrpcbind=127.0.0.1:PORT\n', 'regtest'],
 ] as const) {
   test(`rpc validator asks the port from ${label}`, async () => {
     const { ok, output } = await probeWithConf({ conf, network, listensOn: 'conf-port' });
@@ -259,6 +263,9 @@ for (const [label, conf, network] of [
   ['rpcbind without rpcallowip, which Core ignores', 'rpcbind=127.0.0.1:1\n', 'mainnet'],
   ['rpcallowip without rpcbind', 'rpcallowip=127.0.0.1\n', 'mainnet'],
   ['rpcbind for another network', 'rpcallowip=127.0.0.1\n[testnet4]\nrpcbind=127.0.0.1:1\n', 'mainnet'],
+  ['a [regtest] section on mainnet', '[regtest]\nrpcport=1\n', 'mainnet'],
+  ['the [testnet4] section on regtest', '[testnet4]\nrpcport=1\n', 'regtest'],
+  ['a [regtest] section on testnet4', '[regtest]\nrpcport=1\n', 'testnet4'],
   ['rpcallowip for another network', '[main]\nrpcallowip=127.0.0.1\n[testnet4]\nrpcbind=127.0.0.1:1\n', 'testnet4'],
   ['rpcbind that names no port', 'rpcbind=127.0.0.1\nrpcallowip=127.0.0.1\n', 'mainnet'],
 ] as const) {

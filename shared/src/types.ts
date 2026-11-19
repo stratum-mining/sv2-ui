@@ -3,7 +3,7 @@ export type SetupMode = 'jd' | 'no-jd';
 
 export type OperatingSystem = 'linux' | 'macos' | 'umbrel';
 export type BitcoinCoreVersion = '30' | '31' | '32';
-export type BitcoinNetwork = 'mainnet' | 'testnet4';
+export type BitcoinNetwork = 'mainnet' | 'testnet4' | 'regtest';
 
 export type HealthStatus = 'healthy' | 'unhealthy' | 'starting' | 'stopped';
 

@@ -165,6 +165,28 @@ test('jdc config uses shared shares-per-minute and miner signature', () => {
   assert.match(config, /\[miner_telemetry\]\ncidrs = \["192\.168\.1\.0\/24"\]/);
 });
 
+test('jdc config writes the regtest network and reward address', () => {
+  const config = generateJdcConfig({
+    ...BASE_DATA_30,
+    bitcoin: {
+      ...BASE_DATA_30.bitcoin!,
+      network: 'regtest',
+      socket_path: '/tmp/bitcoin/regtest/node.sock',
+    },
+    jdc: {
+      ...BASE_DATA_30.jdc!,
+      coinbase_reward_address: 'bcrt1qw508d6qejxtdg4y5r3zarvary0c5xw7kygt080',
+    },
+  });
+
+  assert.ok(config);
+  assert.match(config, /network = "regtest"/);
+  assert.match(
+    config,
+    /coinbase_reward_script = "addr\(bcrt1qw508d6qejxtdg4y5r3zarvary0c5xw7kygt080\)"/,
+  );
+});
+
 test('miner telemetry config is omitted when LAN CIDR is blank', () => {
   const data = {
     ...BASE_DATA_30,

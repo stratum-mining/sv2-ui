@@ -37,9 +37,16 @@ export function Settings() {
   const [passwordError, setPasswordError] = useState<string | null>(null);
   const [passwordSuccess, setPasswordSuccess] = useState(false);
 
-  const handleGenerateKey = async () => {
-    const key = await regenerateRecoveryKey.mutateAsync();
-    setRevealedKey(key);
+  const [recoveryPassword, setRecoveryPassword] = useState('');
+
+  const handleGenerateKey = (e: React.FormEvent) => {
+    e.preventDefault();
+    regenerateRecoveryKey.mutate(recoveryPassword, {
+      onSuccess: (key) => {
+        setRecoveryPassword('');
+        setRevealedKey(key);
+      },
+    });
   };
 
   const handleChangePassword = (e: React.FormEvent) => {
@@ -341,16 +348,25 @@ export function Settings() {
                       </p>
                     </div>
                   ) : (
-                    <div className="space-y-3">
+                    <form onSubmit={handleGenerateKey} className="space-y-3">
                       <p className="text-sm text-muted-foreground">
                         {recoveryKeySet
                           ? 'A recovery key is set. Generate a new one if you need a replacement.'
                           : 'No recovery key is set yet.'}
                       </p>
+                      <div className="space-y-2">
+                        <Label htmlFor="recovery-current-password">Current password</Label>
+                        <PasswordInput
+                          id="recovery-current-password"
+                          autoComplete="current-password"
+                          value={recoveryPassword}
+                          onChange={(e) => setRecoveryPassword(e.target.value)}
+                        />
+                      </div>
                       <Button
+                        type="submit"
                         size="sm"
-                        onClick={handleGenerateKey}
-                        disabled={regenerateRecoveryKey.isPending}
+                        disabled={regenerateRecoveryKey.isPending || !recoveryPassword}
                       >
                         {regenerateRecoveryKey.isPending
                           ? 'Generating...'
@@ -363,7 +379,7 @@ export function Settings() {
                           Generating a new key invalidates the one you saved before.
                         </p>
                       )}
-                    </div>
+                    </form>
                   )}
 
                   {regenerateRecoveryKey.error && (

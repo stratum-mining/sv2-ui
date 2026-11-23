@@ -463,12 +463,20 @@ app.post('/api/auth/recover', async (req, res) => {
 /**
  * POST /api/auth/recovery-key/regenerate - Issue a new recovery key
  * (authenticated). The prior key is invalidated. The new key is returned once.
+ *
+ * Requires the current password: a recovery key resets the password without
+ * a session, so a session alone must not be enough to obtain one.
  */
-app.post('/api/auth/recovery-key/regenerate', async (_req, res) => {
+app.post('/api/auth/recovery-key/regenerate', async (req, res) => {
   try {
     const credential = await loadCredential(CREDENTIAL_FILE);
     if (!credential) {
       return res.status(409).json({ error: 'No password has been set yet.' });
+    }
+
+    const currentPassword = isJsonObject(req.body) ? req.body.currentPassword : undefined;
+    if (typeof currentPassword !== 'string' || !(await verifyPassword(currentPassword, credential))) {
+      return res.status(401).json({ error: 'Current password is incorrect.' });
     }
 
     const recoveryKey = generateRecoveryKey();

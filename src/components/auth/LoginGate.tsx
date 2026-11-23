@@ -319,8 +319,18 @@ export function LoginGate({ children }: { children: ReactNode }) {
   const [, navigate] = useLocation();
   const [pendingRecoveryKey, setPendingRecoveryKey] = useState<string | null>(null);
   const [started, setStarted] = useState(false);
+  const [wasAuthenticated, setWasAuthenticated] = useState(authenticated);
 
-  // The server returns the recovery key only once, so it stays up until acknowledged.
+  // The recovery key resets the password without a session, so it must not
+  // outlive the session that produced it on a page anyone can then reach.
+  // Dropped while rendering, so the login form never appears with it.
+  if (wasAuthenticated !== authenticated) {
+    setWasAuthenticated(authenticated);
+    if (!authenticated) setPendingRecoveryKey(null);
+  }
+
+  // The server returns the recovery key only once, so it stays up until
+  // acknowledged or until the session ends.
   if (pendingRecoveryKey) {
     return (
       <RecoveryKeyPanel

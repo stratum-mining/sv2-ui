@@ -12,7 +12,7 @@
   "dependencies": {
     "@sv2-ui/shared": "*",
     "bs58check": "^4.0.0",
-    "dockerode": "^4.0.2",
+    "dockerode": "^5.0.1",
     "express": "^4.18.2",
     "tsx": "^4.7.0"
   },

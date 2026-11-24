@@ -154,6 +154,25 @@ test('matches testnet4 setups against the testnet4 chain', async () => {
   assert.deepEqual(check, { kind: 'confirmed', data });
 });
 
+test('matches regtest setups against the regtest chain', async () => {
+  const data = jdSetup({
+    network: 'regtest',
+    core_version: '32',
+    socket_path: '~/.bitcoin/regtest/node.sock',
+  });
+  const check = await checkBitcoinCoreVersion(data, deps(nodeAt(320100, 'regtest')));
+  assert.deepEqual(check, { kind: 'confirmed', data });
+});
+
+test('refuses a regtest setup answered by a mainnet node', async () => {
+  const check = await checkBitcoinCoreVersion(
+    jdSetup({ network: 'regtest', socket_path: '~/.bitcoin/regtest/node.sock' }),
+    deps(nodeAt(320100, 'main')),
+  );
+  assert.equal(check.kind, 'refused');
+  if (check.kind === 'refused') assert.match(check.detail, /regtest/);
+});
+
 for (const version of [Number.NaN, 0, -1, 1.5]) {
   test(`refuses a nonsensical version from the RPC port: ${version}`, async () => {
     const check = await checkBitcoinCoreVersion(jdSetup(), deps(nodeAt(version)));
@@ -175,6 +194,13 @@ test('reads the node from the data directory holding its socket', async () => {
     testnet4,
   );
   assert.deepEqual(testnet4.reads, [['~/.bitcoin', 'testnet4']]);
+
+  const regtest = deps(nodeAt(310200, 'regtest'));
+  await checkBitcoinCoreVersion(
+    jdSetup({ network: 'regtest', socket_path: '~/.bitcoin/regtest/node.sock' }),
+    regtest,
+  );
+  assert.deepEqual(regtest.reads, [['~/.bitcoin', 'regtest']]);
 });
 
 test('reads the node behind the socket, not the one the data directory field names', async () => {
@@ -190,6 +216,19 @@ test('refuses a testnet4 socket it cannot tie to a testnet4 node', async () => {
   const outside = deps(nodeAt(320100, 'testnet4'));
   const check = await checkBitcoinCoreVersion(
     jdSetup({ network: 'testnet4', socket_path: '~/.bitcoin/node.sock' }),
+    outside,
+  );
+  assert.equal(check.kind, 'refused');
+  if (check.kind === 'refused') {
+    assert.equal(check.issue.code, BITCOIN_CORE_VERSION_UNCONFIRMED_ISSUE);
+  }
+  assert.equal(outside.reads.length, 0);
+});
+
+test('refuses a regtest socket it cannot tie to a regtest node', async () => {
+  const outside = deps(nodeAt(320100, 'regtest'));
+  const check = await checkBitcoinCoreVersion(
+    jdSetup({ network: 'regtest', socket_path: '~/.bitcoin/node.sock' }),
     outside,
   );
   assert.equal(check.kind, 'refused');

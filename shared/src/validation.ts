@@ -2,26 +2,32 @@ import * as bitcoin from 'bitcoinjs-lib';
 import * as ecc from 'tiny-secp256k1';
 import bs58check from 'bs58check';
 import type { BitcoinNetwork } from './types.js';
+import { ALL_NETWORKS } from './constants.js';
 import isIP from 'validator/lib/isIP.js';
 import isFQDN from 'validator/lib/isFQDN.js';
 
 // Required by bitcoinjs-lib for validating taproot addresses.
 bitcoin.initEccLib(ecc);
 
+const BITCOIN_JS_NETWORK_BY_NETWORK: Record<BitcoinNetwork, bitcoin.Network> = {
+  mainnet: bitcoin.networks.bitcoin,
+  testnet4: bitcoin.networks.testnet,
+  regtest: bitcoin.networks.regtest,
+};
+
 // These characters can escape or terminate a generated TOML basic string.
 // eslint-disable-next-line no-control-regex
 const TOML_UNSAFE_CHARS = /["\\\u0000-\u001F\u007F]/;
 
 export function isValidBitcoinNetwork(value: unknown): value is BitcoinNetwork {
-  return value === 'mainnet' || value === 'testnet4';
+  return typeof value === 'string' && ALL_NETWORKS.includes(value as BitcoinNetwork);
 }
 
 export function isValidBitcoinAddress(value: unknown, network: BitcoinNetwork): boolean {
   if (typeof value !== 'string' || value.length === 0) return false;
 
-  const bitcoinNetwork = network === 'mainnet'
-    ? bitcoin.networks.bitcoin
-    : bitcoin.networks.testnet;
+  const bitcoinNetwork = BITCOIN_JS_NETWORK_BY_NETWORK[network];
+  if (!bitcoinNetwork) return false;
 
   try {
     bitcoin.address.toOutputScript(value, bitcoinNetwork);
@@ -33,12 +39,16 @@ export function isValidBitcoinAddress(value: unknown, network: BitcoinNetwork): 
 
 export function getBitcoinAddressError(value: string, network: BitcoinNetwork): string | null {
   if (!value || isValidBitcoinAddress(value, network)) return null;
-  const otherNetwork = network === 'mainnet' ? 'testnet4' : 'mainnet';
-  return isValidBitcoinAddress(value, otherNetwork) ? 'Wrong network' : 'Invalid Bitcoin address';
+  const otherNetwork = ALL_NETWORKS.some(
+    (candidate) => candidate !== network && isValidBitcoinAddress(value, candidate),
+  );
+  return otherNetwork ? 'Wrong network' : 'Invalid Bitcoin address';
 }
 
 export function getBitcoinAddressPlaceholder(network: BitcoinNetwork): string {
-  return network === 'mainnet' ? 'bc1q...' : 'tb1q...';
+  if (network === 'mainnet') return 'bc1q...';
+  if (network === 'regtest') return 'bcrt1q...';
+  return 'tb1q...';
 }
 
 export function isTomlSafeOptionalString(value: unknown): value is string {

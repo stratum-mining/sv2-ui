@@ -3,11 +3,13 @@ import { useState, useEffect } from 'react';
 interface HostEnv {
   HOST_OS: string | null;
   STRATUM_HOST: string | null;
+  ENABLE_REGTEST?: boolean;
 }
 
 export function useHostEnv() {
   const [hostOs, setHostOs] = useState<string | null>(null);
   const [stratumHost, setStratumHost] = useState<string | null>(null);
+  const [regtestEnabled, setRegtestEnabled] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
@@ -18,6 +20,7 @@ export function useHostEnv() {
         if (!cancelled) {
           setHostOs(data.HOST_OS);
           setStratumHost(data.STRATUM_HOST);
+          setRegtestEnabled(data.ENABLE_REGTEST === true);
           setIsLoading(false);
         }
       })
@@ -29,5 +32,5 @@ export function useHostEnv() {
     return () => { cancelled = true; };
   }, []);
 
-  return { hostOs, stratumHost, isLoading };
+  return { hostOs, stratumHost, regtestEnabled, isLoading };
 }

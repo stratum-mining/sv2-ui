@@ -2,7 +2,11 @@ import type { BitcoinCoreVersion, BitcoinNetwork, OperatingSystem } from './type
 
 export const SUPPORTED_BITCOIN_CORE_VERSIONS: BitcoinCoreVersion[] = ['30', '31', '32'];
 
+// The networks the product offers to everyone. Regtest is added only where the
+// environment enables it, but it stays part of `BitcoinNetwork` so a saved
+// regtest setup keeps working when the option is hidden again.
 export const SUPPORTED_NETWORKS: BitcoinNetwork[] = ['mainnet', 'testnet4'];
+export const ALL_NETWORKS: BitcoinNetwork[] = [...SUPPORTED_NETWORKS, 'regtest'];
 
 export const BITCOIN_CORE_VERSION_UNCONFIRMED_ISSUE = 'bitcoin-core-version-unconfirmed';
 export const BITCOIN_CORE_VERSION_UNSUPPORTED_ISSUE = 'bitcoin-core-version-unsupported';
@@ -16,6 +20,7 @@ export const DEFAULT_BITCOIN_PATHS: Record<OperatingSystem, string> = {
 export const RPC_PORTS: Record<BitcoinNetwork, number> = {
   mainnet: 8332,
   testnet4: 48332,
+  regtest: 18443,
 };
 
 export const CONTAINER_NAMES = {

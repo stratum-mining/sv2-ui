@@ -13,7 +13,6 @@ import {
   CONTAINER_NAMES,
   DOCKER_SOCKET_PATHS,
   DEFAULT_BITCOIN_PATHS,
-  SUPPORTED_NETWORKS,
   RPC_PORTS,
 } from '@sv2-ui/shared';
 import type { SetupData, ContainerStatus } from './types.js';
@@ -34,6 +33,7 @@ import { bitcoinSocketExistsScript } from './bitcoin-socket-exists.js';
 import { bitcoinRpcValidatorScript } from './bitcoin-rpc-validator.js';
 import { hostNetworkProbeScript } from './host-network-probe.js';
 import { defaultRouteAddress, localHostLanAddress } from './host-lan-address.js';
+import { getDiscoveryNetworks } from './networks.js';
 
 export const DOCKER_CALL_TIMEOUT_MS = 10000;
 
@@ -333,14 +333,16 @@ export function getBitcoinRpcProbeTransports(): BitcoinRpcProbeTransport[] {
   ];
 }
 
-export async function autoDiscoverBitcoinRpc(): Promise<BitcoinRpcDiscoveryResult[]> {
+export async function autoDiscoverBitcoinRpc(
+  networks: readonly BitcoinNetwork[] = getDiscoveryNetworks(),
+): Promise<BitcoinRpcDiscoveryResult[]> {
   const osPaths = Object.values(DEFAULT_BITCOIN_PATHS).map(expandHomePath);
 
   for (const dataDir of osPaths) {
     const results: BitcoinRpcDiscoveryResult[] = [];
     let mountFailed = false;
 
-    for (const network of SUPPORTED_NETWORKS) {
+    for (const network of networks) {
       try {
         const probeResult = await probeBitcoinRpcWithDocker(dataDir, network);
         results.push({
@@ -476,7 +478,7 @@ async function runBitcoinRpcProbeContainer({
   transport,
 }: {
   dataDir: string;
-  network: 'mainnet' | 'testnet4';
+  network: BitcoinNetwork;
   rpcPort: number;
   containerDataDir: string;
   transport: BitcoinRpcProbeTransport;

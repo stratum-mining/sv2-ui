@@ -5,6 +5,8 @@ import {
   formatBitcoinCoreVersion,
   DEFAULT_BITCOIN_PATHS,
   computeDefaultSocketPath,
+  ALL_NETWORKS,
+  SUPPORTED_NETWORKS,
   type OperatingSystem,
   type BitcoinNetwork,
   inferOsFromDataDir,
@@ -28,11 +30,13 @@ interface BitcoinPrereqStepProps extends StepProps {
 const START_COMMANDS: Record<BitcoinNetwork, string> = {
   mainnet: 'bitcoin -m node -ipcbind=unix',
   testnet4: 'bitcoin -m node -ipcbind=unix -testnet4',
+  regtest: 'bitcoin -m node -ipcbind=unix -regtest',
 };
 
 const NETWORK_LABELS: Record<BitcoinNetwork, string> = {
   mainnet: 'Mainnet',
   testnet4: 'Testnet4',
+  regtest: 'Regtest',
 };
 
 function InstructionStep({
@@ -61,11 +65,17 @@ function InstructionStep({
 }
 
 export function BitcoinPrereqStep({ data, updateData, onNext, discoveredNodes, isDiscovering, onRetryDiscovery, onAutoAdvance }: BitcoinPrereqStepProps) {
-  const { hostOs, isLoading: hostOsLoading } = useHostEnv();
-  const [selectedNetwork, setSelectedNetwork] = useState<BitcoinNetwork>('mainnet');
+  const { hostOs, regtestEnabled, isLoading: hostOsLoading } = useHostEnv();
+  const availableNetworks = regtestEnabled ? ALL_NETWORKS : SUPPORTED_NETWORKS;
+  const [selectedNetwork, setSelectedNetwork] = useState<BitcoinNetwork>(
+    data.bitcoin?.network ?? 'mainnet',
+  );
+  const initialNetworkRef = useRef(data.bitcoin?.network ?? null);
+  const userSelectedNetworkRef = useRef(false);
   const [copiedNetwork, setCopiedNetwork] = useState<BitcoinNetwork | null>(null);
   const [ipcStatus, setIpcStatus] = useState<'idle' | 'checking' | 'valid' | 'invalid'>('idle');
   const ipcCompletedRef = useRef(false);
+  const connectionPrefillAppliedRef = useRef(false);
 
   const copy = async (network: BitcoinNetwork) => {
     try {
@@ -78,7 +88,12 @@ export function BitcoinPrereqStep({ data, updateData, onNext, discoveredNodes, i
   };
 
   useEffect(() => {
-    if (hostOsLoading) return;
+    if (hostOsLoading || isDiscovering) return;
+    // Discovery polls while a node is syncing, and each poll returns a new
+    // array. Prefill once so a poll cannot wipe a network or socket path the
+    // operator already configured.
+    if (connectionPrefillAppliedRef.current) return;
+    connectionPrefillAppliedRef.current = true;
 
     const pNode = discoveredNodes.find(n => n.network === 'mainnet') ?? discoveredNodes[0];
     const dCoreVersion = pNode ? rpcVersionToCoreVersion(pNode.version) : null;
@@ -110,7 +125,7 @@ export function BitcoinPrereqStep({ data, updateData, onNext, discoveredNodes, i
         },
       });
     }
-  }, [hostOs, hostOsLoading, discoveredNodes, data.bitcoin?.os, updateData]);
+  }, [hostOs, hostOsLoading, isDiscovering, discoveredNodes, data.bitcoin?.os, updateData]);
 
   useEffect(() => {
     if (hostOsLoading) return;
@@ -123,6 +138,10 @@ export function BitcoinPrereqStep({ data, updateData, onNext, discoveredNodes, i
     }
 
     const node = discoveredNodes[0];
+    if (!availableNetworks.includes(node.network)) {
+      setIpcStatus('idle');
+      return;
+    }
     const version = rpcVersionToCoreVersion(node.version);
     if (!version || node.initialBlockDownload) {
       setIpcStatus('idle');
@@ -176,17 +195,32 @@ export function BitcoinPrereqStep({ data, updateData, onNext, discoveredNodes, i
       clearTimeout(timeoutId);
       controller.abort();
     };
-  }, [discoveredNodes, hostOsLoading, isDiscovering, updateData, onAutoAdvance, data.bitcoin?.os]);
+  }, [discoveredNodes, hostOsLoading, isDiscovering, updateData, onAutoAdvance, data.bitcoin?.os, availableNetworks]);
 
-  const hasDiscovered = discoveredNodes.length > 0;
   const primaryNode = discoveredNodes.find(n => n.network === 'mainnet') ?? discoveredNodes[0];
-  const isSyncing = hasDiscovered && discoveredNodes.some(n => n.initialBlockDownload);
-  const detectedCoreVersion = primaryNode ? rpcVersionToCoreVersion(primaryNode.version) : null;
+  // Readiness belongs to the network the user is setting up, not to any node
+  // that happens to be running. A regtest node in initial block download must
+  // not make a mainnet setup look stuck.
+  const selectedNode = discoveredNodes.find(n => n.network === selectedNetwork);
+  const hasDiscovered = Boolean(selectedNode);
+  const isSyncing = selectedNode?.initialBlockDownload ?? false;
+  const detectedCoreVersion = selectedNode ? rpcVersionToCoreVersion(selectedNode.version) : null;
   const isUnsupportedVersion = hasDiscovered && !detectedCoreVersion;
 
   useEffect(() => {
+    if (userSelectedNetworkRef.current) return;
+    const preferred = initialNetworkRef.current;
+    if (preferred && discoveredNodes.some(node => node.network === preferred)) {
+      setSelectedNetwork(preferred);
+      return;
+    }
     if (primaryNode) setSelectedNetwork(primaryNode.network);
-  }, [primaryNode]);
+  }, [primaryNode, discoveredNodes]);
+
+  const handleSelectNetwork = (network: BitcoinNetwork) => {
+    userSelectedNetworkRef.current = true;
+    setSelectedNetwork(network);
+  };
 
   const handleRetry = () => {
     ipcCompletedRef.current = false;
@@ -219,13 +253,13 @@ export function BitcoinPrereqStep({ data, updateData, onNext, discoveredNodes, i
     onNext();
   };
 
-  const detectedVersionLabel = primaryNode
+  const detectedVersionLabel = selectedNode
     ? detectedCoreVersion
       ? formatBitcoinCoreVersion(detectedCoreVersion)
-      : rpcVersionToDisplayVersion(primaryNode.version)
+      : rpcVersionToDisplayVersion(selectedNode.version)
     : null;
-  const detectedNodeSummary = primaryNode && detectedVersionLabel
-    ? `${NETWORK_LABELS[primaryNode.network]} · Bitcoin Core ${detectedVersionLabel}`
+  const detectedNodeSummary = selectedNode && detectedVersionLabel
+    ? `${NETWORK_LABELS[selectedNode.network]} · Bitcoin Core ${detectedVersionLabel}`
     : '';
 
   const readiness = isDiscovering
@@ -242,12 +276,12 @@ export function BitcoinPrereqStep({ data, updateData, onNext, discoveredNodes, i
         title: 'Bitcoin Core isn’t detected',
         description: 'Start your node with the command above. If it is already running, wait a moment and check again.',
       }
-      : isUnsupportedVersion && primaryNode
+      : isUnsupportedVersion && selectedNode
         ? {
           tone: 'destructive' as const,
           icon: <AlertCircle className="h-4 w-4" aria-hidden="true" />,
           title: BITCOIN_MESSAGES.unsupportedHeading,
-          description: `${BITCOIN_MESSAGES.unsupportedDetected(rpcVersionToDisplayVersion(primaryNode.version))} ${BITCOIN_MESSAGES.upgradeNode}`,
+          description: `${BITCOIN_MESSAGES.unsupportedDetected(rpcVersionToDisplayVersion(selectedNode.version))} ${BITCOIN_MESSAGES.upgradeNode}`,
         }
         : isSyncing
           ? {
@@ -342,7 +376,8 @@ export function BitcoinPrereqStep({ data, updateData, onNext, discoveredNodes, i
         >
           <BitcoinNetworkSelector
             value={selectedNetwork}
-            onChange={setSelectedNetwork}
+            onChange={handleSelectNetwork}
+            networks={availableNetworks}
             className="mt-3"
           />
           <div className="relative mt-3">

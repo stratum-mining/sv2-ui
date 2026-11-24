@@ -10,7 +10,11 @@ import {
   getIdentifierError,
   isValidPoolAddress,
   getPoolAddressError,
+  getBitcoinAddressError,
+  getBitcoinAddressPlaceholder,
+  isValidBitcoinAddress,
 } from './utils';
+import { ALL_NETWORKS, computeDefaultSocketPath, isValidBitcoinNetwork } from '@sv2-ui/shared';
 
 
 const VALID_PUBKEYS = [
@@ -251,4 +255,43 @@ test('isValidPoolAuthorityPubkey: rejects an off-curve x-only public key', () =>
     Buffer.alloc(32),
   ]));
   assert.equal(isValidPoolAuthorityPubkey(invalidPoint), false);
+});
+
+const REGTEST_ADDRESS = 'bcrt1qw508d6qejxtdg4y5r3zarvary0c5xw7kygt080';
+const TESTNET4_ADDRESS = 'tb1qw508d6qejxtdg4y5r3zarvary0c5xw7kxpjzsx';
+const MAINNET_ADDRESS = 'bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4';
+// Regtest and testnet share their legacy address prefixes, so Core accepts
+// this address on either chain even though the bech32 prefixes differ.
+const TESTNET_LEGACY_ADDRESS = 'mipcBbFg9gMiCh81Kj8tqqdgoZub1ZJRfn';
+
+test('isValidBitcoinNetwork: accepts regtest and rejects unknown values', () => {
+  assert.equal(isValidBitcoinNetwork('regtest'), true);
+  assert.equal(isValidBitcoinNetwork('signet'), false);
+  assert.equal(isValidBitcoinNetwork(null), false);
+  assert.deepEqual(ALL_NETWORKS, ['mainnet', 'testnet4', 'regtest']);
+});
+
+test('computeDefaultSocketPath: puts regtest under its own network folder', () => {
+  assert.equal(computeDefaultSocketPath('~/.bitcoin', 'regtest'), '~/.bitcoin/regtest/node.sock');
+});
+
+test('isValidBitcoinAddress: accepts a regtest address only on regtest', () => {
+  assert.equal(isValidBitcoinAddress(REGTEST_ADDRESS, 'regtest'), true);
+  assert.equal(isValidBitcoinAddress(REGTEST_ADDRESS, 'testnet4'), false);
+  assert.equal(isValidBitcoinAddress(REGTEST_ADDRESS, 'mainnet'), false);
+});
+
+test('getBitcoinAddressError: reports bech32 addresses from another network as wrong network', () => {
+  assert.equal(getBitcoinAddressError(MAINNET_ADDRESS, 'regtest'), 'Wrong network');
+  assert.equal(getBitcoinAddressError(TESTNET4_ADDRESS, 'regtest'), 'Wrong network');
+  assert.equal(getBitcoinAddressError(REGTEST_ADDRESS, 'testnet4'), 'Wrong network');
+});
+
+test('getBitcoinAddressError: accepts shared legacy prefixes on regtest and testnet4', () => {
+  assert.equal(getBitcoinAddressError(TESTNET_LEGACY_ADDRESS, 'regtest'), null);
+  assert.equal(getBitcoinAddressError(TESTNET_LEGACY_ADDRESS, 'testnet4'), null);
+});
+
+test('getBitcoinAddressPlaceholder: uses bcrt1 for regtest', () => {
+  assert.equal(getBitcoinAddressPlaceholder('regtest'), 'bcrt1q...');
 });

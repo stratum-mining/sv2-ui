@@ -134,11 +134,12 @@ export function useAuth() {
   });
 
   const regenerateRecoveryKey = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (currentPassword: string) => {
       const response = await fetch('/api/auth/recovery-key/regenerate', {
         method: 'POST',
         credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ currentPassword }),
       });
       const data = (await response.json().catch(() => ({}))) as PasswordResponse;
       if (!response.ok || !data.recoveryKey) {

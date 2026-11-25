@@ -46,7 +46,8 @@ can reach the device's web interface.
   enter your recovery key. This resets the password **while keeping your mining
   configuration**. You then choose a new
   password and get a fresh recovery key. You can also (re)generate a recovery key
-  any time from **Settings > Security** when signed in.
+  any time from **Settings > Security** when signed in, by entering your
+  current password.
 - **Lost your recovery key?** Delete the credential file and reload the app.
   You'll be prompted to create a new password; your mining configuration is
   kept. The file location depends on your setup:

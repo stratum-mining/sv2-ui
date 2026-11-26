@@ -21,6 +21,22 @@ import type { JdcConfig, PoolConfig, SetupData, TranslatorConfig } from './types
 
 const MONITORING_CACHE_REFRESH_SECS = 5;
 
+// JDC proves to its downstreams (the Translator, or a miner connected to it
+// directly) that it speaks for JDC_AUTHORITY_PUBLIC_KEY, the key they pin, by
+// presenting a certificate that key issued for JDC's static key. JDC refuses
+// to start without this pair, and also when its config names
+// `authority_secret_key` or `cert_validity_sec`.
+//
+// This is the development pair from the sv2-apps config examples. The secret
+// key of JDC_AUTHORITY_PUBLIC_KEY is public, so the pair encrypts the link
+// without authenticating JDC to anyone. The certificate is valid from
+// 2026-11-09 until 2106-02-07, and JDC checks that window against the host
+// clock at startup. The three values only work together: changing one means
+// issuing a new certificate with the `sv2-certificate` tool from sv2-apps.
+const JDC_STATIC_PRIVATE_KEY = '2Zdzjqd9c7EB4C9FBuqyDNzErruL4DNrJHoL5jhdE6QVArUTR8';
+const JDC_CERTIFICATE =
+  '11HpWbvGUzBwSTTVZMX6Dc1bVAupxFfvzkFqWfcQzXwVWWeCFQ6rQTDtrNbv4ncSx11gBb1trRbuhuCuXNptqbQBHnyx4VJKULV9e4AWew';
+
 function positiveNumber(value: number | undefined, fallback: number): number {
   return typeof value === 'number' && Number.isFinite(value) && value > 0
     ? value
@@ -334,10 +350,11 @@ listening_address = "0.0.0.0:${JDC_PORT}"
 max_supported_version = 2
 min_supported_version = 2
 
-# Auth keys for downstream connections
+# Keys presented to downstream connections
+static_private_key = "${JDC_STATIC_PRIVATE_KEY}"
+certificate = "${JDC_CERTIFICATE}"
+# JDC checks the certificate against this key at startup
 authority_public_key = "${JDC_AUTHORITY_PUBLIC_KEY}"
-authority_secret_key = "mkDLTBBRxdBv998612qipDYoTK3YUrqLe8uWw7gu3iXbSrn2n"
-cert_validity_sec = 3600
 
 # Shares configuration
 shares_per_minute = ${sharesPerMinute}

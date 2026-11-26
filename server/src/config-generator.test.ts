@@ -3,6 +3,7 @@ import { test } from 'node:test';
 import { generateJdcConfig, generateTranslatorConfig, normalizeSetupData } from './config-generator.js';
 import {
   BRAIINS_POOL_AUTHORITY_KEY,
+  JDC_AUTHORITY_PUBLIC_KEY,
   formatSupportedVersions,
   rpcVersionToCoreVersion,
 } from '@sv2-ui/shared';
@@ -163,6 +164,17 @@ test('jdc config uses shared shares-per-minute and miner signature', () => {
   assert.match(config, /jdc_signature = "custom-miner-tag"/);
   assert.match(config, /monitoring_cache_refresh_secs = 5/);
   assert.match(config, /\[miner_telemetry\]\ncidrs = \["192\.168\.1\.0\/24"\]/);
+});
+
+test('jdc config presents a pre-issued certificate and never the authority secret key', () => {
+  const config = generateJdcConfig(BASE_DATA_30);
+
+  assert.ok(config);
+  assert.match(config, /^static_private_key = "\w+"$/m);
+  assert.match(config, /^certificate = "\w+"$/m);
+  assert.match(config, new RegExp(`^authority_public_key = "${JDC_AUTHORITY_PUBLIC_KEY}"$`, 'm'));
+  // JDC refuses to start when either of these is present.
+  assert.doesNotMatch(config, /authority_secret_key|cert_validity_sec/);
 });
 
 test('miner telemetry config is omitted when LAN CIDR is blank', () => {
